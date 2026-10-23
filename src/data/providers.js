@@ -265,6 +265,19 @@ async function yahoo(sym, fromT, { max = false } = {}) {
   const splits = Object.values((r.events && r.events.splits) || {}).map(x => ({ time: x.date, ratio: x.numerator / x.denominator })).filter(x => x.ratio > 0 && x.ratio !== 1).sort((a, b) => a.time - b.time);
   return { bars, splits, currency: r.meta.currency, name: r.meta.longName || r.meta.shortName || '', exchange: r.meta.fullExchangeName || r.meta.exchangeName || '' };
 }
+/**
+ * Next earnings date and recent EPS estimates from Yahoo (desktop app only: needs a session crumb).
+ * Returns {next: {time, est} | null, hist: [{end, est, actual}]}.
+ */
+export async function yahooCalendar(sym) {
+  const d = await getJSON(`https://query2.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(sym)}?modules=calendarEvents,earningsHistory&crumb=__CRUMB__`);
+  const r = d && d.quoteSummary && d.quoteSummary.result && d.quoteSummary.result[0];
+  if (!r) throw new DataError('No calendar for ' + sym + '.', 'notfound');
+  const e = r.calendarEvents && r.calendarEvents.earnings, dates = (e && e.earningsDate) || [];
+  const next = dates.length && dates[0].raw ? { time: dates[0].raw, est: e.earningsAverage ? e.earningsAverage.raw : null, tentative: dates.length > 1 } : null;
+  const hist = ((r.earningsHistory && r.earningsHistory.history) || []).filter(h => h.quarter && h.quarter.raw).map(h => ({ end: h.quarter.raw, est: h.epsEstimate ? h.epsEstimate.raw : null, actual: h.epsActual ? h.epsActual.raw : null }));
+  return { next, hist };
+}
 /** Quarterly diluted EPS from the free fundamentals feed (mostly the last 4–6 quarters), oldest first. */
 export async function yahooEps(sym) {
   const now = Math.floor(Date.now() / 1000);

@@ -16,6 +16,7 @@ import { alertsCenter } from './ui/alertsui.js';
 import { manageLists } from './ui/lists.js';
 import { onAlerts, triggeredCount, checkAll, describe } from './data/alerts.js';
 import { useList } from './app.js';
+import './data/plans.js'; // registers buying-plan checks with the alerts
 import { toast } from './ui/dom.js';
 
 const INIT = { chart: initStock, market: initMarket, screener: initScreener, portfolio: initPortfolio, learn: initLearn, settings: initSettings };

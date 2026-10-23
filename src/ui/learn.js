@@ -84,6 +84,22 @@ export function initLearn(el) {
     </div>
 
     <section class="card">
+      <h2>Buying plan: pyramiding a position</h2>
+      <div class="prose small">
+        <ul>
+          <li><b>Equal-size positions.</b> Each stock gets the same target, e.g. 20% of the portfolio (with 208,000 EUR: 41,600 EUR).</li>
+          <li><b>Average up, never down.</b> Buy in shrinking steps while the stock proves itself: 50% at the breakout (20,800 EUR), 30–35% once it is 1–2% above the buy point (14,560 EUR), the last 15–20% near +5% (6,240 EUR).</li>
+          <li><b>Stay inside the buy zone.</b> All buys happen between the buy point and 5% above it; past that the stock is extended. Don't chase.</li>
+          <li><b>Stop 5–8% below the buy point.</b> Because the first buy is the biggest and the adds are higher, a failed breakout costs little.</li>
+          <li><b>Follow-on buys at the 50-day line.</b> A strong stock that pulls back to its rising 50-day line, while you are in profit, is a second chance to add.</li>
+          <li><b>Let the leaders be the biggest positions.</b> Shift money out of laggards into the stocks that work.</li>
+          <li><b>Not right before earnings.</b> Don't open or add to a position in the days before a report.</li>
+          <li><b>Raise cash</b> when distribution days cluster, leaders break down and the market has outsized down days (see the exposure checklist on the Market tab).</li>
+        </ul>
+        <p>Open a stock and tap <b>Plan</b> to apply this: the app shows the amounts and share counts, puts the levels on the chart, alerts you for each step and records every trade in your journal. Set your own numbers in Settings → Buying plan.</p>
+      </div>
+    </section>
+    <section class="card">
       <h2>Growth checklist</h2>
       <div class="letters">
         ${[['1', 'Quarterly earnings growth', 'Latest quarterly EPS up 25%+ vs the same quarter a year ago; sales growing too, ideally faster each quarter.'],

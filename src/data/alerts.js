@@ -13,7 +13,21 @@ export const ALERT_TYPES = {
   above: { label: 'Closes above', dir: 'up' },
   below: { label: 'Closes below', dir: 'down' },
   stop: { label: 'Stop: closes below', dir: 'down' },
+  plan: { label: 'Buying plan', dir: null }, // events raised by buying plans (see plans.js)
 };
+
+// Buying plans register here (plans.js imports this module, so it can't be imported back).
+let planHook = null;
+export const setPlanHook = h => { planHook = h; };
+
+/** Adds an already-triggered event (e.g. "Add 2 now" from a buying plan) and notifies. */
+export async function pushEvent({ sym, name = '', kind = 'plan', title, body, level, close }) {
+  await allAlerts();
+  const x = { id: Date.now().toString(36) + Math.random().toString(36).slice(2, 5), created: Date.now(), triggered: Date.now(), seen: false, sym, name, type: kind, title, body, level, close, level2: level };
+  list.unshift(x); list = list.slice(0, 300); await save();
+  notifyRaw(title, body);
+  return x;
+}
 
 let list = null; const subs = new Set();
 export const onAlerts = fn => { subs.add(fn); return () => subs.delete(fn); };
@@ -42,6 +56,7 @@ async function askPermission() {
 
 /** Checks one stock's latest bars against its alerts. Returns the alerts that triggered now. */
 export async function checkBars(sym, bars, name = '') {
+  if (planHook) { try { await planHook.check(sym, bars, name); } catch (e) { /* plan check failed */ } }
   const act = (await allAlerts()).filter(x => x.sym === sym && !x.triggered);
   if (!act.length || !bars || bars.length < 2) return [];
   const last = bars[bars.length - 1], hits = [];
@@ -62,8 +77,15 @@ export async function checkBars(sym, bars, name = '') {
 }
 
 export function describe(a, name = '') {
+  if (a.type === 'plan') return a.body || a.title || '';
   const what = a.type === 'breakout' ? `broke out above ${a.level}` : a.type === 'stop' ? `hit its stop (${a.level})` : a.type === 'above' ? `closed above ${a.level}` : `closed below ${a.level}`;
   return `${a.sym}${name ? ' (' + name + ')' : ''} ${what}: close ${a.close}${a.volRatio ? `, volume ×${a.volRatio.toFixed(1)} of average${a.volRatio >= 1.4 ? '' : ' (below the +40% a confirmed breakout needs)'}` : ''}.`;
+}
+
+async function notifyRaw(title, body) {
+  if (isDesktop()) { try { new Notification(title, { body }); } catch (e) { /* not allowed */ } return; }
+  if (!Capacitor.isNativePlatform()) return;
+  try { await LocalNotifications.schedule({ notifications: [{ id: Date.now() % 2e9, title, body }] }); } catch (e) { /* permission refused */ }
 }
 
 async function notify(hits, name) {
@@ -79,7 +101,8 @@ async function notify(hits, name) {
 
 /** Loads every stock with an active alert and checks it. onProgress(i, n). */
 export async function checkAll(onProgress) {
-  const syms = [...new Set((await allAlerts()).filter(x => !x.triggered).map(x => x.sym))], hits = [];
+  const planSyms = planHook ? await planHook.syms() : [];
+  const syms = [...new Set([...(await allAlerts()).filter(x => !x.triggered && x.type !== 'plan').map(x => x.sym), ...planSyms])], hits = [];
   for (let i = 0; i < syms.length; i++) {
     onProgress && onProgress(i + 1, syms.length);
     try { const d = await daily(syms[i]); hits.push(...await checkBars(syms[i], d.bars, d.name)); } catch (e) { /* skip */ }

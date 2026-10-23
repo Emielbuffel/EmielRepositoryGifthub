@@ -1,8 +1,8 @@
 // Loads prices through the chosen provider with an on-device cache and incremental updates.
 import { PROVIDERS, MARKET, INDEXES, SECTORS, indexesFor, DataError, splitSym, currencyOf } from './providers.js';
 import * as store from './store.js';
-import { isApp } from './net.js';
-import { snapshotMeta, yahooEps, yahooSplits } from './providers.js';
+import { isApp, isDesktop } from './net.js';
+import { snapshotMeta, yahooEps, yahooSplits, yahooCalendar } from './providers.js';
 import { secEarnings } from './sec.js';
 
 let SNAP_IDX = null;
@@ -164,6 +164,17 @@ async function freeEarnings(sym, P) {
   if (long && long.length > reported.length) {
     const lastT = long[long.length - 1].time;
     rows = [...long, ...built.filter(r => r.eps == null && r.time > lastT)]; // keep the next report date
+  }
+  // desktop: the next report date and recent estimates for any stock (Yahoo calendar)
+  if (isDesktop() && !sym.startsWith('^')) {
+    try {
+      const cal = await yahooCalendar(sym), now = Date.now() / 1000;
+      if (cal.next && cal.next.time > now - 86400 && !rows.some(r => r.eps == null && r.time > now - 86400)) rows.push({ time: cal.next.time, eps: null, est: cal.next.est, period: 'Next report', tentative: cal.next.tentative, src: 'calendar' });
+      for (const h of cal.hist) { // estimates for the last quarters, matched by quarter end
+        const r = rows.find(x => x.eps != null && x.est == null && x.end && Math.abs(Date.parse(x.end) / 1000 - h.end) < 20 * 86400);
+        if (r && h.est != null && r.src !== 'sec') r.est = h.est; // GAAP figures are not compared with (adjusted) estimates
+      }
+    } catch (e) { /* no calendar */ }
   }
   rows = rows.filter(r => isFinite(r.time)).sort((a, b) => a.time - b.time);
   if (!rows.length) { if (c) return c.rows; throw err || new DataError('No earnings data for ' + sym + '.', 'notfound'); }

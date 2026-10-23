@@ -315,6 +315,17 @@ export class StockChart {
         markers.push({ time: this.snapT(dr.pts[0][0]), position: 'aboveBar', shape: 'arrowDown', color: col, text: dr.label || 'Your cup' });
       } else if (dr.type === 'note') markers.push({ time: this.snapT(dr.t1), position: 'aboveBar', shape: 'arrowDown', color: col, text: dr.label || 'Note' });
     }
+    // buying plan levels and the trades in the journal
+    if (S.plan) {
+      const pl = S.plan, blue = tok('--blue');
+      if (pl.done < 2 && pl.add2) this.addPL({ price: pl.add2, color: blue, lineStyle: LineStyle.Dotted, title: 'Add 2' });
+      if (pl.done < 3 && pl.add3) this.addPL({ price: pl.add3, color: blue, lineStyle: LineStyle.Dotted, title: 'Add 3' });
+      this.addPL({ price: pl.stop, color: bad, lineStyle: LineStyle.Dashed, title: 'Plan stop' });
+    }
+    for (const t of S.trades || []) {
+      if (t.t < b[0].time) continue;
+      markers.push({ time: this.snapT(t.t), position: t.side === 'buy' ? 'belowBar' : 'aboveBar', shape: t.side === 'buy' ? 'arrowUp' : 'arrowDown', color: t.side === 'buy' ? tok('--blue') : tok('--orange'), text: (t.side === 'buy' ? 'B' + (t.step && t.step <= 3 ? t.step : '+') : 'S') + ' ' + t.shares });
+    }
     if (S.pending) markers.push({ time: this.snapT(S.pending.t), position: 'inBar', shape: 'circle', color: col, text: '1' });
     if (S.poly && S.poly.length) {
       if (S.poly.length >= 3) { this.addLine(this.uCurve(S.poly.slice(0, 3)), { color: col, lineStyle: LineStyle.Dashed }); if (S.poly.length > 3) this.addLine(S.poly.slice(2), { color: col, lineStyle: LineStyle.Dashed }); }

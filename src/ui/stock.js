@@ -5,6 +5,9 @@ import { baseCard, signal, pc, fD, fDs, f2, lineVal, cupPivot, screenRow, baseSt
 import { setupScore } from '../core/score.js';
 import { listMenu } from './lists.js';
 import { alertSheet } from './alertsui.js';
+import { planSheet } from './plansui.js';
+import { planFor, tradesFor, strategy } from '../data/plans.js';
+import { pyramid } from '../core/strategy.js';
 import { checkBars, activeFor, onAlerts, describe as describeAlert } from '../data/alerts.js';
 import { daily, benchmarkFor, indexSeries, compareOptions, defaultBenchmark, earnings, isIndexSym, provider, isDemo, isDemoSym, DataError, settings, saveSettings } from '../data/service.js';
 import { isApp } from '../data/net.js';
@@ -38,6 +41,7 @@ export async function initStock(el) {
       <div class="toolbar">
         <button class="btn" id="sWatch"></button>
         <button class="btn" id="sAlert" aria-label="Set an alert"></button>
+        <button class="btn" id="sPlan" aria-label="Buying plan"></button>
         <button class="btn" id="sRefresh" aria-label="Refresh prices">${raw(ICON.refresh)}<span>Refresh</span></button>
       </div>
     </div>
@@ -110,13 +114,17 @@ async function load(sym, force = false) {
     const n = d.bars.length - 1;
     await rememberQuote(sym, d.bars[n].close, d.bars[n].close / d.bars[n - 1].close - 1);
     head(); draw(false); cards();
+    if (App.pendingZoom && App.pendingZoom.sym === sym) { // "Review chart" from the journal
+      const z = App.pendingZoom; App.pendingZoom = null; const idx = t => { let i = d.bars.findIndex(b => b.time >= t); return i < 0 ? n : i; };
+      setTimeout(() => V.chart.zoomDaily(idx(z.from) - 40, z.to ? idx(z.to) + 20 : n), 50);
+    }
     const src = isDemoSym(sym) ? 'Demo data · fictional ' + (isIndexSym(sym) ? 'index' : 'company') : provider().short;
     const dt = fD(d.bars[n].time);
     if (d.stale) status(`Showing saved prices through ${dt}: ${d.error ? d.error.message : 'refresh failed'}`, 'warn');
-    else if ((Date.now() / 1000 - d.bars[n].time) / 86400 > 5 && !isDemoSym(sym)) status(`Prices end on ${dt}: ${Math.floor((Date.now() / 1000 - d.bars[n].time) / 86400)} days old. ${d.builtIn ? 'Built-in data; live updates run in the iPhone, iPad and Mac app.' : 'Tap Refresh.'}`, 'warn');
+    else if ((Date.now() / 1000 - d.bars[n].time) / 86400 > 5 && !isDemoSym(sym)) status(`Prices end on ${dt}: ${Math.floor((Date.now() / 1000 - d.bars[n].time) / 86400)} days old. ${d.builtIn ? 'Built-in data; live prices load in the desktop app.' : 'Tap Refresh.'}`, 'warn');
     else if (d.builtIn) status(`Built-in data through ${dt}. Live prices and the full history load in the desktop app.`, 'ok');
     else status(`${provider().id === 'free' ? 'Live · free public feeds' : src} · daily data through ${dt}${d.cached && !isDemoSym(sym) ? ' · updated ' + ago(d.fetchedAt) : ''}`, isDemoSym(sym) ? 'demo' : 'ok');
-    checkBars(sym, d.bars, d.name).then(h => { if (h.length) { toast(describeAlert(h[0], d.name), 6000); head(); } });
+    checkBars(sym, d.bars, d.name).then(h => { if (h.length) { toast(describeAlert(h[0], d.name), 6000); head(); } loadPlan(sym, seq); });
     loadCompare(sym, seq);
     if (!V.mkt) loadEarnings(sym, seq); else earnCard();
     loadNews(sym, seq);
@@ -136,6 +144,18 @@ async function loadCompare(sym, seq) {
   if (V.cmp.length || ids.length === 0) draw(true);
 }
 const shortName = n => n.replace(/\s*\(.*\)\s*/, '').replace(' (fictional index)', '');
+
+/* buying plan levels and journal trades on the chart */
+async function loadPlan(sym, seq) {
+  const [plan, trades, S] = await Promise.all([planFor(sym), tradesFor(sym), strategy()]);
+  if (seq !== V.seq) return;
+  V.plan = plan; V.trades = trades;
+  if (plan && plan.pivot) { const py = pyramid(S, plan.pivot); V.planLv = { pivot: plan.pivot, add2: py.steps[1] && py.steps[1].from, add3: py.steps[2] && py.steps[2].from, stop: py.stop, done: plan.buys.length }; } else V.planLv = null;
+  const st = plan && plan.lastStep;
+  render($('#sPlan'), html`${raw(ICON.layers)}<span>${plan ? (st ? st.title : 'Plan') : 'Plan'}</span>`);
+  $('#sPlan').classList.toggle('primary', !!(st && ['buy', 'add'].includes(st.level)));
+  draw(true);
+}
 
 async function loadEarnings(sym, seq) {
   try { const rows = await earnings(sym); if (seq !== V.seq) return; V.earn = rows; }
@@ -206,7 +226,7 @@ function chips() {
 function chartState() {
   return {
     sym: V.sym, daily: V.data.bars, bench: V.bench ? V.bench.bars : null, R: V.R, tf: prefs.tf, lines: prefs.lines, patMode: prefs.patMode,
-    drawings: drawings(), cur: V.data.currency, pending: V.pending, poly: V.poly, mkt: V.mkt, compare: V.cmp,
+    drawings: drawings(), cur: V.data.currency, pending: V.pending, poly: V.poly, mkt: V.mkt, compare: V.cmp, trades: V.trades || [], plan: V.planLv || null,
     eps: prefs.eps !== 'off' && V.earn ? { mode: prefs.eps, points: epsPoints(V.earn, prefs.eps) } : null,
   };
 }
@@ -475,9 +495,24 @@ function wireTools() {
   $$('.menu-pop').forEach(p => p.addEventListener('click', e => e.stopPropagation()));
   document.addEventListener('click', () => $$('.menu-pop').forEach(p => { p.hidden = true; }));
   document.addEventListener('keydown', e => { if (e.key === 'Escape' && V.tool) setTool(null); });
+  // flip through the watchlist: ↓/J next, ↑/K previous (like paging through charts)
+  document.addEventListener('keydown', e => {
+    if (App.view !== 'chart' || /input|textarea|select/i.test(document.activeElement.tagName) || !$('#sheet').hidden || e.metaKey || e.ctrlKey || e.altKey) return;
+    const dir = e.key === 'ArrowDown' || e.key === 'j' ? 1 : e.key === 'ArrowUp' || e.key === 'k' ? -1 : 0;
+    if (!dir || !App.watch.length) return;
+    e.preventDefault();
+    const i = App.watch.indexOf(V.sym), next = App.watch[((i < 0 ? -1 : i) + dir + App.watch.length) % App.watch.length];
+    openStock(next);
+  });
   $$('#sSpan [data-span]').forEach(b => { b.onclick = () => { const m = +b.dataset.span; V.chart.span(m); $$('#sSpan [data-span]').forEach(x => x.classList.toggle('on', x === b)); }; });
   $('#sRefresh').onclick = () => { if (App.sym) load(App.sym, true); };
   $('#sWatch').onclick = () => { if (V.sym) listMenu(V.sym); };
+  $('#sPlan').onclick = () => {
+    if (!V.data) return;
+    const B = baseState(V.R, V.data.bars), p = B.p && B.p.pivot ? B.p : null;
+    planSheet({ sym: V.sym, name: V.data.name, cur: V.data.currency, bars: V.data.bars, pivot: p ? +p.pivot.toFixed(2) : null, baseName: p ? p.name : '', onChange: () => loadPlan(V.sym, V.seq) });
+  };
+  on(type => { if ((type === 'plans' || type === 'trades' || type === 'journal') && V.sym) loadPlan(V.sym, V.seq); });
   $('#sAlert').onclick = () => {
     if (!V.data) return;
     const d = V.data.bars, B = baseState(V.R, d), p = B.p && B.p.pivot ? B.p : null;

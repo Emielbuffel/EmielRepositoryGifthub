@@ -11,12 +11,18 @@ import { marketNews } from '../data/news.js';
 import { patColor, patternsToShow, PAT_LABEL } from './chart.js';
 import { $, $$, html, raw, render, tok, ICON } from './dom.js';
 import { pc, fD, fDs, fmtVol } from '../core/analysis.js';
+import { exposureFactors } from '../core/exposure.js';
+import { earnings } from '../data/service.js';
+import { nextReport } from '../core/earnings.js';
+import { allPlans, journal, strategy } from '../data/plans.js';
+import { saveWatch } from '../app.js';
 
 const M = { rows: null, charts: [], loading: false, loadedFor: null };
 
 export function initMarket(el) {
   render(el, html`
     <section class="card" id="mSum"><div class="empty"><span class="spinner"></span><span>Loading the market…</span></div></section>
+    <div class="grid2"><section class="card" id="mExp"></section><section class="card" id="mDaily"></section></div>
     <section class="card"><div class="card-head"><h2>Index scorecard</h2><button class="btn sm" id="mRefresh">${raw(ICON.refresh)}Refresh</button></div><div id="mTable"></div></section>
     <div class="grid2" id="mGrid"></div>
     <section class="card" id="mSec"></section>
@@ -35,7 +41,7 @@ export function initMarket(el) {
       </div>
     </details>`);
   $('#mRefresh').onclick = () => load(true);
-  on(type => { if (type === 'scan') sectors(); if (type === 'theme' && M.rows && App.view === 'market') charts(); if (type === 'provider') { M.loadedFor = null; if (App.view === 'market') load(); else preload(); } if (type === 'view' && App.view === 'market') { load(); M.charts.forEach(c => c.redraw && c.redraw()); } });
+  on(type => { if (type === 'scan') { sectors(); exposure(); routine(); } if (['plans', 'journal', 'watch', 'holdings'].includes(type) && M.rows) routine(); if (type === 'theme' && M.rows && App.view === 'market') charts(); if (type === 'provider') { M.loadedFor = null; if (App.view === 'market') load(); else preload(); } if (type === 'view' && App.view === 'market') { load(); M.charts.forEach(c => c.redraw && c.redraw()); } });
   preload();
 }
 
@@ -76,7 +82,61 @@ function draw() {
     ${M.rows.map(r => { const R = r.R; if (!R) return html`<tr><td>${r.name}</td><td colspan="8" class="muted">${r.error ? r.error.message : 'No data'}</td></tr>`; const n = R.n, vs = a => a[n] ? pc(R.c[n] / a[n] - 1) : '—', cl = x => x >= 0 ? 'up' : 'down';
       return html`<tr><td>${r.name}</td><td class="n">${R.c[n].toLocaleString('en-US', { maximumFractionDigits: 2 })}</td><td class="n ${cl(R.day)}">${pc(R.day, 2)}</td><td class="n ${cl(R.c[n] - (R.s50[n] || 0))}">${vs(R.s50)}</td><td class="n ${cl(R.c[n] - (R.s200[n] || 0))}">${vs(R.s200)}</td><td class="n">${pc(R.off)}</td><td class="n ${R.dd.length >= 5 ? 't-bad' : R.dd.length >= 3 ? 't-warn' : ''}">${R.hasVol ? R.dd.length : 'n/a'}</td><td>${R.lastFtd != null ? fDs(R.b[R.lastFtd].time) : '—'}</td><td><span class="pill t-${STATUS[R.state][1]}">${STATUS[R.state][0]}</span></td></tr>`; })}
   </tbody></table></div><p class="muted tiny" style="margin:0">Daily data through ${fD(Math.max(...M.rows.filter(r => r.R).map(r => r.R.b[r.R.n].time)))}.</p>`);
-  charts(); ddTable(); news(); sectors();
+  charts(); ddTable(); news(); sectors(); exposure(); routine();
+}
+
+const today = () => new Date().toISOString().slice(0, 10);
+const scanRows = async () => { const s = await store.get('screen.' + provider().id, null); return s ? s : { rows: [], at: null }; };
+
+/* factors for increasing / reducing exposure, measured where possible */
+async function exposure() {
+  const el = $('#mExp'); if (!el || !M.rows) return;
+  const man = await store.get('exposure.manual', {}), manual = man.date === today() ? man.v || {} : {};
+  const scan = await scanRows();
+  const E = exposureFactors(M.rows.filter(r => r.k === 'IXIC' || r.k === 'GSPC').map(r => ({ name: r.name.replace(' Composite', ''), R: r.R })), scan.rows, manual);
+  if (!E) { render(el, html`<h2>Exposure checklist</h2><p class="muted small" style="margin:0">Needs Nasdaq and S&amp;P 500 data.</p>`); return; }
+  const icon = (x, down) => x.ok == null ? html`<span class="muted">?</span>` : x.ok ? html`<b class="${down ? 't-bad' : 't-ok'}">${down ? '!' : '✓'}</b>` : html`<span class="muted">–</span>`;
+  const item = (x, down) => html`<li style="display:grid;grid-template-columns:18px 1fr auto;gap:8px;align-items:start"><span>${icon(x, down)}</span><span><span class="small ${x.ok ? (down ? 't-bad' : 't-ok') : ''}">${x.label}</span><br><span class="muted tiny">${x.detail}</span></span>
+    ${x.manual ? html`<span class="seg" style="padding:1px"><button type="button" data-man="${x.key}" data-v="1" class="${x.ok === true ? 'on' : ''}" style="padding:2px 8px;font-size:12px">Yes</button><button type="button" data-man="${x.key}" data-v="0" class="${x.ok === false ? 'on' : ''}" style="padding:2px 8px;font-size:12px">No</button></span>` : html`<span></span>`}</li>`;
+  render(el, html`<div class="card-head"><h2>Exposure checklist</h2><span class="muted tiny">${E.upYes} for · ${E.downYes} against</span></div>
+    ${E.raiseCash ? html`<div class="banner" style="background:color-mix(in srgb,var(--bad) 14%,transparent);border-color:var(--bad)"><span><b class="t-bad">Raise cash!</b> ${E.advice}</span></div>` : html`<p class="small" style="margin:0;border-left:3px solid ${E.score >= 3 ? 'var(--ok)' : E.score <= -2 ? 'var(--bad)' : 'var(--warn)'};padding-left:10px">${E.advice}</p>`}
+    <div class="section-title" style="margin:2px 0 0">Factors for increasing exposure</div>
+    <ul class="notes" style="list-style:none;padding:0;display:grid;gap:8px">${E.up.map(x => item(x, false))}</ul>
+    <div class="section-title" style="margin:2px 0 0">Factors for reducing exposure</div>
+    <ul class="notes" style="list-style:none;padding:0;display:grid;gap:8px">${E.down.map(x => item(x, true))}</ul>
+    <p class="muted tiny" style="margin:0">Measured from the Nasdaq and S&amp;P 500${scan.at ? ' and your last scan (' + new Date(scan.at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) + ')' : ''}. "Yes/No" items are your own judgement and reset each day. A follow-through day starts a new uptrend, but positions are vulnerable at first: start small and add only as breakouts work.</p>`);
+  $$('[data-man]', el).forEach(b => { b.onclick = async () => { const v = { ...manual }; const val = b.dataset.v === '1'; v[b.dataset.man] = v[b.dataset.man] === val ? null : val; await store.set('exposure.manual', { date: today(), v }); exposure(); }; });
+}
+
+/* the daily routine: market, watchlist, leaders you missed, earnings ahead, journal */
+async function routine() {
+  const el = $('#mDaily'); if (!el) return;
+  const R = await store.get('routine', {}), done = R.date === today() ? R.done || {} : {};
+  const mark = async k => { done[k] = !done[k]; await store.set('routine', { date: today(), done }); routine(); };
+  if (!done.market) { done.market = true; await store.set('routine', { date: today(), done }); } // opening this tab = market checked
+  const scan = await scanRows(), have = new Set([...App.lists.flatMap(l => l.syms), ...(App.holdings || []).map(h => h.sym)]);
+  const missed = scan.rows.filter(r => r.rs >= 90 && r.hi >= -0.1 && r.s50 > 0 && !have.has(r.s)).sort((a, b) => b.rs - a.rs).slice(0, 8);
+  const S = await strategy(), plans = (await allPlans()).filter(p => !p.closed);
+  const syms = [...new Set([...(App.holdings || []).map(h => h.sym), ...plans.map(p => p.sym)])].slice(0, 40);
+  const now = Date.now() / 1000, soon = [];
+  await Promise.all(syms.map(async s => { try { const e = await earnings(s); const x = e && nextReport(e); if (x && x.time > now && (x.time - now) / 86400 <= S.earningsDays + 7) soon.push({ s, t: x.time }); } catch (e) { /* none */ } }));
+  soon.sort((a, b) => a.t - b.t);
+  const J = await journal(), todayTrades = J.filter(t => new Date(t.t * 1000).toISOString().slice(0, 10) === today()).length;
+  const chk = (k, label, sub) => html`<li style="display:grid;grid-template-columns:22px 1fr;gap:8px"><input type="checkbox" data-rt="${k}" ${done[k] ? raw('checked') : ''} aria-label="${label}"><span><span class="small">${label}</span>${sub ? html`<br><span class="muted tiny">${sub}</span>` : ''}</span></li>`;
+  render(el, html`<div class="card-head"><h2>Daily routine</h2><span class="muted tiny">${new Date().toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })}</span></div>
+    <ul style="list-style:none;padding:0;margin:0;display:grid;gap:8px">
+      ${chk('market', 'Keep up with the general market', 'Status, distribution days and the exposure checklist (ticked when you open this tab).')}
+      ${chk('plans', 'Check your positions and buying plans', plans.length ? plans.length + ' open plan' + (plans.length > 1 ? 's' : '') + ': alerts tell you when to add or sell.' : 'No open plans.')}
+      ${chk('watch', 'Keep the watchlist current', 'Remove broken stocks, add new leaders and stocks forming bases.')}
+      ${chk('journal', 'Record every buy and sell in the journal', todayTrades ? todayTrades + ' trade' + (todayTrades > 1 ? 's' : '') + ' recorded today.' : 'Use the Plan button on a stock; review past trades on the Portfolio tab.')}
+    </ul>
+    ${soon.length ? html`<div class="section-title" style="margin:4px 0 0">Earnings ahead: no new buys right before the report</div><ul class="notes">${soon.map(x => html`<li class="${(x.t - now) / 86400 <= S.earningsDays ? 'warn' : ''}"><button class="link" data-open="${x.s}"><b>${x.s}</b></button> reports ${fDs(x.t)} (in ${Math.ceil((x.t - now) / 86400)} days)</li>`)}</ul>` : ''}
+    <div class="section-title" style="margin:4px 0 0">Leaders you missed</div>
+    ${missed.length ? html`<div class="results">${missed.map(r => html`<div class="row" style="padding:7px 12px;border-top:.5px solid var(--sep)"><button class="link" data-open="${r.s}" style="text-align:left"><b>${r.s}</b> <span class="muted tiny">${r.nm || ''}</span><br><span class="tiny">Strength ${r.rs} · ${pc(r.hi, 0)} from high${r.p ? ' · ' + r.p.n : ''}</span></button><button class="btn sm" data-addw="${r.s}">+ List</button></div>`)}</div>`
+      : html`<p class="muted small" style="margin:0">${scan.rows.length ? 'No strong leaders outside your lists in the last scan.' : 'Run a scan on the Screener tab to find leaders you are missing.'}</p>`}`);
+  $$('[data-rt]', el).forEach(c => { c.onchange = () => mark(c.dataset.rt); });
+  $$('[data-open]', el).forEach(b => { b.onclick = () => openStock(b.dataset.open); });
+  $$('[data-addw]', el).forEach(b => { b.onclick = async () => { await saveWatch([...App.watch, b.dataset.addw]); routine(); }; });
 }
 
 /* which sectors lead: from the latest screener scan */

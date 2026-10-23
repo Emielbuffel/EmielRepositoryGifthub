@@ -13,6 +13,8 @@ import { parseHoldings, resolveTickers } from '../core/importer.js';
 import { snapshotMeta } from '../data/providers.js';
 import { factor } from '../data/fx.js';
 import { addAlert, checkBars, allAlerts } from '../data/alerts.js';
+import { allPlans, journal, strategy, deletePlan } from '../data/plans.js';
+import { sizingChecks, pyramid } from '../core/strategy.js';
 
 const DEMO_HOLD = [{ sym: 'ACME.DEMO', shares: 40, cost: 90 }, { sym: 'IRIS.DEMO', shares: 60, cost: 70 }, { sym: 'LUMA.DEMO', shares: 100, cost: 45 }, { sym: 'FLUX.DEMO', shares: 150, cost: 30 }, { sym: 'JADE.DEMO', shares: 50, cost: 88 }];
 const P = { base: 'USD', seq: 0 };
@@ -26,8 +28,10 @@ export async function initPortfolio(el) {
       <div class="card-head"><h2>Holdings</h2><div class="toolbar"><select class="input" id="pBase" style="width:auto;padding:6px 10px;font-size:14px" aria-label="Portfolio currency">${['USD', 'EUR', 'GBP', 'CHF', 'JPY', 'CAD', 'AUD'].map(c => html`<option ${c === P.base ? raw('selected') : ''}>${c}</option>`)}</select><button class="btn sm" id="pImp">${raw(ICON.upload)}Import</button><button class="btn sm" id="pStops">${raw(ICON.bell)}Stop alerts</button><button class="btn sm primary" id="pAdd">${raw(ICON.plus)}Add</button></div></div>
       <div id="pHold"></div>
     </section>
+    <section class="card" id="pPlans"></section>
     <div class="grid2"><section class="card" id="pFlags"></section><section class="card" id="pRisk"></section></div>
     <div class="grid2"><section class="card" id="pCorr"></section><section class="card" id="pStress"></section></div>
+    <section class="card" id="pJournal"></section>
     <p class="disclaimer">Educational analysis, not personal investment advice. Values use end-of-day prices and, for other currencies, end-of-day exchange rates. Holdings stay on this device.</p>`);
   $('#pAdd').onclick = () => editHolding();
   $('#pImp').onclick = importSheet;
@@ -38,7 +42,12 @@ export async function initPortfolio(el) {
     toast(`Stop alerts set 8% below cost for ${withCost.length} holding${withCost.length > 1 ? 's' : ''}.`);
   };
   $('#pBase').onchange = () => { P.base = $('#pBase').value; store.set('portfolio.base', P.base); analyse(); };
-  on(type => { if (type === 'provider') loadHoldings().then(analyse); if (type === 'view' && App.view === 'portfolio' && !P.done) analyse(); });
+  on(type => {
+    if (type === 'provider' || type === 'holdings') loadHoldings().then(() => { if (App.view === 'portfolio') analyse(); });
+    if (type === 'view' && App.view === 'portfolio' && !P.done) analyse();
+    if (['plans', 'journal', 'trades', 'provider', 'strategy'].includes(type)) { plansCard(); journalCard(); }
+  });
+  plansCard(); journalCard();
   await loadHoldings();
   if (App.view === 'portfolio') analyse();
 }
@@ -104,7 +113,8 @@ function importSheet() {
 }
 
 async function analyse() {
-  const seq = ++P.seq;
+  const seq = ++P.seq; P.strategy = await strategy();
+  try { const f = await factor(P.strategy.ccy, P.base); P.capFx = f ? f.v : null; } catch (e) { P.capFx = null; }
   const top = $('#pTop');
   if (!App.holdings.length) {
     render(top, html`<div class="empty">${raw(ICON.portfolio)}<p><b>No holdings yet.</b><br>Add your positions to see their value, sell signals, risk and hidden correlations. Everything stays on this device.</p><button class="btn primary" id="pFirst">${raw(ICON.plus)}Add a holding</button></div>`);
@@ -180,7 +190,10 @@ function draw(rows, A, bench, errs) {
   $$('#pHold tr.click').forEach(tr => { tr.onclick = e => { if (e.target.closest('[data-edit]')) return; openStock(tr.dataset.s); }; });
   $$('#pHold [data-edit]').forEach(b => { b.onclick = () => editHolding(App.holdings.find(h => h.sym === b.dataset.edit)); });
   if (!bad) { ['#pFlags', '#pRisk', '#pCorr', '#pStress'].forEach(id => { $(id).innerHTML = ''; }); return; }
-  render($('#pFlags'), html`<h2>Weak points</h2>${A.flags.length ? html`<ul class="notes">${A.flags.map(([k, t]) => html`<li class="${k}">${t.replace(/\.DEMO/g, '')}</li>`)}</ul>` : html`<ul class="notes"><li class="good">No concentration or crash-sensitivity warnings at these weights.</li></ul>`}
+  // position sizes are measured against the plan capital (e.g. 20% of 208,000 EUR), or the holdings if larger
+  const capBase = P.strategy && P.capFx ? P.strategy.capital * P.capFx : 0;
+  const sizing = sizingChecks(P.strategy || {}, rows.filter(r => r.cost).map(r => ({ sym: r.sym, value: r.value, gain: r.c / r.cost - 1 })), Math.max(total, capBase));
+  render($('#pFlags'), html`<h2>Weak points</h2>${sizing.length ? html`<ul class="notes">${sizing.map(x => html`<li class="${x.level === 'bad' ? 'bad' : 'warn'}">${x.text.replace(/\.DEMO/g, '')}</li>`)}</ul>` : ''}${A.flags.length ? html`<ul class="notes">${A.flags.map(([k, t]) => html`<li class="${k}">${t.replace(/\.DEMO/g, '')}</li>`)}</ul>` : html`<ul class="notes"><li class="good">No concentration or crash-sensitivity warnings at these weights.</li></ul>`}
     ${rows.some(r => r.sig.some(s => s[0] === 'bad')) ? html`<ul class="notes">${rows.filter(r => r.sig.some(s => s[0] === 'bad')).map(r => html`<li class="bad">${r.sym.replace('.DEMO', '')}: ${r.sig.filter(s => s[0] === 'bad').map(s => s[1]).join('; ')}</li>`)}</ul>` : ''}`);
   const mx = Math.max(...A.per.map(x => Math.max(x.weight, x.rc)));
   render($('#pRisk'), html`<h2>Where the risk comes from</h2><div class="bars">${[...A.per].sort((a, b) => b.rc - a.rc).map(x => html`<div class="brow"><span class="lbl">${x.sym.replace('.DEMO', '')}</span><div style="display:grid;gap:3px"><div class="btrack"><i style="width:${(x.weight / mx * 100).toFixed(1)}%;opacity:.45"></i></div><div class="btrack"><i class="${x.rc > x.weight * 1.4 ? 'hot' : ''}" style="width:${(Math.max(0, x.rc) / mx * 100).toFixed(1)}%"></i></div></div><span class="val">${(x.rc * 100).toFixed(0)}%</span></div>`)}</div>
@@ -196,3 +209,64 @@ function draw(rows, A, bench, errs) {
     : html`<p class="muted small" style="margin:0">The benchmark had no fall of more than 5% in the window, so there is nothing to replay.</p>`}
     <p class="muted tiny" style="margin:0">Past sell-offs don't predict future ones; this shows how the current mix behaved when the market last fell.</p>`);
 }
+
+/* ---------- buying plans: every open pyramid with its next step ---------- */
+const LV = { buy: 't-ok', add: 't-ok', stop: 't-bad', warn: 't-warn', wait: 't-mute', hold: 't-blue' };
+async function plansCard() {
+  const el = $('#pPlans'); if (!el) return;
+  const [plans, S] = await Promise.all([allPlans(), strategy()]), open = plans.filter(p => !p.closed);
+  const n0 = x => Math.round(x).toLocaleString('en-US');
+  render(el, html`<div class="card-head"><h2>Buying plans</h2><span class="muted tiny">${n0(S.capital * S.posPct)} ${S.ccy} per position · ${S.tranches.map(t => Math.round(t * 100) + '%').join(' / ')} · stop −${Math.round(S.stop * 100)}%</span></div>
+    ${open.length ? html`<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Stock</th><th class="n">Buy point</th><th>Bought</th><th>Next step</th><th></th></tr></thead><tbody>
+      ${open.map(p => { const st = p.lastStep, py = pyramid(S, p.pivot); return html`<tr class="click" data-s="${p.sym}"><td><b>${p.sym}</b><div class="muted tiny">${p.base || ''}</div></td><td class="n">${p.pivot}</td>
+        <td><div class="score-bar" style="width:90px"><i style="width:${Math.min(100, p.buys.length / py.steps.length * 100)}%;background:var(--blue)"></i></div><span class="muted tiny">${p.buys.length} of ${py.steps.length} buys</span></td>
+        <td class="small" style="white-space:normal;min-width:220px">${st ? html`<b class="${LV[st.level] || ''}">${st.title}</b><br><span class="muted">${st.text}</span>` : html`<span class="muted">Open the stock (or wait for the next price check) to see the next step.</span>`}</td>
+        <td><button class="btn sm danger" data-delp="${p.id}" aria-label="Delete plan">×</button></td></tr>`; })}
+    </tbody></table></div>` : html`<p class="muted small" style="margin:0">No buying plans yet. Open a stock with a base and tap <b>Plan</b>: the app works out buy 1 (${Math.round(S.tranches[0] * 100)}%), add 2 at +${Math.round(S.add2[0] * 100)}–${Math.round(S.add2[1] * 100)}% and add 3 at +${Math.round(S.add3[0] * 100)}–${Math.round(S.zone * 100)}%, and alerts you when each step is due.</p>`}`);
+  $$('#pPlans tr.click').forEach(tr => { tr.onclick = e => { if (e.target.closest('[data-delp]')) return; openStock(tr.dataset.s); }; });
+  $$('#pPlans [data-delp]').forEach(b => { b.onclick = async () => { if (confirm('Delete this plan? Journal entries stay.')) { await deletePlan(b.dataset.delp); plansCard(); } }; });
+}
+
+/* ---------- trade journal and review of past trades ---------- */
+function roundTrips(trades) {
+  // group by stock in time order; a round trip ends when the shares go back to zero
+  const by = new Map(); [...trades].sort((a, b) => a.t - b.t).forEach(t => { if (!by.has(t.sym)) by.set(t.sym, []); by.get(t.sym).push(t); });
+  const out = [];
+  for (const [sym, ts] of by) {
+    let cur = null;
+    for (const t of ts) {
+      if (!cur) cur = { sym, buys: [], sells: [], held: 0, cur: t.cur };
+      (t.side === 'buy' ? cur.buys : cur.sells).push(t); cur.held += t.side === 'buy' ? t.shares : -t.shares;
+      if (cur.held <= 0 && cur.sells.length) { out.push(cur); cur = null; }
+    }
+    if (cur) out.push({ ...cur, open: true });
+  }
+  return out.map(r => {
+    const bs = r.buys.reduce((s, t) => s + t.shares, 0), bv = r.buys.reduce((s, t) => s + t.shares * t.price, 0);
+    const ss = r.sells.reduce((s, t) => s + t.shares, 0), sv = r.sells.reduce((s, t) => s + t.shares * t.price, 0);
+    const avgB = bs ? bv / bs : null, avgS = ss ? sv / ss : null;
+    return { ...r, avgB, avgS, ret: avgB && avgS ? avgS / avgB - 1 : null, from: r.buys[0] ? r.buys[0].t : r.sells[0].t, to: (r.sells[r.sells.length - 1] || r.buys[r.buys.length - 1]).t };
+  }).sort((a, b) => b.to - a.to);
+}
+async function journalCard() {
+  const el = $('#pJournal'); if (!el) return;
+  const J = await journal(), trips = roundTrips(J), closed = trips.filter(t => !t.open && t.ret != null);
+  const win = closed.filter(t => t.ret > 0), avgW = win.length ? win.reduce((s, t) => s + t.ret, 0) / win.length : null, loss = closed.filter(t => t.ret <= 0), avgL = loss.length ? loss.reduce((s, t) => s + t.ret, 0) / loss.length : null;
+  render(el, html`<div class="card-head"><h2>Trade journal</h2><div class="toolbar">${J.length ? html`<button class="btn sm" id="jCsv">${raw(ICON.upload)}Export CSV</button>` : ''}</div></div>
+    ${closed.length ? html`<div class="kpis"><div class="kpi"><span class="k">Closed trades</span><span class="v">${closed.length}</span><span class="s">${win.length} won · ${loss.length} lost</span></div>
+      <div class="kpi"><span class="k">Average gain</span><span class="v up">${avgW != null ? pc(avgW, 1) : '—'}</span><span class="s">winners</span></div>
+      <div class="kpi"><span class="k">Average loss</span><span class="v down">${avgL != null ? pc(avgL, 1) : '—'}</span><span class="s">losers (keep it under 7–8%)</span></div></div>` : ''}
+    ${trips.length ? html`<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Stock</th><th>Period</th><th class="n">Avg buy</th><th class="n">Avg sell</th><th class="n">Result</th><th>Trades</th><th></th></tr></thead><tbody>
+      ${trips.map((t, i) => html`<tr><td><b>${t.sym}</b></td><td class="small">${fDs(t.from)}${t.open ? ' → open' : ' → ' + fDs(t.to)}</td><td class="n">${money(t.avgB, t.cur)}</td><td class="n">${t.avgS ? money(t.avgS, t.cur) : '—'}</td>
+        <td class="n ${t.ret == null ? '' : t.ret >= 0 ? 'up' : 'down'}">${t.ret == null ? 'open' : pc(t.ret, 1)}</td>
+        <td class="small" style="white-space:normal;min-width:200px">${[...t.buys, ...t.sells].sort((a, b) => a.t - b.t).map(x => html`<div>${x.side === 'buy' ? 'B' : 'S'} ${x.shares} @ ${money(x.price, x.cur)} · ${fDs(x.t)}${x.reason ? html` <span class="muted">· ${x.reason}</span>` : ''}</div>`)}</td>
+        <td><button class="btn sm" data-review="${i}">Review chart</button></td></tr>`)}
+    </tbody></table></div>` : html`<p class="muted small" style="margin:0">Every buy and sell you record (from a stock's <b>Plan</b> button) is kept here with your reasons. Review past trades on the chart to learn from them.</p>`}`);
+  $$('#pJournal [data-review]').forEach(b => { b.onclick = () => { const t = trips[+b.dataset.review]; App.pendingZoom = { sym: t.sym, from: t.from, to: t.open ? null : t.to }; openStock(t.sym); }; });
+  $('#jCsv') && ($('#jCsv').onclick = () => {
+    const rows = [['date', 'symbol', 'side', 'shares', 'price', 'currency', 'step', 'reason', 'note'], ...J.slice().sort((a, b) => a.t - b.t).map(t => [new Date(t.t * 1000).toISOString().slice(0, 10), t.sym, t.side, t.shares, t.price, t.cur || '', t.step || '', t.reason || '', t.note || ''])];
+    const csv = rows.map(r => r.map(v => /[",\n;]/.test(String(v)) ? '"' + String(v).replace(/"/g, '""') + '"' : v).join(',')).join('\n');
+    const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' })); a.download = 'base-pattern-desk-journal.csv'; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+  });
+}
+
