@@ -9,7 +9,7 @@ export class DataError extends Error {
 }
 
 /* ---------- HTTP: direct requests in the desktop and native apps (no CORS), fetch in a browser ---------- */
-async function getJSON(url) {
+export async function getJSON(url) {
   let status, data;
   try {
     const r = await httpGet(url); status = r.status;

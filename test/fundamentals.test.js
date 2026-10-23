@@ -1,0 +1,38 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { parseSecFundamentals, parseYahooFundamentals, ttm, margins, yoy } from '../src/core/fundamentals.js';
+
+const F = (start, end, val, form = '10-Q', filed) => ({ start, end, val, form, filed: filed || end.replace(/-\d\d$/, '-28') });
+const I = (end, val) => ({ end, val, form: '10-Q', filed: end.replace(/-\d\d$/, '-28') });
+
+test('SEC: quarters from 3-month and year-to-date figures, Q4 from the year, balance items', () => {
+  const doc = { facts: { 'us-gaap': {
+    Revenues: { units: { USD: [F('2025-01-01', '2025-03-31', 100), F('2025-04-01', '2025-06-30', 110), F('2025-07-01', '2025-09-30', 120), F('2025-01-01', '2025-12-31', 460, '10-K', '2026-02-20')] } },
+    NetIncomeLoss: { units: { USD: [F('2025-01-01', '2025-03-31', 10), F('2025-04-01', '2025-06-30', 12), F('2025-07-01', '2025-09-30', 13), F('2025-01-01', '2025-12-31', 50, '10-K', '2026-02-20')] } },
+    // cash flow only year-to-date
+    NetCashProvidedByUsedInOperatingActivities: { units: { USD: [F('2025-01-01', '2025-03-31', 20), F('2025-01-01', '2025-06-30', 45), F('2025-01-01', '2025-09-30', 70), F('2025-01-01', '2025-12-31', 100, '10-K', '2026-02-20')] } },
+    PaymentsToAcquirePropertyPlantAndEquipment: { units: { USD: [F('2025-01-01', '2025-03-31', 5), F('2025-01-01', '2025-06-30', 10)] } },
+    LongTermDebt: { units: { USD: [I('2025-03-31', 300), I('2025-06-30', 280)] } },
+    CashAndCashEquivalentsAtCarryingValue: { units: { USD: [I('2025-03-31', 50)] } },
+  } } };
+  const { rows, cur } = parseSecFundamentals(doc);
+  assert.equal(cur, 'USD');
+  assert.deepEqual(rows.map(r => r.end), ['2025-03-31', '2025-06-30', '2025-09-30', '2025-12-31']);
+  assert.deepEqual(rows.map(r => r.ocf), [20, 25, 25, 30]);
+  assert.equal(rows[3].rev, 130); assert.equal(rows[3].net, 15);
+  assert.equal(rows[1].fcf, 20); assert.equal(rows[0].debt, 300); assert.equal(rows[0].cash, 50);
+  const T = ttm(rows); assert.equal(T.length, 1); assert.equal(T[0].rev, 460); assert.equal(T[0].ocf, 100);
+  assert.ok(Math.abs(margins(T[0]).net - 50 / 460) < 1e-12);
+});
+
+test('Yahoo time series and year-over-year growth', () => {
+  const v = (d, x) => ({ asOfDate: d, currencyCode: 'EUR', reportedValue: { raw: x } });
+  const d = { timeseries: { result: [
+    { meta: { type: ['quarterlyTotalRevenue'] }, quarterlyTotalRevenue: [v('2025-06-30', 100), v('2025-09-30', 105), v('2025-12-31', 110), v('2026-03-31', 115), v('2026-06-30', 130)] },
+    { meta: { type: ['quarterlyCapitalExpenditure'] }, quarterlyCapitalExpenditure: [v('2026-06-30', -7)] },
+    { meta: { type: ['quarterlyOperatingCashFlow'] }, quarterlyOperatingCashFlow: [v('2026-06-30', 20)] },
+  ] } };
+  const r = parseYahooFundamentals(d);
+  assert.equal(r.cur, 'EUR'); assert.equal(r.rows.length, 5); assert.equal(r.rows[4].fcf, 13);
+  assert.ok(Math.abs(yoy(r.rows, 'rev') - 0.3) < 1e-12);
+});

@@ -1,5 +1,6 @@
 // The Chart tab: one stock with its chart (EPS line, index comparisons, every detected pattern), the base card,
 // signal, earnings, growth checklist, news, flags, key numbers, base history and the user's drawings.
+import { fundCard } from './fundui.js';
 import PAT from '../core/pat.js';
 import { baseCard, signal, pc, fD, fDs, f2, lineVal, cupPivot, screenRow, baseState } from '../core/analysis.js';
 import { setupScore } from '../core/score.js';
@@ -71,6 +72,7 @@ export async function initStock(el) {
       <section class="card" id="cEarn"></section>
       <section class="card" id="cCanslim"></section>
     </div>
+    <section class="card" id="cFund"></section>
     <div class="grid2">
       <section class="card" id="cNews"></section>
       <section class="card" id="cFlags"></section>
@@ -129,6 +131,7 @@ async function load(sym, force = false) {
     checkBars(sym, d.bars, d.name).then(h => { if (h.length) { toast(describeAlert(h[0], d.name), 6000); head(); } loadPlan(sym, seq); });
     loadCompare(sym, seq);
     if (!V.mkt) loadEarnings(sym, seq); else earnCard();
+    $('#cFund').hidden = !!V.mkt || isDemoSym(sym); if (!$('#cFund').hidden) fundCard(sym);
     loadNews(sym, seq);
   } catch (e) {
     if (seq !== V.seq) return;

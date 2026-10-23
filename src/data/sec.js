@@ -9,7 +9,7 @@ const days = (a, b) => (Date.parse(b) - Date.parse(a)) / 864e5;
 const tOf = d => Math.floor(Date.parse(d + 'T00:00:00Z') / 1000);
 
 let gap = Promise.resolve();
-async function secGet(url, agent) {
+export async function secGet(url, agent) {
   // space requests ~150 ms apart (EDGAR's fair-access limit is 10 a second)
   const turn = gap.then(() => new Promise(r => setTimeout(r, 150))); gap = turn; await turn;
   const r = await httpGet(url, { headers: { 'User-Agent': agent, Accept: 'application/json' }, timeout: 60000 });
@@ -44,7 +44,7 @@ const FORMS = /^(10-Q|10-K|10-KT|10-QT)(\/A)?$/;
  * Collapses XBRL facts to one value per period: {start, end, val, filed (first report), last (latest filing), fy, fp}.
  * The latest filing wins (restated figures, e.g. after a stock split); the first filing gives the report date and label.
  */
-function periods(facts) {
+export function periods(facts) {
   const m = new Map();
   for (const f of facts) {
     if (!f.start || !f.end || f.val == null || !FORMS.test(f.form || '')) continue;
@@ -57,7 +57,7 @@ function periods(facts) {
 }
 
 /** Quarterly values (3-month periods, plus Q4 = full year minus the first three quarters when needed). */
-function quarterly(facts, perShare, splits) {
+export function quarterly(facts, perShare, splits) {
   const ps = periods(facts);
   const adj = p => { // per-share figures filed before a split are divided by the split ratio
     if (!perShare) return p.val;

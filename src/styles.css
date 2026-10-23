@@ -427,3 +427,10 @@ table.tbl td.name { max-width: 180px; overflow: hidden; text-overflow: ellipsis;
 .ftrack .zero { position: absolute; left: 50%; top: -3px; bottom: -3px; width: 1.5px; background: var(--sep); }
 .ftrack i { position: absolute; top: 0; bottom: 0; border-radius: 99px; }
 @media (max-width: 560px) { .acc { grid-template-columns: 1fr; justify-items: center; } .acc-legend { width: 100%; } .evo-chart { height: 240px; } .card-head .toolbar .seg button { padding: 5px 8px; } }
+
+/* ---------- fundamentals ---------- */
+.fgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 14px; }
+.fpanel { background: var(--fill); border-radius: 12px; padding: 12px; display: grid; gap: 8px; min-width: 0; align-content: start; }
+.fpanel h3 { margin: 0; font-size: 14px; }
+.fpanel p { margin: 0; }
+.fchart { width: 100%; height: auto; display: block; }

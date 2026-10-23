@@ -10,6 +10,7 @@ import * as store from '../data/store.js';
 import { App, on, openStock } from '../app.js';
 import { $, $$, html, raw, render, money, big, ICON, toast, sheet } from './dom.js';
 import { importSheet } from './importui.js';
+import { checkNewResults } from '../data/fundamentals.js';
 import { drawAccount, loadAccountPrefs } from './account.js';
 import { factor } from '../data/fx.js';
 import { addAlert, checkBars, allAlerts } from '../data/alerts.js';
@@ -130,6 +131,7 @@ async function analyse() {
   P.done = true;
   if (refRate) errs.push(`Some values use reference exchange rates of ${refRate} (live rates load in the desktop app)`);
   draw(rows, A, bench, errs);
+  checkNewResults([...new Set([...App.holdings.map(h => h.sym), ...((App.lists || []).flatMap(l => l.syms || []))])].filter(s => !/\.DEMO$/.test(s)));
   P.last = [rows, { base: P.base, bench, perAnalysis: A && !A.error ? A.per : [] }];
   drawAccount(...P.last);
 }
