@@ -130,6 +130,13 @@ export class StockChart {
     this.setRange({ from: Math.max(0, a - (S.tf === 'D' ? 15 : 4)), to: b + (S.tf === 'D' ? 15 : 4) });
   }
   fit() { if (this.bars) this.setRange({ from: 0, to: this.bars.length + 6 }); }
+  /** Shows the last `months` months (0 = everything). */
+  span(months) {
+    const b = this.bars; if (!b || !b.length) return;
+    if (!months) return this.fit();
+    const from = this.idxAt(b[b.length - 1].time - months * 30.44 * 86400);
+    this.setRange({ from, to: b.length - 1 + Math.max(3, Math.round((b.length - from) * 0.03)) });
+  }
 
   idxAt(t) { const b = this.bars; let lo = 0, hi = b.length - 1; if (t <= b[0].time) return 0; if (t >= b[hi].time) return hi; while (hi - lo > 1) { const m = (lo + hi) >> 1; if (b[m].time <= t) lo = m; else hi = m; } return lo; }
   snapT(t) { return this.bars[this.idxAt(t)].time; }

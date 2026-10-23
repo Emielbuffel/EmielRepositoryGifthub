@@ -50,7 +50,7 @@ export async function initStock(el) {
         <div class="menu"><button class="btn sm" id="mPat">Patterns</button><div class="menu-pop" id="pPat" hidden></div></div>
         <div class="menu"><button class="btn sm" id="mDraw">${raw(ICON.pen)}Draw</button><div class="menu-pop" id="pDraw" hidden></div></div>
         <span class="spacer"></span>
-        <button class="btn sm" id="sFit" title="Show the whole history">${raw(ICON.expand)}All</button>
+        <div class="seg" role="group" aria-label="Time range" id="sSpan">${[[3, '3M'], [6, '6M'], [12, '1Y'], [24, '2Y'], [60, '5Y'], [0, 'All']].map(([m, l]) => html`<button data-span="${m}">${l}</button>`)}</div>
       </div>
       <div class="chart-wrap" id="sChartWrap"><div class="chart-legend" id="sLegend"></div><div id="sChart" style="position:absolute;inset:0"></div></div>
       <div class="chart-hint" id="sHint" hidden></div>
@@ -470,7 +470,7 @@ function wireTools() {
   $$('.menu-pop').forEach(p => p.addEventListener('click', e => e.stopPropagation()));
   document.addEventListener('click', () => $$('.menu-pop').forEach(p => { p.hidden = true; }));
   document.addEventListener('keydown', e => { if (e.key === 'Escape' && V.tool) setTool(null); });
-  $('#sFit').onclick = () => V.chart.fit();
+  $$('#sSpan [data-span]').forEach(b => { b.onclick = () => { const m = +b.dataset.span; V.chart.span(m); $$('#sSpan [data-span]').forEach(x => x.classList.toggle('on', x === b)); }; });
   $('#sRefresh').onclick = () => { if (App.sym) load(App.sym, true); };
   $('#sWatch').onclick = () => { if (V.sym) listMenu(V.sym); };
   $('#sAlert').onclick = () => {

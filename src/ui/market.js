@@ -104,7 +104,7 @@ async function sectors() {
 function ddTable() {
   const el = $('#mDD'), rows = M.rows.filter(r => r.R && r.R.hasVol);
   render(el, html`<h2>Distribution days in the count</h2>${rows.length ? rows.map(r => html`<h3 style="font-size:15px;margin-top:4px">${r.name} · ${r.R.dd.length}</h3>
-    ${r.R.ddDetail.length ? html`<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Date</th><th class="n">Index</th><th class="n">Volume vs prior day</th><th class="n">Drops out in</th></tr></thead><tbody>${[...r.R.ddDetail].reverse().map(x => html`<tr><td>${fDs(r.R.b[x.i].time)}</td><td class="n down">${pc(x.chg, 2)}</td><td class="n">${pc(x.volChg, 0)}</td><td class="n">${x.expires} sessions</td></tr>`)}</tbody></table></div>` : html`<p class="muted small" style="margin:0">None: no institutional selling signal in the last 25 sessions.</p>`}`)
+    ${r.R.ddDetail.length ? html`<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Date</th><th class="n">Index</th><th class="n">Volume vs prior day</th><th class="n">Drops out in</th></tr></thead><tbody>${[...r.R.ddDetail].reverse().map(x => html`<tr><td>${fDs(r.R.b[x.i].time)}</td><td class="n down">${pc(x.chg, 2)}</td><td class="n">${pc(x.volChg, Math.abs(x.volChg) < 0.01 ? 1 : 0)}</td><td class="n">${x.expires} sessions</td></tr>`)}</tbody></table></div>` : html`<p class="muted small" style="margin:0">None: no institutional selling signal in the last 25 sessions.</p>`}`)
     : html`<p class="muted small" style="margin:0">No index volume data on this plan.</p>`}
     <p class="muted tiny" style="margin:0">A distribution day also drops out early when the index closes 5% above it. 5+ in the count puts the uptrend under pressure.</p>`);
 }
@@ -129,7 +129,7 @@ function charts() {
   for (const r of M.rows.filter(x => x.R)) {
     const el = g.querySelector(`[data-k="${r.k}"]`), R = r.R;
     const up = tok('--up'), dn = tok('--down');
-    const chart = createChart(el, { autoSize: true, layout: { background: { type: 'solid', color: tok('--bg2') }, textColor: tok('--muted'), fontFamily: tok('--mono'), fontSize: 10, attributionLogo: true, panes: { separatorColor: tok('--sep') } }, grid: { vertLines: { color: tok('--grid') }, horzLines: { color: tok('--grid') } }, rightPriceScale: { borderVisible: false }, timeScale: { borderVisible: false }, handleScroll: { vertTouchDrag: false } });
+    const chart = createChart(el, { autoSize: true, layout: { background: { type: 'solid', color: tok('--bg2') }, textColor: tok('--muted'), fontFamily: tok('--mono'), fontSize: 10, attributionLogo: true, panes: { separatorColor: tok('--sep') } }, grid: { vertLines: { color: tok('--grid') }, horzLines: { color: tok('--grid') } }, rightPriceScale: { borderVisible: false }, timeScale: { borderVisible: false }, handleScroll: false, handleScale: false }); // overview only: no accidental zoom/scroll; 'Analyse & draw' opens the full chart
     const b = R.b, sr = v => b.map((x, i) => v[i] == null ? { time: x.time } : { time: x.time, value: v[i] });
     const cs = chart.addSeries(CandlestickSeries, { priceLineVisible: false });
     cs.setData(b.map(x => { const c = x.close >= x.open ? up : dn; return { time: x.time, open: x.open, high: x.high, low: x.low, close: x.close, color: c, borderColor: c, wickColor: c }; }));
