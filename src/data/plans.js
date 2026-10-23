@@ -68,7 +68,9 @@ export async function checkPlan(sym, bars, name = '') {
   const S = await strategy(), n = bars.length - 1, c = bars.map(b => b.close), s50 = sma(c, 50);
   let nr = null; try { const e = await earnings(sym); const x = e && nextReport(e); nr = x ? x.time : null; } catch (e) { /* no earnings data */ }
   let fx = 1; try { const f = await factor(p.cur || '', S.ccy); if (f) fx = f.v; } catch (e) { /* plan currency = listing currency */ }
-  const st = nextStep(S, p, { close: c[n], s50: s50[n], s50prev: s50[n - 5], nextReport: nr, now: bars[n].time, market: App.mkt && App.mkt.us, fx });
+  const first = p.buys.length ? p.buys[0].t : null;
+  const peak = first ? Math.max(...bars.filter(x => x.time >= first).map(x => x.close), 0) : 0; // highest close since the first buy
+  const st = nextStep(S, p, { close: c[n], s50: s50[n], s50prev: s50[n - 5], nextReport: nr, now: bars[n].time, market: App.mkt && App.mkt.us, fx, peak });
   const due = ['buy', 'add', 'stop', 'warn'].includes(st.level);
   if (st.code !== p.lastCode) {
     p.lastCode = st.code; p.lastStep = { ...st, at: Date.now(), close: c[n] }; await store.set(k('plans'), plans);

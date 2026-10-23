@@ -42,18 +42,18 @@ export function baseCard(R, d, bench, fp) {
   if (p.pivot) out.facts.push(['Buy point', fp(p.pivot)], [B.bo ? 'vs buy point' : 'Distance', pc(B.dist)]);
   if (p.type === 'cwh') out.facts.push(['Handle', '−' + Math.round(p.hd * 100) + '% · ' + (p.handleWeeks < 1 ? Math.round(p.handleWeeks * 5) + ' days' : Math.round(p.handleWeeks) + ' wk')]);
   if (p.pivot) {
-    const need = (P.av[n] || 0) * 1.4;
+    const need = (P.av[n] || 0) * 1.5;
     if (!B.bo) {
-      out.plan.push(`Buy only on a close above <b>${fp(p.pivot)}</b> with volume of at least <b>${fmtVol(need)}</b> shares (40% above the 50-day average).`);
+      out.plan.push(`Buy only on a close above <b>${fp(p.pivot)}</b> with volume of at least <b>${fmtVol(need)}</b> shares (50% above the 50-day average, as the book asks).`);
       out.plan.push(`Buy zone: ${fp(p.pivot)} to ${fp(p.pivot * 1.05)}. Above that the stock is extended; don't chase it.`);
     } else {
-      out.plan.push(`Breakout-day volume was ${p.volRatio ? pc(p.volRatio - 1, 0) : '—'} vs average ${p.volRatio >= 1.4 ? '(confirmed)' : "(below the +40% a confirmed breakout needs)"}.`);
+      out.plan.push(`Breakout-day volume was ${p.volRatio ? pc(p.volRatio - 1, 0) : '—'} vs average ${p.volRatio >= 1.5 ? '(confirmed)' : "(below the +50% a confirmed breakout needs)"}.`);
       out.plan.push(B.dist > 0.05 ? `Now ${pc(B.dist)} above the buy point: past the 5% buy zone. Don't add here; wait for a pullback or a new base.`
         : B.dist >= 0 ? `Inside the buy zone (${fp(p.pivot)}–${fp(p.pivot * 1.05)}).`
           : `Back under the buy point. A close below ${fp(p.pivot * 0.98)} would count as a failed breakout.`);
     }
     out.plan.push(`Stop: sell if it falls 7–8% below your purchase price (≈ ${fp(p.pivot * 0.92)} if bought at the buy point).`);
-    out.plan.push(`Profits: take most at +20–25% (${fp(p.pivot * 1.2)}–${fp(p.pivot * 1.25)}). A stock that gains 20% within 3 weeks of the breakout is often held for at least 8 weeks.`);
+    out.plan.push(`Profits: take most at +20–25% (${fp(p.pivot * 1.2)}–${fp(p.pivot * 1.25)}). A stock that gains 20% within 8 weeks of the breakout is held for at least 8 weeks. At +15% raise your sell line to just below the buy point; never let a 20% gain turn into a loss.`);
   }
   if (p.faulty) out.plan.unshift("<b>Faulty base</b> by the classic rules (see the red notes). Breakouts from faulty bases fail more often: smaller position, tighter stop.");
   (p.notes || []).forEach(x => out.notes.push(x));
@@ -93,7 +93,7 @@ export function signal(R, d, bench, fp, mkt, drawings = []) {
     ['Price above the 50-day line', c > k.s50[n], f2(k.s50[n])],
     ['In a sound base or a fresh breakout', !!(B.p && B.p.pivot && !B.p.faulty), B.p ? B.p.name : 'none'],
     ['Within 5% of the buy point', B.p && B.p.pivot ? (B.dist >= -0.05 && B.dist <= 0.05) : false, B.p && B.p.pivot ? pc(B.dist) : ''],
-    [bo ? 'Breakout volume at least +40%' : 'Volume drying up in the base', bo ? bo.volRatio >= 1.4 : vol10 != null && vol10 < 1, bo ? (bo.volRatio ? '×' + bo.volRatio.toFixed(2) : '') : vol10 != null ? '10-day ×' + vol10.toFixed(2) : ''],
+    [bo ? 'Breakout volume at least +50%' : 'Volume drying up in the base', bo ? bo.volRatio >= 1.5 : vol10 != null && vol10 < 1, bo ? (bo.volRatio ? '×' + bo.volRatio.toFixed(2) : '') : vol10 != null ? '10-day ×' + vol10.toFixed(2) : ''],
     ['RS line at a new 52-week high', rsHi, hasRs ? '' : 'no benchmark'],
     ['Up/down volume ratio above 1', udr != null && udr > 1, udr ? udr.toFixed(2) : ''],
     ['Early-stage base (stage 1–2)', B.p && B.p.stage ? B.p.stage <= 2 : false, B.p && B.p.stage ? 'stage ' + B.p.stage : ''],
@@ -104,9 +104,9 @@ export function signal(R, d, bench, fp, mkt, drawings = []) {
   let sig, why;
   if (k.s200[n] != null && c < k.s200[n]) { sig = 'SELL'; why = 'Closed below the 200-day line: the long uptrend is broken.'; }
   else if (bo && c < bo.pivot * 0.92) { sig = 'SELL'; why = "More than 8% below the breakout buy point: the 7–8% loss-cutting rule says sell."; }
-  else if (bo && B.dist >= 0 && B.dist <= 0.05 && bo.volRatio >= 1.4 && c > k.s50[n]) { sig = 'BUY'; why = `In the buy zone of a volume-confirmed ${bo.name.toLowerCase()} breakout. Stop about ${fp(bo.pivot * 0.92)}.`; }
+  else if (bo && B.dist >= 0 && B.dist <= 0.05 && bo.volRatio >= 1.5 && c > k.s50[n]) { sig = 'BUY'; why = `In the buy zone of a volume-confirmed ${bo.name.toLowerCase()} breakout. Stop about ${fp(bo.pivot * 0.92)}.`; }
   else if (bo && B.dist > 0.05) { sig = 'HOLD'; why = "Extended beyond the 5% buy zone. Hold if you own it; don't chase it."; }
-  else if (bo && B.dist >= 0) { sig = 'HOLD'; why = "Broke out, but volume was below the +40% a confirmed breakout needs. Wait for confirmation."; }
+  else if (bo && B.dist >= 0) { sig = 'HOLD'; why = "Broke out, but volume was below the +50% a confirmed breakout needs. Wait for confirmation."; }
   else if (inBase) { sig = 'WATCH'; why = `${(Math.abs(B.dist) * 100).toFixed(1)}% ${B.dist < 0 ? 'below' : 'above'} the ${B.p.name.toLowerCase()} buy point (${fp(B.p.pivot)}). Buy only on a volume breakout.`; }
   else if (c < k.s50[n] && !s50up && !macdUp) { sig = 'SELL'; why = 'Below a falling 50-day line with weak momentum. Trim or tighten stops.'; }
   else { sig = 'HOLD'; why = B.msg || 'No buy setup right now.'; }
@@ -123,12 +123,12 @@ export function signal(R, d, bench, fp, mkt, drawings = []) {
     return null;
   };
   const ago = x => x ? x + (x === 1 ? ' session ago' : ' sessions ago') : 'today';
-  if (B.bo && n - B.p.bo <= 2) add(B.p.volRatio >= 1.4 ? 'bull' : 'warn', `Broke out of a ${B.p.name.toLowerCase()} ${ago(n - B.p.bo)} on volume ${pc(B.p.volRatio - 1, 0)} vs average.`);
+  if (B.bo && n - B.p.bo <= 2) add(B.p.volRatio >= 1.5 ? 'bull' : 'warn', `Broke out of a ${B.p.name.toLowerCase()} ${ago(n - B.p.bo)} on volume ${pc(B.p.volRatio - 1, 0)} vs average.`);
   if (B.p && B.p.pivot && !B.bo && B.dist >= -0.03) add('info', `Within ${(Math.abs(B.dist) * 100).toFixed(1)}% of the buy point ${fp(B.p.pivot)}.`);
   if (R.last && R.last.failed && n - R.last.failed <= 10) add('bear', `Failed breakout: closed back under the ${fp(R.last.pivot)} buy point ${ago(n - R.last.failed)}.`);
   if (rsHi) add('bull', c >= hi52 * 0.995 ? 'RS line at a new high together with price.' : "RS line at a new high before price: a classic sign of leadership.");
   let x = cross(k.s50, k.s200, 15); if (x) add(x[0] === 'up' ? 'bull' : 'bear', `${x[0] === 'up' ? 'Golden' : 'Death'} cross (50-day ${x[0] === 'up' ? 'above' : 'below'} 200-day) ${ago(x[1])}.`);
-  x = cross(k.c, k.s50, 5); if (x) add(x[0] === 'up' ? 'bull' : 'bear', `Price crossed ${x[0] === 'up' ? 'above' : 'below'} the 50-day line ${ago(x[1])}${volR >= 1.4 && x[1] === 0 ? ' on heavy volume' : ''}.`);
+  x = cross(k.c, k.s50, 5); if (x) add(x[0] === 'up' ? 'bull' : 'bear', `Price crossed ${x[0] === 'up' ? 'above' : 'below'} the 50-day line ${ago(x[1])}${volR >= 1.5 && x[1] === 0 ? ' on heavy volume' : ''}.`);
   x = cross(k.macd.m, k.macd.sg, 5); if (x) add(x[0] === 'up' ? 'bull' : 'bear', `Daily MACD crossed ${x[0] === 'up' ? 'above' : 'below'} its signal ${ago(x[1])}.`);
   if (r > 70) add('warn', `RSI ${f2(r)}: overbought, pullback risk.`); else if (r < 30) add('warn', `RSI ${f2(r)}: oversold.`);
   if (k.s50[n] && c / k.s50[n] - 1 > 0.25) add('warn', `${pc(c / k.s50[n] - 1, 0)} above the 50-day line: very extended.`);
@@ -140,7 +140,7 @@ export function signal(R, d, bench, fp, mkt, drawings = []) {
   for (const dr of drawings) {
     if (dr.type === 'cup' && dr.pts && dr.pts.length >= 3) {
       const piv = cupPivot(dr);
-      if (c > piv && pcl <= piv) add('bull', `Closed above your cup's buy point (${f2(piv)}). Check volume: a confirmed breakout needs 40%+ above average.`);
+      if (c > piv && pcl <= piv) add('bull', `Closed above your cup's buy point (${f2(piv)}). Check volume: a confirmed breakout needs 50%+ above average.`);
       else if (c < piv && c >= piv * 0.95) add('info', `Within 5% below your cup's buy point (${f2(piv)}).`);
       else if (c > piv && c <= piv * 1.05) add('info', `In the buy zone of your cup (${f2(piv)}–${f2(piv * 1.05)}).`);
       continue;
@@ -215,7 +215,7 @@ export function screenRow(sym, name, bars, R, bench, { noVol = false } = {}) {
   else { const desc = R.cur.find(x => x.type === 'desc'); if (desc) p = { n: desc.name, t: 'desc', w: Math.round(desc.weeks), dp: desc.depth, st: 'faulty', f: true }; }
   const buy = [], sell = [];
   const chg = c[n] / c[n - 1] - 1, upDay = chg > 0;
-  if (p && p.st === 'buyzone' && p.bo <= 5) buy.push(`Breakout ${p.bo === 0 ? 'today' : p.bo + 'd ago'} from ${p.n}${p.vr >= 1.4 ? ' on volume' : ', volume below +40%'}`);
+  if (p && p.st === 'buyzone' && p.bo <= 5) buy.push(`Breakout ${p.bo === 0 ? 'today' : p.bo + 'd ago'} from ${p.n}${p.vr >= 1.5 ? ' on volume' : ', volume below +50%'}`);
   else if (p && p.st === 'buyzone') buy.push(`In buy zone of ${p.n}`);
   if (p && p.st === 'near') buy.push(`${Math.abs(p.di * 100).toFixed(1)}% from the ${p.n} buy point`);
   if (vr != null && vr >= 2 && upDay) buy.push(`Volume ×${vr.toFixed(1)} on an up day`);
@@ -223,10 +223,12 @@ export function screenRow(sym, name, bars, R, bench, { noVol = false } = {}) {
   let maxDn = 0; for (let j = n - 10; j < n; j++) if (j > 0 && c[j] < c[j - 1]) maxDn = Math.max(maxDn, v[j]);
   const s10 = smaAt(10, n); if (hasVol && upDay && maxDn > 0 && v[n] > maxDn && s10 && s50 && c[n] > s10 && c[n] > s50) buy.push('Pocket pivot');
   if (s200 && c[n] < s200 && c[n - 1] >= smaAt(200, n - 1)) sell.push('Closed below the 200-day line');
-  if (s50 && c[n] < s50 && c[n - 1] >= smaAt(50, n - 1) && vr != null && vr >= 1.4) sell.push('Heavy-volume break of the 50-day line');
+  if (s50 && c[n] < s50 && c[n - 1] >= smaAt(50, n - 1) && vr != null && vr >= 1.5) sell.push('Heavy-volume break of the 50-day line');
   if (p && p.st === 'stop') sell.push('8% below the buy point (stop)');
   if (R.last && R.last.failed && n - R.last.failed <= 10) sell.push('Failed breakout');
   if (s50 && c[n] / s50 - 1 > 0.25) sell.push(`${Math.round((c[n] / s50 - 1) * 100)}% above the 50-day line (climax risk)`);
+  if (s200 && c[n] / s200 - 1 >= 0.7) sell.push(`${Math.round((c[n] / s200 - 1) * 100)}% above the 200-day line (the book: often sold at 70–100% above)`);
+  const s200p = smaAt(200, n - 20); if (s200 && s200p && s200 < s200p && n >= 260 && hi52 > s200 * 1.3) sell.push('200-day line turning down after a long advance');
   if (vr != null && vr >= 2 && !upDay && chg < -0.02) sell.push(`Volume ×${vr.toFixed(1)} on a down day`);
   const sp = []; const from = Math.max(0, n - 59); let lo = Infinity, hi = -Infinity;
   for (let j = from; j <= n; j++) { lo = Math.min(lo, c[j]); hi = Math.max(hi, c[j]); }

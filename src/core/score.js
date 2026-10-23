@@ -12,7 +12,7 @@ export function setupScore(row, epsYoy = null, mkt = null) {
   // 1. the base: a fresh, volume-confirmed breakout or a sound base near its buy point scores highest
   let base = 0, bNote = 'no base';
   if (p) {
-    if (p.st === 'buyzone') { base = p.bo <= 5 && p.vr >= 1.4 ? 30 : 24; bNote = p.bo <= 5 ? 'fresh breakout' : 'in buy zone'; }
+    if (p.st === 'buyzone') { base = p.bo <= 5 && p.vr >= 1.5 ? 30 : 24; bNote = p.bo <= 5 ? 'fresh breakout' : 'in buy zone'; }
     else if (p.st === 'near') { base = p.f ? 14 : 24; bNote = 'near buy point'; }
     else if (p.st === 'forming') { base = p.f ? 6 : 12; bNote = 'base forming'; }
     else if (p.st === 'extended') { base = 10; bNote = 'extended'; }
@@ -28,7 +28,7 @@ export function setupScore(row, epsYoy = null, mkt = null) {
   // 4. demand: up/down volume
   if (row.ud != null) parts.push(['Demand', row.ud >= 1.3 ? 10 : row.ud >= 1.1 ? 7 : row.ud >= 1 ? 4 : 0, 10, 'up/down vol ' + row.ud.toFixed(2)]);
   // 5. earnings
-  if (epsYoy != null && isFinite(epsYoy)) parts.push(['Earnings', epsYoy >= 0.25 ? 10 : epsYoy >= 0.1 ? 6 : epsYoy >= 0 ? 3 : 0, 10, 'EPS ' + (epsYoy >= 0 ? '+' : '') + Math.round(epsYoy * 100) + '% y/y']);
+  if (epsYoy != null && isFinite(epsYoy)) parts.push(['Earnings', epsYoy >= 0.25 ? 10 : epsYoy >= 0.2 ? 8 : epsYoy >= 0.1 ? 5 : epsYoy >= 0 ? 3 : 0, 10, 'EPS ' + (epsYoy >= 0 ? '+' : '') + Math.round(epsYoy * 100) + '% y/y']);
   // 6. market
   if (mkt) parts.push(['Market', mkt.us === 'up' ? 10 : mkt.us === 'press' ? 5 : 0, 10, mkt.us === 'up' ? 'uptrend' : mkt.us === 'press' ? 'under pressure' : 'correction']);
   const got = parts.reduce((s, x) => s + x[1], 0), max = parts.reduce((s, x) => s + x[2], 0);

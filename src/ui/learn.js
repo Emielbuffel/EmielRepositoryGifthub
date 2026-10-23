@@ -27,13 +27,13 @@ function art(type) {
 }
 
 const PATTERNS = [
-  ['cwh', 'Cup with handle', 'ACME.DEMO', [['Length', '7–65 weeks (6 at the very least)'], ['Depth', '12–33% (up to ~50% in bear markets)'], ['Shape', 'Rounded U, not a V'], ['Handle', '1+ week, ≤10–12% deep, in the upper half, drifting down on light volume'], ['Buy point', 'Handle high + 10¢']], 'Wedging (rising) handles, handles in the lower half and handles shorter than a week are faulty.'],
-  ['cup', 'Cup without handle', 'BOLT.DEMO', [['Length', '7+ weeks'], ['Depth', '12–33%'], ['Shape', 'Right side back within ~10% of the left-side high'], ['Buy point', 'Left-side high + 10¢']], 'Same cup, no handle. Volume should pick up as the right side climbs.'],
-  ['dbl', 'Double bottom', 'CRUX.DEMO', [['Length', '7+ weeks'], ['Depth', 'Up to ~33%'], ['Shape', 'A “W”: the second low undercuts the first (a shakeout)'], ['Buy point', 'Middle peak of the W + 10¢']], 'The undercut shakes out weak holders before the advance.'],
-  ['flat', 'Flat base', 'DUNE.DEMO', [['Length', '5+ weeks'], ['Depth', '≤15%'], ['Context', 'Usually forms after a breakout from a deeper base'], ['Buy point', 'Base high + 10¢']], 'A sign the stock is holding its gains while the market digests them.'],
-  ['asc', 'Ascending base', 'ECHO.DEMO', [['Length', '9–16 weeks'], ['Shape', 'Three pullbacks of about 10–20%; each low and each high above the previous one'], ['Buy point', 'The highest peak + 10¢']], 'Often forms when the general market is pulling back.'],
-  ['htf', 'High tight flag', 'FLUX.DEMO', [['Pole', 'The stock roughly doubles (+100–120%) in 4–8 weeks'], ['Flag', '3–5 weeks sideways, correcting no more than 25%'], ['Buy point', 'Flag high + 10¢']], 'Rare and powerful, but also volatile.'],
-  ['3wt', 'Three weeks tight', 'GLOW.DEMO', [['Shape', 'Three weekly closes within about 1–1.5%'], ['Context', 'Near highs, above the 50-day line'], ['Buy point', 'Tight-area high + 10¢']], 'An add-on buy point inside an advance, not a new base.'],
+  ['cwh', 'Cup with handle', 'ACME.DEMO', [['Length', '7–65 weeks (most 3–6 months)'], ['Depth', '12–33% (up to ~50% coming out of a bear market)'], ['Before', 'A prior uptrend of at least 30%'], ['Shape', 'Rounded U, not a V'], ['Handle', '1–2+ weeks, ≤10–15% deep, in the upper half and above the 200-day line, drifting down on very light volume'], ['Buy point', 'Handle high + 10¢']], 'Wedging (rising) handles, handles in the lower half or below the 200-day line, and handles shorter than a week are faulty. A saucer with handle is the same pattern with a longer, shallower cup.'],
+  ['cup', 'Cup without handle', 'BOLT.DEMO', [['Length', '7+ weeks'], ['Depth', '12–33%'], ['Shape', 'Right side back within ~10% of the left-side high'], ['Buy point', 'Left-side high + 10¢']], 'Same cup, no handle. The book notes these fail somewhat more often than cups with a handle.'],
+  ['dbl', 'Double bottom', 'CRUX.DEMO', [['Length', '7+ weeks'], ['Depth', 'Like a cup, up to ~33%'], ['Shape', 'A “W”: the second low touches or undercuts the first (a shakeout)'], ['Buy point', 'Middle peak of the W + 10¢']], 'The undercut shakes out weak holders. It can also have a handle. Slightly less powerful than a cup with handle, because the stock fell back to its low twice.'],
+  ['flat', 'Flat base', 'DUNE.DEMO', [['Length', '6–7+ weeks'], ['Depth', '≤10–15%'], ['Context', 'Usually a second-stage base after a breakout from a cup, saucer or double bottom'], ['Buy point', 'Base high + 10¢']], 'Moves straight sideways in a tight range while the stock holds its gains.'],
+  ['asc', 'Ascending base', 'ECHO.DEMO', [['Length', '9–16 weeks'], ['Shape', 'Three pullbacks of about 10–20%; each low and each high above the previous one'], ['Buy point', 'The highest peak + 10¢']], 'Described in later editions of the book (not in the 2nd edition). Often forms when the general market is pulling back.'],
+  ['htf', 'High tight flag', 'FLUX.DEMO', [['Pole', 'The stock roughly doubles (+100–120%) in 4–8 weeks'], ['Flag', '3–5 weeks sideways, correcting no more than 10–20%'], ['Buy point', 'Flag high + 10¢']], 'Rare (once or twice a year) and the strongest pattern, but risky and hard to read. The only base that may be shorter than 6 weeks.'],
+  ['3wt', 'Three weeks tight', 'GLOW.DEMO', [['Shape', 'Three weekly closes within about 1–1.5%'], ['Context', 'Near highs, above the 50-day line'], ['Buy point', 'Tight-area high + 10¢']], 'From later editions of the book: an add-on buy point inside an advance, not a new base. The 2nd edition only speaks of tight weekly closes as a sign of accumulation.'],
   ['desc', 'Descending base', 'HAZE.DEMO', [['Shape', 'Lower highs and lower lows'], ['Context', 'Below the 50-day line'], ['Buy point', 'None']], 'O\'Neil treats this as faulty: wait until a proper base forms.'],
 ];
 
@@ -64,8 +64,10 @@ export function initLearn(el) {
       <section class="card">
         <h2>Buy rules</h2>
         <ul class="notes">
-          <li class="good">Buy only when the stock <b>closes above the buy point</b> on volume at least 40–50% above its 50-day average.</li>
-          <li class="good">Buy zone: up to 5% above the buy point. Beyond that it's extended. Don't chase it.</li>
+          <li class="good">Buy only when the stock <b>closes above the buy point</b> on volume at least 50% above its 50-day average (leaders often trade 500–1000% more).</li>
+          <li class="good">Buy zone: up to 5% above the buy point; the book calls more than 5–10% past it late. Don't chase it.</li>
+          <li class="good">Add only to positions that work: one or two smaller buys 2–3% higher, never more than 5% past the buy point. Never average down.</li>
+          <li class="good">Concentrate: 4–5 stocks for accounts up to about $100,000, 6–7 even for a million.</li>
           <li class="good">Prefer early-stage bases (stage 1–2). Count stages from the last base that undercut a prior base's low.</li>
           <li class="good">The RS line making a new high before the price breaks out is a strong tell.</li>
           <li class="good">Buy only in a confirmed market uptrend (the M).</li>
@@ -74,11 +76,14 @@ export function initLearn(el) {
       <section class="card">
         <h2>Sell rules</h2>
         <ul class="notes">
-          <li class="bad">Cut every loss at 7–8% below your purchase price. No exceptions.</li>
+          <li class="bad">Cut every loss at 7–8% below your purchase price. No exceptions; aim for an average loss of 5–6%.</li>
           <li class="bad">A failed breakout: the stock closes back under the buy point (about 2%+) soon after breaking out.</li>
           <li class="bad">A heavy-volume close below the 50-day line, or any close below the 200-day line.</li>
-          <li class="warn">Take most profits at +20–25%, unless it gained 20% within 3 weeks of the breakout; then hold at least 8 weeks.</li>
-          <li class="warn">Climax tops: the biggest gain since the breakout, an exhaustion gap, or 25%+ above the 50-day line after a fast run.</li>
+          <li class="warn">Take most profits at +20–25%, unless the stock gained 20% within 8 weeks of the breakout; then hold it at least 8 weeks (those are the most powerful stocks).</li>
+          <li class="warn">Once you are 15% up, raise your sell line to just below the buy point. A stock that rose close to 20% should never be allowed to turn into a loss.</li>
+          <li class="warn">Climax tops: a fast run for 2–3 weeks, the biggest one-day gain since the breakout, a gap up while extended, the heaviest volume day, or 70–100% above the 200-day line.</li>
+          <li class="warn">Also sell when earnings growth slows sharply for two quarters, the RS rank drops below 70, the 200-day line turns down, or a breakout comes from a 3rd or 4th-stage or wide-and-loose base.</li>
+          <li class="warn">Give a stock that does nothing 13 weeks; sell your worst performer first; carry no loss for 6 months.</li>
         </ul>
       </section>
     </div>
@@ -88,9 +93,10 @@ export function initLearn(el) {
       <div class="prose small">
         <ul>
           <li><b>Equal-size positions.</b> Each stock gets the same target, e.g. 20% of the portfolio (with 208,000 EUR: 41,600 EUR).</li>
-          <li><b>Average up, never down.</b> Buy in shrinking steps while the stock proves itself: 50% at the breakout (20,800 EUR), 30–35% once it is 1–2% above the buy point (14,560 EUR), the last 15–20% near +5% (6,240 EUR).</li>
+          <li><b>Average up, never down.</b> Buy in shrinking steps while the stock proves itself: 50% at the breakout (20,800 EUR), 30–35% once it is 1–2% above the buy point (14,560 EUR), the last 15–20% near +5% (6,240 EUR). The book: follow-up buys are smaller, 2–3% above the previous buy, never more than 5% past the buy point.</li>
           <li><b>Stay inside the buy zone.</b> All buys happen between the buy point and 5% above it; past that the stock is extended. Don't chase.</li>
-          <li><b>Stop 5–8% below the buy point.</b> Because the first buy is the biggest and the adds are higher, a failed breakout costs little.</li>
+          <li><b>Cut losses at 7–8% below your purchase price</b> (the book; your notes say 5–8% below the buy point, which is close because all buys are within 5% of it). At +15% raise the sell line to just below the buy point; after +20% never let it turn into a loss.</li>
+          <li><b>Take most profits at +20–25%,</b> except a stock that gets there within 8 weeks: hold that one at least 8 weeks.</li>
           <li><b>Follow-on buys at the 50-day line.</b> A strong stock that pulls back to its rising 50-day line, while you are in profit, is a second chance to add.</li>
           <li><b>Let the leaders be the biggest positions.</b> Shift money out of laggards into the stocks that work.</li>
           <li><b>Not right before earnings.</b> Don't open or add to a position in the days before a report.</li>
@@ -102,12 +108,12 @@ export function initLearn(el) {
     <section class="card">
       <h2>Growth checklist</h2>
       <div class="letters">
-        ${[['1', 'Quarterly earnings growth', 'Latest quarterly EPS up 25%+ vs the same quarter a year ago; sales growing too, ideally faster each quarter.'],
-    ['2', 'Multi-year earnings growth', 'EPS up about 25% a year over three years, with a healthy return on equity.'],
+        ${[['1', 'Quarterly earnings growth', 'Latest quarterly EPS up at least 20% vs the same quarter a year ago (25–30%+ is safer, the best show 40–500%); better still if the last two quarters are both up strongly and growth is accelerating. Two quarters of sharp slowdown are a warning.'],
+    ['2', 'Multi-year earnings growth', 'EPS higher in each of the last five years (one dip is acceptable if earnings recover to new highs), growing 25–50% a year. Steady growth beats erratic growth.'],
     ['3', 'Something new, near new highs', 'A new product, management or industry trend, and a price near new highs out of a proper base.'],
     ['4', 'Demand', 'Volume swells on up days (accumulation). The app uses the 50-day up/down volume ratio.'],
-    ['5', 'Leadership', 'Strong relative strength (rank 80+) and an RS line near new highs.'],
-    ['6', 'Ownership', 'A rising number of quality funds owning the stock. Not scored in the app.'],
+    ['5', 'Leadership', 'Relative strength rank 80+ (the biggest winners averaged 87 before their advance); avoid stocks below 70 or with a falling RS line. Buy the top two or three stocks in a strong group, not the laggards.'],
+    ['6', 'Ownership', 'At least a few (3–10) good mutual funds, with the number rising. Too much ownership is a risk. Not scored in the app.'],
     ['7', 'Market trend', 'Most stocks follow the market. Buy in confirmed uptrends; see the Market tab.']].map(([k, t, d]) => html`<div class="letter"><b>${k}</b><div><h3 style="font-size:15px">${t}</h3><p class="muted small" style="margin:2px 0 0">${d}</p></div></div>`)}
       </div>
     </section>
@@ -118,7 +124,10 @@ export function initLearn(el) {
         <ul>
           <li><b>Strength rank</b> in the screener ranks 12-month price strength (latest quarter double-weighted) 1–99 <i>within the stocks you scanned</i>. It is the app's own measure.</li>
           <li><b>RS line</b> = the stock divided by its benchmark (S&amp;P 500 for US stocks, the home index where your data plan has it).</li>
-          <li><b>Distribution day</b> = an index falls 0.2%+ on higher volume. <b>Follow-through day</b> = a 1.2%+ gain on higher volume on day 4+ of a rally attempt.</li>
+          <li><b>Distribution</b> = heavy volume without further price progress: an index that stalls or falls on higher volume than the day before. The app counts a fall of 0.2%+ on higher volume as a distribution day (the later-editions rule, also in your notes) and shows stalling days separately.</li>
+          <li><b>Follow-through day</b> = on day 4–7 of a rally attempt (at the latest day 10), the index gains 1% or more on higher volume than the day before. Wait for it before buying heavily.</li>
+          <li><b>Industry groups</b>: stocks move in groups (about 37% of a move comes from the subgroup). Prefer the top quarter of groups and check that at least one other stock in the group is strong; see the sector ranking on the Market tab.</li>
+          <li>The book is the 2nd edition of <i>How to Make Money in Stocks</i> (1995). Three weeks tight and the ascending base come from later editions.</li>
           <li>All analysis uses end-of-day data. These are widely published rules of thumb, not guarantees. The app does not give personal investment advice.</li>
         </ul>
       </div>

@@ -79,7 +79,7 @@ export async function checkBars(sym, bars, name = '') {
 export function describe(a, name = '') {
   if (a.type === 'plan') return a.body || a.title || '';
   const what = a.type === 'breakout' ? `broke out above ${a.level}` : a.type === 'stop' ? `hit its stop (${a.level})` : a.type === 'above' ? `closed above ${a.level}` : `closed below ${a.level}`;
-  return `${a.sym}${name ? ' (' + name + ')' : ''} ${what}: close ${a.close}${a.volRatio ? `, volume ×${a.volRatio.toFixed(1)} of average${a.volRatio >= 1.4 ? '' : ' (below the +40% a confirmed breakout needs)'}` : ''}.`;
+  return `${a.sym}${name ? ' (' + name + ')' : ''} ${what}: close ${a.close}${a.volRatio ? `, volume ×${a.volRatio.toFixed(1)} of average${a.volRatio >= 1.5 ? '' : ' (below the +50% a confirmed breakout needs)'}` : ''}.`;
 }
 
 async function notifyRaw(title, body) {

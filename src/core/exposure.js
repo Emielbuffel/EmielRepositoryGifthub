@@ -71,6 +71,6 @@ export function exposureFactors(rs, rows = [], manual = {}) {
   const score = yes(up) - yes(down);
   const ddHeavy = down.find(x => x.key === 'dd').ok, leadersBreak = down.find(x => x.key === 'leaders').ok;
   const raiseCash = yes(down) >= 4 || (ddHeavy && (leadersBreak || down.find(x => x.key === 'bigdown').ok));
-  const advice = raiseCash ? 'Sell laggards first, tighten stops on the rest, no new buys.' : score >= 3 ? 'Conditions favour increasing exposure: buy proper breakouts, add to positions that work.' : score <= -2 ? 'Conditions favour reducing exposure: be very selective and take some profits.' : 'Mixed signals: hold exposure steady and be selective.';
+  const advice = raiseCash ? 'Raise 25% or more in cash (the book\'s first step at a market top): sell laggards first, tighten stops on the rest, no new buys.' : score >= 3 ? 'Conditions favour increasing exposure: buy proper breakouts, add to positions that work.' : score <= -2 ? 'Conditions favour reducing exposure: be very selective and take some profits.' : 'Mixed signals: hold exposure steady and be selective.';
   return { up, down, upYes: yes(up), downYes: yes(down), upKnown: known(up), downKnown: known(down), score, advice, raiseCash };
 }

@@ -30,10 +30,11 @@ export function initMarket(el) {
     <details class="card"><summary class="section-title" style="cursor:pointer">How the market status is worked out</summary>
       <div class="prose small">
         <ul>
-          <li><b>Distribution day (D):</b> the index falls 0.2% or more on higher volume than the day before, a sign of institutional selling. It counts for 25 sessions, or until the index rises 5% above that day's close.</li>
+          <li><b>Distribution day (D):</b> the index falls 0.2% or more on higher volume than the day before, a sign of institutional selling. It counts for 25 sessions, or until the index rises 5% above that day's close. (This counting rule comes from later editions and your webinar; the 2nd edition describes distribution as heavy volume without further price progress, which the exposure checklist shows as stalling days.)</li>
           <li><b>Uptrend under pressure:</b> 5 or more distribution days, or the index closes below its 50-day line.</li>
           <li><b>Market in correction:</b> a close below the 50-day line with the index 7%+ off its recent high (or 5%+ with 6+ distribution days), or a failed follow-through.</li>
-          <li><b>Follow-through day (FTD):</b> in a correction, on day 4 or later of a rally attempt, the index gains 1.2% or more on higher volume. That confirms a new uptrend.</li>
+          <li><b>Follow-through day (FTD):</b> in a correction, on day 4–7 of a rally attempt (at the latest day 10), the index gains 1% or more on higher volume than the day before. That confirms a new uptrend. A follow-through after day 10 shows weakness and is not counted.</li>
+          <li><b>At a market top</b> the book says to act fast: raise 25% or more cash on the first clear signs, and more if the first rally attempt fails.</li>
           <li><b>US status</b> takes the weaker of the Nasdaq and the S&amp;P 500 readings.</li>
           <li>When your data plan has no index data, US-listed ETFs stand in (QQQ, SPY, DIA, FEZ). Their volume is a proxy for exchange volume.</li>
           <li>These are widely published rules of thumb, applied automatically. The exposure ranges are a rule of thumb, not advice.</li>

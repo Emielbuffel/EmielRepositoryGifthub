@@ -30,7 +30,8 @@ export async function initSettings(el) {
         <div class="grid2"><label class="field"><span>Portfolio value</span><input class="input" name="capital" type="number" min="0" step="any" value="${S.capital}"></label>
         <label class="field"><span>Currency</span><select class="input" name="ccy">${['EUR', 'USD', 'GBP', 'CHF'].map(c => html`<option ${c === S.ccy ? raw('selected') : ''}>${c}</option>`)}</select></label></div>
         <div class="grid2"><label class="field"><span>Position size (% of portfolio)</span><input class="input" name="posPct" type="number" min="1" max="100" step="any" value="${P100(S.posPct)}"></label>
-        <label class="field"><span>Stop below the buy point (%)</span><input class="input" name="stop" type="number" min="1" max="20" step="any" value="${P100(S.stop)}"></label></div>
+        <label class="field"><span>Stop (%)</span><input class="input" name="stop" type="number" min="1" max="20" step="any" value="${P100(S.stop)}"></label></div>
+        <label class="field"><span>Stop measured from</span><select class="input" name="stopFrom"><option value="cost" ${S.stopFrom !== 'pivot' ? raw('selected') : ''}>Your average purchase price (the book: 7–8% below what you paid)</option><option value="pivot" ${S.stopFrom === 'pivot' ? raw('selected') : ''}>The buy point (your webinar notes: 5–8% below the buy point)</option></select></label>
         <div class="grid2"><label class="field"><span>Buys (% of the position, e.g. 50 35 15)</span><input class="input" name="tranches" value="${S.tranches.map(P100).join(' ')}"></label>
         <label class="field"><span>No buys this many days before earnings</span><input class="input" name="earningsDays" type="number" min="0" max="60" value="${S.earningsDays}"></label></div>
         <div class="grid2"><label class="field"><span>Add 2 when this % above the buy point (from–to)</span><input class="input" name="add2" value="${S.add2.map(P100).join(' ')}"></label>
@@ -74,7 +75,7 @@ export async function initSettings(el) {
       </div>
     </section>`);
   keyBox();
-  const ex = () => { const p = pyramid(S, 100); $('#stPlanEx', el).textContent = `Example: ${Math.round(S.capital).toLocaleString('en-US')} ${S.ccy} → ${p.target.toLocaleString('en-US')} ${S.ccy} per position, bought as ${p.steps.map(x => x.amount.toLocaleString('en-US')).join(' + ')} ${S.ccy}; stop ${Math.round(S.stop * 100)}% below the buy point.`; };
+  const ex = () => { const p = pyramid(S, 100); $('#stPlanEx', el).textContent = `Example: ${Math.round(S.capital).toLocaleString('en-US')} ${S.ccy} → ${p.target.toLocaleString('en-US')} ${S.ccy} per position, bought as ${p.steps.map(x => x.amount.toLocaleString('en-US')).join(' + ')} ${S.ccy}; stop ${Math.round(S.stop * 100)}% below ${S.stopFrom === 'pivot' ? 'the buy point' : 'your average purchase price'}, raised to just below the buy point at +15% and to breakeven at +20%.`; };
   ex();
   $('#stPlan', el).onsubmit = async e => {
     e.preventDefault(); const F = new FormData(e.target), nums = v => String(v).split(/[\s,;–-]+/).map(Number).filter(x => isFinite(x) && x >= 0);
@@ -82,7 +83,7 @@ export async function initSettings(el) {
     const sum = tr.reduce((a, b) => a + b, 0);
     if (tr.length < 1 || Math.abs(sum - 100) > 0.5) { toast(`The buys should add up to 100% (now ${sum}%).`); return; }
     if (a2.length !== 2 || a3.length !== 2) { toast('Give each add as two numbers, e.g. 1 2.'); return; }
-    Object.assign(S, { capital: +F.get('capital'), ccy: F.get('ccy'), posPct: +F.get('posPct') / 100, stop: +F.get('stop') / 100, tranches: tr.map(x => x / 100), add2: a2.map(x => x / 100), add3: a3.map(x => x / 100), earningsDays: +F.get('earningsDays') });
+    Object.assign(S, { capital: +F.get('capital'), ccy: F.get('ccy'), posPct: +F.get('posPct') / 100, stop: +F.get('stop') / 100, stopFrom: F.get('stopFrom'), tranches: tr.map(x => x / 100), add2: a2.map(x => x / 100), add3: a3.map(x => x / 100), earningsDays: +F.get('earningsDays') });
     S.zone = Math.max(S.zone || 0.05, S.add3[1]);
     await saveStrategy(S); ex(); toast('Buying plan saved.');
   };

@@ -11,7 +11,7 @@ export const STATUS = {
 export const EXPOSURE = {
   up: "Rule-of-thumb exposure in a confirmed uptrend: 80–100% invested. Buy proper breakouts from sound bases on strong volume.",
   press: "Rule-of-thumb exposure when an uptrend is under pressure: 40–60% invested. Be selective, take some profits and tighten stops.",
-  corr: "Rule-of-thumb exposure in a correction: 0–20% invested. Protect capital and wait for a follow-through day (day 4+ of a rally, a 1.2%+ gain on higher volume).",
+  corr: "Rule-of-thumb exposure in a correction: 0–20% invested. Protect capital and wait for a follow-through day (day 4–7 of a rally attempt, at the latest day 10: a 1%+ gain on higher volume).",
 };
 
 /** b = ascending daily bars {time,open,high,low,close,volume}. Returns null with fewer than 80 bars. */
@@ -37,9 +37,10 @@ export function analyseIndex(b) {
     const dd = ddAt(i).length;
     let hi = -Infinity; for (let k = Math.max(0, i - 80); k <= i; k++) if (c[k] > hi) hi = c[k]; const dr = 1 - c[i] / hi;
     let hi60 = -Infinity; for (let k = Math.max(0, i - 60); k < i; k++) if (c[k] > hi60) hi60 = c[k];
+    // follow-through day (book): day 4–7 of a rally attempt (at the latest day 10), +1% or more on higher volume
     if (state === 'corr') {
       if (b[i].low < b[low].low) low = i;
-      else if (i - low >= 3 && c[i] / c[i - 1] - 1 >= 0.012 && (!hasVol || v[i] > v[i - 1])) { state = 'up'; since = i; ftds.push(i); lastFtd = i; rallyLow = b[low].low; low = null; }
+      else if (i - low >= 3 && i - low <= 9 && c[i] / c[i - 1] - 1 >= 0.01 && (!hasVol || v[i] > v[i - 1])) { state = 'up'; since = i; ftds.push(i); lastFtd = i; rallyLow = b[low].low; low = null; }
       else if (c[i] > s50[i] && c[i] > e21[i] && c[i] >= hi60 * 0.98) { state = 'up'; since = i; low = null; rallyLow = null; }
     } else {
       const failed = rallyLow != null && lastFtd != null && i - lastFtd <= 30 && c[i] < rallyLow;

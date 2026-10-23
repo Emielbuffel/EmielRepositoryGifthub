@@ -28,12 +28,12 @@ export async function planSheet(ctx) {
       <form class="card" id="plForm" style="gap:10px">
         <div class="toolbar"><label class="field" style="flex:1"><span>Buy point (pivot)${ctx.baseName ? ' · detected: ' + ctx.baseName : ''}</span><input class="input" id="plPivot" type="number" step="any" min="0" value="${pivot ? pivot.toFixed(2) : ''}" required></label>
         <button class="btn primary" type="submit">${plan ? 'Update buy point' : 'Start plan'}</button></div>
-        <p class="muted tiny" style="margin:0">Position target ${n0(py.target)} ${S.ccy} (${Math.round(S.posPct * 100)}% of ${n0(S.capital)} ${S.ccy}) · stop ${Math.round(S.stop * 100)}% below the buy point · change these in Settings → Buying plan.${ctx.cur && ctx.cur !== S.ccy ? ` Share counts use ${f && f.live ? 'the live' : 'a reference'} ${ctx.cur}→${S.ccy} rate.` : ''}</p>
+        <p class="muted tiny" style="margin:0">Position target ${n0(py.target)} ${S.ccy} (${Math.round(S.posPct * 100)}% of ${n0(S.capital)} ${S.ccy}) · stop ${Math.round(S.stop * 100)}% below ${S.stopFrom === 'pivot' ? 'the buy point' : 'your average purchase price once bought'} (raised at +15% and +20%) · change these in Settings → Buying plan.${ctx.cur && ctx.cur !== S.ccy ? ` Share counts use ${f && f.live ? 'the live' : 'a reference'} ${ctx.cur}→${S.ccy} rate.` : ''}</p>
       </form>
       ${pivot ? html`<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Step</th><th class="n">Share</th><th class="n">Amount</th><th class="n">Buy between</th><th class="n">≈ Shares now</th><th>Status</th></tr></thead><tbody>
         ${py.steps.map((s, i) => html`<tr><td>${i === 0 ? 'Buy 1 (breakout)' : 'Add ' + (i + 1)}</td><td class="n">${Math.round(s.pct * 100)}%</td><td class="n">${n0(s.amount)} ${S.ccy}</td><td class="n">${fp(s.from)} – ${fp(s.to)}</td><td class="n">${sharesFor(s.amount, close, fx)}</td>
           <td>${done[i] ? html`<span class="t-ok">✓ ${done[i].shares} @ ${fp(done[i].price)}</span>` : plan ? html`<button class="btn sm" data-buy="${i + 1}">Record buy</button>` : ''}</td></tr>`)}
-        <tr><td>Stop</td><td></td><td></td><td class="n t-bad">${fp(py.stop)}</td><td></td><td class="muted tiny">−${Math.round(S.stop * 100)}% from the buy point</td></tr>
+        <tr><td>Stop</td><td></td><td></td><td class="n t-bad">${fp(st && st.stop ? st.stop : py.stop)}</td><td></td><td class="muted tiny">${st && st.stop && st.stop !== py.stop ? 'current sell line' : '−' + Math.round(S.stop * 100) + '% from the buy point'}</td></tr>
       </tbody></table></div>` : ''}
       ${plan ? html`<div class="toolbar">${done.length > 3 || done.length === 3 ? html`<button class="btn sm" data-buy="4">Record follow-on buy</button>` : ''}<button class="btn sm" id="plSell">Record sell</button><span class="spacer"></span><button class="btn sm danger" id="plDel">Delete plan</button></div>` : ''}
       <div class="section-title" style="margin:6px 0">Journal for ${ctx.sym}</div>
@@ -52,7 +52,7 @@ export async function planSheet(ctx) {
   draw();
 }
 
-const SELL_REASONS = ['Stop (5–8% below the buy point)', 'Broke the 50-day line on heavy volume', 'Profit target (+20–25%)', 'Shift money into a leader', 'Market correction: raising cash', 'Climax / extended', 'Other'];
+const SELL_REASONS = ['Stop (7–8% below the purchase price / 5–8% below the buy point)', 'Raised stop or breakeven hit', 'Broke the 50-day line on heavy volume', 'Profit target (+20–25%)', 'Two quarters of slowing earnings', 'Shift money into a leader', 'Market correction: raising cash', 'Climax / extended', 'Other'];
 
 /** Small form to record a buy or sell. init: {side, step?, price, shares}. */
 export function tradeForm(ctx, init, after) {

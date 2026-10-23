@@ -66,18 +66,29 @@ export function canslimCA(rows) {
   const q = enrich(rows), n = q.length - 1;
   let C = ['na', 'Needs quarterly earnings.'], A = ['na', 'Needs about four years of quarterly earnings.'];
   if (n >= 4) {
-    const r = q[n], prev = q[n - 1];
+    // book: at least +20% vs the same quarter a year ago (25–30% is safer); best if the last two quarters are both strong;
+    // two quarters of sharp slowdown are a warning
+    const r = q[n], prev = q[n - 1], p2 = q[n - 2];
     const accel = r.yoy != null && prev.yoy != null && r.yoy > prev.yoy;
-    C = [r.yoy == null ? 'na' : r.yoy >= 0.25 ? 'pass' : r.yoy >= 0 ? 'mid' : 'fail',
-      `Latest quarter EPS ${pct(r.yoy)} vs a year ago${r.revYoy != null ? `, sales ${pct(r.revYoy)}` : ''}${r.yoy != null && prev.yoy != null ? (accel ? ', accelerating' : ', slowing') : ''}. The classic threshold is +25% or more.`];
+    const decel2 = r.yoy != null && prev.yoy != null && p2 && p2.yoy != null && p2.yoy > 0.2 && prev.yoy < p2.yoy * 0.67 && r.yoy < p2.yoy * 0.67;
+    const ok = r.yoy != null && r.yoy >= 0.2, both = ok && prev.yoy != null && prev.yoy >= 0.2;
+    C = [r.yoy == null ? 'na' : decel2 ? 'mid' : ok ? 'pass' : r.yoy >= 0 ? 'mid' : 'fail',
+      `Latest quarter EPS ${pct(r.yoy)} vs a year ago${prev.yoy != null ? ` (prior quarter ${pct(prev.yoy)})` : ''}${r.revYoy != null ? `, sales ${pct(r.revYoy)}` : ''}${r.yoy != null && prev.yoy != null ? (accel ? ', accelerating' : ', slowing') : ''}.${decel2 ? ' Two quarters of sharp slowdown: a warning sign.' : both ? ' Both of the last two quarters are up 20%+.' : ''} The book asks for at least +20% (25–30%+ is safer).`];
   }
-  if (n >= 15) {
-    const a = q[n].ttm, b = q[n - 12].ttm;
-    const cagr = a > 0 && b > 0 ? Math.pow(a / b, 1 / 3) - 1 : null;
-    A = [cagr == null ? 'na' : cagr >= 0.25 ? 'pass' : cagr >= 0.1 ? 'mid' : 'fail', `4-quarter EPS grew ${cagr == null ? 'n/a' : pct(cagr) + ' a year'} over 3 years. The classic threshold is 25%+ a year.`];
-  } else if (n >= 7) {
-    const a = q[n].ttm, b = q[n - 4].ttm, g = growth(a, b);
-    A = [g == null ? 'na' : g >= 0.25 ? 'pass' : g >= 0.1 ? 'mid' : 'fail', `4-quarter EPS ${pct(g)} vs a year ago (only ${n + 1} quarters loaded; ideally 3 years).`];
+  if (n >= 7) {
+    // book: EPS up in each of the last five years (one dip allowed if it recovers to a new high), growing 25–50% a year
+    const years = Math.min(5, Math.floor(n / 4)), yr = [];
+    for (let k = years; k >= 0; k--) yr.push(q[n - 4 * k] ? q[n - 4 * k].ttm : null);
+    const vals = yr.filter(v => v != null);
+    if (vals.length >= 2) {
+      const a = vals[vals.length - 1], b = vals[0], span = vals.length - 1;
+      const cagr = a > 0 && b > 0 ? Math.pow(a / b, 1 / span) - 1 : null;
+      let downs = 0; for (let i = 1; i < vals.length; i++) if (vals[i] < vals[i - 1]) downs++;
+      const newHigh = a >= Math.max(...vals);
+      const steady = downs === 0 || (downs === 1 && newHigh);
+      A = [cagr == null ? 'na' : cagr >= 0.25 && steady ? 'pass' : cagr >= 0.1 ? 'mid' : 'fail',
+        `4-quarter EPS grew ${cagr == null ? 'n/a' : pct(cagr) + ' a year'} over ${span} year${span > 1 ? 's' : ''}${downs ? `, with ${downs} down year${downs > 1 ? 's' : ''}${downs === 1 && newHigh ? ' (since recovered to a new high)' : ''}` : ', up every year'}. The book asks for growth in each of the last five years, 25–50% a year.${span < 5 ? ` Only ${span} year${span > 1 ? 's' : ''} of data loaded.` : ''}`];
+    }
   }
   return { C, A };
 }

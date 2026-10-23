@@ -33,6 +33,21 @@ test('nextStep walks through the pyramid', () => {
   assert.equal(nextStep({}, full, { ...q, close: 110, s50: 108.5, s50prev: 107 }).code, 'add50');
 });
 
+test('nextStep: book sell rules (stop from cost, raised stops, profits, 8-week rule)', () => {
+  const t0 = 1e9, wk = 604800;
+  const full = { pivot: 100, buys: [{ t: t0, price: 100, shares: 100 }, { t: t0, price: 101.5, shares: 70 }, { t: t0, price: 104.5, shares: 30 }] };
+  // avg ≈ 101.3: stop 7% below it ≈ 94.2
+  assert.equal(nextStep({}, full, { now: t0 + wk, close: 94 }).code, 'stop');
+  assert.equal(nextStep({ stopFrom: 'pivot' }, full, { now: t0 + wk, close: 94 }).code, 'full'); // 93 = 7% under the buy point
+  // after a 15% gain the sell line moves to just below the buy point (97)
+  assert.equal(nextStep({}, full, { now: t0 + 10 * wk, close: 96, peak: 117 }).code, 'stop');
+  // after a 20% gain it moves to breakeven
+  assert.equal(nextStep({}, full, { now: t0 + 10 * wk, close: 101, peak: 122 }).code, 'stop');
+  // +20% within 8 weeks: hold; after 8 weeks: take profits
+  assert.equal(nextStep({}, full, { now: t0 + 4 * wk, close: 123 }).code, 'hold8');
+  assert.equal(nextStep({}, full, { now: t0 + 10 * wk, close: 123 }).code, 'profit');
+});
+
 test('sizingChecks: shift from laggards into leaders', () => {
   const m = sizingChecks(DEFAULT_PLAN, [{ sym: 'WIN', value: 30000, gain: 0.3 }, { sym: 'LOSE', value: 60000, gain: -0.09 }], 200000);
   assert.ok(m.some(x => /shifting money/.test(x.text)));

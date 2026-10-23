@@ -218,7 +218,7 @@ export class StockChart {
     const first = this.bars[0].time, last = this.bars[this.bars.length - 1].time;
     this.epsMarkers.setMarkers(pts.filter(p => p.time >= first && p.time <= (S.tf === 'D' ? last : last + 7 * 86400)).map(p => ({
       time: this.snapT(p.time), position: 'inBar', shape: 'circle', size: 0.55,
-      color: p.yoy == null ? tok('--eps') : p.yoy >= 0.25 ? tok('--up') : p.yoy >= 0 ? tok('--warn') : tok('--down'),
+      color: p.yoy == null ? tok('--eps') : p.yoy >= 0.2 ? tok('--up') : p.yoy >= 0 ? tok('--warn') : tok('--down'),
     })).sort((a, b) => a.time - b.time));
   }
 
@@ -295,7 +295,7 @@ export class StockChart {
       const lbl = hist ? PAT_SHORT[p.type] + (p.faulty ? ' (faulty)' : '') + ' ' + outcome(p)
         : `${p.name}${p.weeks ? ' · ' + Math.round(p.weeks) + ' wk' : ''}${p.depth != null ? ' · −' + Math.round(p.depth * 100) + '%' : ''}`;
       markers.push({ time: this.snapT(T(p.a)), position: 'aboveBar', shape: 'arrowDown', color, text: lbl, size: hist ? 0.6 : 1 });
-      if (p.bo != null) markers.push({ time: this.snapT(T(p.bo)), position: 'belowBar', shape: 'arrowUp', color: p.failed ? bad : p.volRatio >= 1.4 ? tok('--up') : tok('--muted'), text: p.failed ? 'failed' : 'BO' });
+      if (p.bo != null) markers.push({ time: this.snapT(T(p.bo)), position: 'belowBar', shape: 'arrowUp', color: p.failed ? bad : p.volRatio >= 1.5 ? tok('--up') : tok('--muted'), text: p.failed ? 'failed' : 'BO' });
     }
     // market index: distribution days and follow-through days
     if (S.mkt) {

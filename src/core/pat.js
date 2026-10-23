@@ -8,16 +8,17 @@ function argmin(b,f,t,k){let bi=f;for(let i=f+1;i<=t;i++)if(b[i][k]<b[bi][k])bi=
 function maxClose(b,f,t){let m=-Infinity;for(let i=f;i<=t;i++)m=Math.max(m,b[i].close);return m;}
 function avgVol(b,f,t){let s=0,c=0;for(let i=Math.max(0,f);i<=t;i++){s+=b[i].volume;c++;}return c?s/c:0;}
 function prep(b){
-  const n=b.length,av=new Array(n).fill(null),s50=new Array(n).fill(null);let vs=0,cs=0;
+  const n=b.length,av=new Array(n).fill(null),s50=new Array(n).fill(null),s200=new Array(n).fill(null);let vs=0,cs=0,c2=0;
   for(let i=0;i<n;i++){ // av[i] = average volume of the 50 sessions BEFORE i
     if(i>=50)av[i]=vs/50;
     vs+=b[i].volume;if(i>=50)vs-=b[i-50].volume;
-    cs+=b[i].close;if(i>=50)cs-=b[i-50].close;if(i>=49)s50[i]=cs/50;}
+    cs+=b[i].close;if(i>=50)cs-=b[i-50].close;if(i>=49)s50[i]=cs/50;
+    c2+=b[i].close;if(i>=200)c2-=b[i-200].close;if(i>=199)s200[i]=c2/200;}
   // weeks: index of week for each day, and per-week ranges
   const wk=[],weeks=[];let key=null;
   for(let i=0;i<n;i++){const d=new Date(b[i].time*1000);const k=b[i].time-((d.getUTCDay()+6)%7)*86400;
     if(k!==key){key=k;weeks.push({f:i,t:i});}else weeks[weeks.length-1].t=i;wk.push(weeks.length-1);}
-  return {av,s50,wk,weeks};
+  return {av,s50,s200,wk,weeks};
 }
 function zigzag(b,f,t,pct){
   const out=[];let trend=0,ext=f,hi=f,lo=f;
@@ -43,9 +44,11 @@ function family(b,e,minStart,P){
   const pre=argmin(b,Math.max(0,a-130),a,'low'),prior=H/b[pre].low-1;
   const m=argmin(b,a+1,e,'low'),L=b[m].low,depth=1-L/H,mid=L+(H-L)/2;
   const base={a,H,m,L,depth,len,weeks:len/5,prior,lowIdx:m};
-  // Flat base: >=5 weeks, <=15% deep, after a >=20% advance
-  if(depth<=0.15&&len>=25&&prior>=0.20){
+  // Flat base (book: at least 6–7 weeks, correcting no more than 10–15%), usually a second-stage base
+  if(depth<=0.15&&len>=30&&prior>=0.20){
     const notes=[];if(depth<=0.10)notes.push(['good','Tight: only '+pct(depth)+' deep']);
+    if(len<35)notes.push(['warn','6-week flat base: the minimum (6–7+ weeks)']);
+    if(prior<0.30)notes.push(['warn','Prior uptrend only '+pct(prior)+' (the book looks for 30%+)']);
     out.push({...base,type:'flat',name:'Flat base',pivot:H+TICK,pivotIdx:a,pts:[[a,H],[e,H]],box:[a,e,H,L],notes});
     return out;
   }
@@ -67,9 +70,10 @@ function family(b,e,minStart,P){
       const notes=[...common];if(lenNote)notes.push(lenNote);
       notes.push(uShape?['good','Rounded U-shaped cup']:['warn','V-shaped cup (O\'Neil prefers a rounded U)']);
       if(hLen<5)notes.push(['bad','Handle only '+hLen+' day'+(hLen>1?'s':'')+' (O\'Neil: at least 1 week)']);
-      notes.push(hd<=0.12?['good','Handle '+pct(hd)+' deep (max 10–12%)']:['warn','Handle '+pct(hd)+' deep, a bit loose (max 10–12%)']);
+      notes.push(hd<=0.12?['good','Handle '+pct(hd)+' deep (within 10–15%)']:['warn','Handle '+pct(hd)+' deep, a bit loose (book: within 10–15%)']);
       if(pos<0.5)notes.push(['bad','Handle dips into the lower half of the base (faulty)']);else notes.push(['good','Handle in the upper half of the base']);
-      if(P.s50[hl]!==null&&HL<P.s50[hl])notes.push(['warn','Handle undercut the 50-day line']);
+      if(P.s200[hl]!==null&&HL<P.s200[hl])notes.push(['bad','Handle below the 200-day line (the book: weak, failure-prone)']);
+      else if(P.s50[hl]!==null&&HL<P.s50[hl])notes.push(['warn','Handle undercut the 50-day line']);
       const hv=avgVol(b,R_i+1,e),bv=P.av[e]||hv;
       notes.push(hv<bv*0.9?['good','Volume dried up in the handle (×'+(hv/bv).toFixed(2)+')']:['warn','Volume did not dry up in the handle (×'+(hv/bv).toFixed(2)+')']);
       if(hLen>=8&&hl-R_i<hLen/3&&b[e].low>HL*1.01)notes.push(['warn','Wedging handle: lows drift up instead of down']);
@@ -112,13 +116,13 @@ function ascending(b,e,minStart){
   return {type:'asc',name:'Ascending base',a:H1.i,H:H3.p,L:L1.p,lowIdx:L1.i,depth:1-L3.p/H3.p,len:span+1,weeks:(span+1)/5,prior,
     pivot:H3.p+TICK,pivotIdx:H3.i,pts:s.map(x=>[x.i,x.p]),notes:[['good','Three pullbacks, each low higher than the last'],['good','Prior uptrend +'+pct(prior)]]};
 }
-/* ---- high tight flag: +100% in 4–8 weeks, then 3–5 weeks correcting ≤25% ---- */
+/* ---- high tight flag (book): +100–120% in 4–8 weeks, then 3–5 weeks correcting no more than 10–20% ---- */
 function htf(b,e,minStart){
   if(e<60)return null;const f=argmax(b,Math.max(e-30,minStart),e,'high');const fl=e-f;if(fl<10||fl>30)return null;
-  const FH=b[f].high;const p=argmin(b,Math.max(0,f-45),f-10,'low');const gain=FH/b[p].low-1;if(gain<0.90||f-p<15)return null;
-  const q=argmin(b,f+1,e,'low');const corr=1-b[q].low/FH;if(corr>0.25)return null;
+  const FH=b[f].high;const p=argmin(b,Math.max(0,f-45),f-10,'low');const gain=FH/b[p].low-1;if(gain<1.00||f-p<15)return null;
+  const q=argmin(b,f+1,e,'low');const corr=1-b[q].low/FH;if(corr>0.20)return null;
   return {type:'htf',name:'High tight flag',a:p,H:FH,L:b[q].low,lowIdx:q,depth:corr,len:e-p+1,weeks:fl/5,prior:gain,pivot:FH+TICK,pivotIdx:f,
-    pts:[[p,b[p].low],[f,FH],[q,b[q].low],[e,b[e].close]],notes:[['good','Pole +'+pct(gain)+' in '+((f-p)/5).toFixed(0)+' weeks'],['good','Flag corrected '+pct(corr)+' (max 25%)']]};
+    pts:[[p,b[p].low],[f,FH],[q,b[q].low],[e,b[e].close]],notes:[['good','Pole +'+pct(gain)+' in '+((f-p)/5).toFixed(0)+' weeks'],['good','Flag corrected '+pct(corr)+' (max 20%)']]};
 }
 /* ---- three weeks tight: 3 weekly closes within 1.5% ---- */
 function twt(b,e,P,minStart){

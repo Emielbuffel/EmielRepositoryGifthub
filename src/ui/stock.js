@@ -150,7 +150,7 @@ async function loadPlan(sym, seq) {
   const [plan, trades, S] = await Promise.all([planFor(sym), tradesFor(sym), strategy()]);
   if (seq !== V.seq) return;
   V.plan = plan; V.trades = trades;
-  if (plan && plan.pivot) { const py = pyramid(S, plan.pivot); V.planLv = { pivot: plan.pivot, add2: py.steps[1] && py.steps[1].from, add3: py.steps[2] && py.steps[2].from, stop: py.stop, done: plan.buys.length }; } else V.planLv = null;
+  if (plan && plan.pivot) { const py = pyramid(S, plan.pivot); V.planLv = { pivot: plan.pivot, add2: py.steps[1] && py.steps[1].from, add3: py.steps[2] && py.steps[2].from, stop: plan.lastStep && plan.lastStep.stop ? plan.lastStep.stop : py.stop, done: plan.buys.length }; } else V.planLv = null;
   const st = plan && plan.lastStep;
   render($('#sPlan'), html`${raw(ICON.layers)}<span>${plan ? (st ? st.title : 'Plan') : 'Plan'}</span>`);
   $('#sPlan').classList.toggle('primary', !!(st && ['buy', 'add'].includes(st.level)));
@@ -274,7 +274,7 @@ function cards() {
     if (days >= 0 && days <= 21) S.flags.unshift(['warn', `Earnings in ${days} day${days === 1 ? '' : 's'} (${fD(nx.time)}). Buying right before a report is risky; a gap can wipe out a breakout.`]);
   }
   const lastQ = enrich(V.earn || []).pop();
-  if (lastQ && d[n].time - lastQ.time < 6 * 86400) S.flags.unshift([lastQ.yoy >= 0.25 ? 'bull' : lastQ.yoy < 0 ? 'bear' : 'info', `Results just in: EPS ${f2(lastQ.eps)}${lastQ.yoy != null ? ' (' + pc(lastQ.yoy, 0) + ' y/y)' : ''}${lastQ.surprise != null ? ', ' + pc(lastQ.surprise, 0) + ' vs estimate' : ''}.`]);
+  if (lastQ && d[n].time - lastQ.time < 6 * 86400) S.flags.unshift([lastQ.yoy >= 0.2 ? 'bull' : lastQ.yoy < 0 ? 'bear' : 'info', `Results just in: EPS ${f2(lastQ.eps)}${lastQ.yoy != null ? ' (' + pc(lastQ.yoy, 0) + ' y/y)' : ''}${lastQ.surprise != null ? ', ' + pc(lastQ.surprise, 0) + ' vs estimate' : ''}.`]);
   if (S.flags.length > 1) S.flags = S.flags.filter(f => f[1] !== 'Nothing new today.');
   const ad = adGrade(d);
   let dv = 0; for (let i = Math.max(0, n - 49); i <= n; i++) dv += d[i].close * d[i].volume; dv /= Math.min(50, n + 1);
@@ -325,7 +325,7 @@ function earnCard() {
     render(el, html`<h2>Earnings</h2><p class="muted small" style="margin:0">${msg}</p>`); return;
   }
   const q = enrich(V.earn), nx = nextReport(V.earn), last8 = q.slice(-8), rep = q.filter(r => r.eps != null), src = (V.earn.find(r => r.eps != null) || {}).src;
-  const cls = x => x == null ? '' : x >= 0.25 ? 't-ok' : x < 0 ? 't-bad' : 't-warn';
+  const cls = x => x == null ? '' : x >= 0.2 ? 't-ok' : x < 0 ? 't-bad' : 't-warn';
   const ttm = q.filter(r => r.ttm != null);
   const row = r => html`<tr><td>${fDs(r.time)}${r.period ? html` <span class="muted tiny">${r.period}</span>` : ''}</td><td class="n">${f2(r.eps)}</td><td class="n ${cls(r.yoy)}">${pc(r.yoy, 0)}</td><td class="n ${r.surprise == null ? '' : r.surprise >= 0 ? 't-ok' : 't-bad'}">${pc(r.surprise, 0)}</td><td class="n ${cls(r.revYoy)}">${pc(r.revYoy, 0)}</td><td class="n">${f2(r.ttm)}</td></tr>`;
   render(el, html`<div class="card-head"><h2>Earnings · quarter by quarter</h2>${nx ? html`<span class="tag t-blue">Next report ${fDs(nx.time)}${nx.est != null ? ' · est. ' + f2(nx.est) : ''}</span>` : ''}</div>
@@ -333,7 +333,7 @@ function earnCard() {
       ${[...last8].reverse().map(row)}
     </tbody></table></div>` : html`<p class="muted small" style="margin:0">No reported quarters.</p>`}
     ${rep.length > 8 ? html`<details class="small"><summary>All ${rep.length} quarters since ${new Date(rep[0].time * 1000).getUTCFullYear()}</summary><div class="tbl-wrap"><table class="tbl"><thead><tr><th>Reported</th><th class="n">EPS</th><th class="n">vs yr ago</th><th class="n">vs est.</th><th class="n">Sales vs yr ago</th><th class="n">4Q EPS</th></tr></thead><tbody>${[...q].reverse().slice(8).filter(r => r.eps != null).map(row)}</tbody></table></div></details>` : ''}
-    ${ttm.length >= 2 ? html`<p class="small" style="margin:0">4-quarter EPS ${f2(ttm[ttm.length - 1].ttm)}, ${ttm.length >= 5 ? pc(ttm[ttm.length - 1].ttm / ttm[ttm.length - 5].ttm - 1, 0) + ' vs a year ago' : ''}. On the chart, the <b style="color:var(--eps)">EPS line</b> uses the left axis; dots mark each report (green = EPS up 25%+ y/y, orange = up less, red = down).</p>` : ''}
+    ${ttm.length >= 2 ? html`<p class="small" style="margin:0">4-quarter EPS ${f2(ttm[ttm.length - 1].ttm)}, ${ttm.length >= 5 ? pc(ttm[ttm.length - 1].ttm / ttm[ttm.length - 5].ttm - 1, 0) + ' vs a year ago' : ''}. On the chart, the <b style="color:var(--eps)">EPS line</b> uses the left axis; dots mark each report (green = EPS up 20%+ y/y, orange = up less, red = down).</p>` : ''}
     <p class="muted tiny" style="margin:0">Source: ${isDemoSym(V.sym) ? 'fictional demo figures' : src === 'sec' ? 'SEC EDGAR filings (10-Q / 10-K): GAAP diluted EPS, adjusted for stock splits; Q4 = full year minus the first three quarters; dates are filing dates (results are usually announced a few days earlier). Switch to adjusted EPS in the EPS menu where available.' : src === 'yahoo' ? 'free fundamentals feed: reported diluted EPS of the last quarters; report dates estimated (quarter end + 6 weeks).' : src === 'adjusted' ? 'built-in data: adjusted EPS (the analyst basis) with the real report dates.' : provider().name + '. EPS as the provider reports it (usually adjusted/non-GAAP for estimates).'}</p>`);
 }
 
@@ -365,7 +365,7 @@ function histCard() {
       ${[...R.hist].reverse().map((h, i) => html`<tr class="click" data-i="${R.hist.length - 1 - i}">
         <td><span class="tag" style="color:${patColor(h.type)}">${h.faulty ? 'faulty' : h.type}</span> ${h.name.replace(' (faulty)', '')}</td>
         <td>${fDs(d[h.a].time)} – ${fDs(d[h.e].time)}</td><td class="n">${Math.round(h.weeks)}</td><td class="n">−${Math.round(h.depth * 100)}%</td><td class="n">${f2(h.pivot)}</td>
-        <td>${fDs(d[h.bo].time)}</td><td class="n ${h.volRatio >= 1.4 ? 't-ok' : 't-warn'}">${h.volRatio ? pc(h.volRatio - 1, 0) : '—'}</td><td class="n">${h.addOn ? 'add-on' : h.stage}</td>
+        <td>${fDs(d[h.bo].time)}</td><td class="n ${h.volRatio >= 1.5 ? 't-ok' : 't-warn'}">${h.volRatio ? pc(h.volRatio - 1, 0) : '—'}</td><td class="n">${h.addOn ? 'add-on' : h.stage}</td>
         <td>${h.failed ? html`<span class="t-bad">Failed ${fDs(d[h.failed].time)}</span>` : h.stopped ? html`<span class="t-bad">Stopped −8%</span> <span class="muted">after ${pc(h.best, 0)}</span>` : h.open ? html`<span class="t-ok">${pc(h.best, 0)} so far</span>` : html`<span class="${h.best >= 0.2 ? 't-ok' : 't-warn'}">${pc(h.best, 0)} best</span>`}</td></tr>`)}
     </tbody></table></div>
     <p class="muted tiny" style="margin:0">Result = best gain within 13 weeks of the breakout, unless the 8% stop was hit first. "Failed" = closed 2%+ back under the buy point within 5 weeks. Tap a row to see it on the chart.</p>`
@@ -384,7 +384,7 @@ function renderCanslim() {
   const el = $('#cCanslim'); if (!el || !V.sig) return;
   const cs = V.sig.canslim, ca = V.earn ? canslimCA(V.earn) : null;
   const na = V.mkt ? ['na', 'Not used for an index.'] : ['na', V.earnErr || (provider().earnings || isDemoSym(V.sym) ? 'Loading earnings…' : 'Needs earnings from a data provider.')];
-  const L = [['EPS', 'Quarter growth', ca ? ca.C : na], ['EPS', '3-year growth', ca ? ca.A : na], ['High', 'Near new high', cs.N], ['Vol', 'Demand', cs.S], ['RS', 'Leadership', cs.L], ['Funds', 'Ownership', ['na', 'Not scored: needs fund-ownership data.']], ['Mkt', 'Market trend', cs.M]];
+  const L = [['EPS', 'Quarter growth', ca ? ca.C : na], ['EPS', '5-year growth', ca ? ca.A : na], ['High', 'Near new high', cs.N], ['Vol', 'Demand', cs.S], ['RS', 'Leadership', cs.L], ['Funds', 'Ownership', ['na', 'Not scored: needs fund-ownership data.']], ['Mkt', 'Market trend', cs.M]];
   render(el, html`
     <div class="card-head"><h2>Growth checklist</h2><span class="muted tiny">Tap an item for details</span></div>
     <div class="canslim">${L.map(([k, nm, [st, why]]) => html`<div class="cs ${st}" title="${why}" tabindex="0" data-why="${nm}: ${why}"><b>${k}</b><span>${nm}</span></div>`)}</div>
@@ -469,7 +469,7 @@ function openMenu(id) {
     if (id === 'pEps') {
       render(p, html`${[['ttm', '4-quarter EPS (trailing 12 months)'], ['q', 'Quarterly EPS'], ['off', 'Hide EPS line']].map(([k, l]) => html`<button data-eps="${k}" class="${prefs.eps === k ? 'on' : ''}">${l}</button>`)}
         ${provider().id === 'free' && isApp() ? html`<hr>${[['long', 'Longest history (US: SEC filings since ~2009)'], ['adjusted', 'Adjusted EPS only (analyst basis, fewer stocks)']].map(([k, l]) => html`<button data-basis="${k}" class="${settings.epsBasis === k ? 'on' : ''}">${l}</button>`)}` : ''}
-        <p class="muted tiny" style="margin:4px 10px 6px">Smooth line on the left axis; a dot marks each report: <b style="color:var(--up)">●</b> EPS up 25%+ y/y, <b style="color:var(--warn)">●</b> up less, <b style="color:var(--down)">●</b> down. ${V.earn ? '' : V.earnErr || 'Earnings data not loaded yet.'}</p>`);
+        <p class="muted tiny" style="margin:4px 10px 6px">Smooth line on the left axis; a dot marks each report: <b style="color:var(--up)">●</b> EPS up 20%+ y/y, <b style="color:var(--warn)">●</b> up less, <b style="color:var(--down)">●</b> down. ${V.earn ? '' : V.earnErr || 'Earnings data not loaded yet.'}</p>`);
       $$('[data-eps]', p).forEach(x => { x.onclick = () => { prefs.eps = x.dataset.eps; savePrefs(); draw(true); p.hidden = true; }; });
       $$('[data-basis]', p).forEach(x => { x.onclick = async () => { settings.epsBasis = x.dataset.basis; await saveSettings(); p.hidden = true; V.earn = null; V.earnErr = null; cards(); loadEarnings(V.sym, V.seq); }; });
     }
