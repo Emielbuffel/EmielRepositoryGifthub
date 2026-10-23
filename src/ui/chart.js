@@ -1,13 +1,16 @@
 // Stock chart: candles/bars, moving averages, RS line, volume, RSI, MACD, every detected base pattern
 // (one colour per pattern type) and the user's own drawings. Built on lightweight-charts v5.
 import { createChart, CandlestickSeries, BarSeries, LineSeries, HistogramSeries, createSeriesMarkers, LineStyle, CrosshairMode } from 'lightweight-charts';
-import { calc, weekly, rsNewHigh } from '../core/indicators.js';
+import { calc, weekly, rsNewHigh, valueAt } from '../core/indicators.js';
+import { smoothLine } from '../core/earnings.js';
 import { lineVal, cupPivot, fD, f2, pc, fmtVol } from '../core/analysis.js';
 import { tok } from './dom.js';
 
 export const PAT_LABEL = { cwh: 'Cup with handle', cup: 'Cup without handle', dbl: 'Double bottom', flat: 'Flat base', asc: 'Ascending base', htf: 'High tight flag', '3wt': 'Three weeks tight', desc: 'Descending base' };
 export const PAT_SHORT = { cwh: 'Cup w/ handle', cup: 'Cup', dbl: 'Double bottom', flat: 'Flat base', asc: 'Ascending', htf: 'High tight flag', '3wt': '3 wks tight', desc: 'Descending' };
 export const patColor = t => tok('--p-' + t) || tok('--orange');
+export const CMP_COLORS = ['--cmp1', '--cmp2', '--cmp3'];
+const STATE_COLOR = { up: '--ok', press: '--warn', corr: '--bad' };
 
 /** Which detected patterns to draw: the current base(s), a fresh breakout, and (mode 'all') every past one. */
 export function patternsToShow(R, daily, mode) {
@@ -42,6 +45,7 @@ export class StockChart {
     const c = this.chart = createChart(this.el, {
       autoSize: true, localization: { locale: 'en-GB' },
       rightPriceScale: { borderVisible: false, minimumWidth: 64, scaleMargins: { top: 0.17, bottom: 0.04 } },
+      leftPriceScale: { visible: false, borderVisible: false, minimumWidth: 44, scaleMargins: { top: 0.2, bottom: 0.32 } },
       timeScale: { borderVisible: false, rightOffset: 4 }, crosshair: { mode: CrosshairMode.Normal },
       layout: { attributionLogo: true, panes: { enableResize: true } },
     });
@@ -53,6 +57,14 @@ export class StockChart {
     this.rsS = L({ priceScaleId: 'rs' });
     c.priceScale('rs').applyOptions({ scaleMargins: { top: 0.76, bottom: 0.02 }, visible: false });
     this.rsMarkers = createSeriesMarkers(this.rsS, []);
+    // EPS line on the left axis, with a dot at every report
+    this.epsS = L({ priceScaleId: 'left', lineWidth: 2.5, lastValueVisible: true, title: 'EPS' });
+    this.epsMarkers = createSeriesMarkers(this.epsS, []);
+    // market-status ribbon at the bottom of the price pane (index charts only)
+    this.ribbon = c.addSeries(HistogramSeries, { priceScaleId: 'ribbon', lastValueVisible: false, priceLineVisible: false, base: 0 }, 0);
+    c.priceScale('ribbon').applyOptions({ scaleMargins: { top: 0.975, bottom: 0 }, visible: false });
+    this.cmpS = [];
+    c.timeScale().subscribeVisibleLogicalRangeChange(() => { if (this.cmpS.length && !this.rebasePending) { this.rebasePending = true; requestAnimationFrame(() => { this.rebasePending = false; this.rebase(); this.legend(this.lastT ?? null); }); } });
     const volFmt = { type: 'custom', formatter: fmtVol, minMove: 1 };
     this.volS = c.addSeries(HistogramSeries, { priceFormat: volFmt, lastValueVisible: false, priceLineVisible: false }, 1);
     this.vAvgS = L({ priceFormat: volFmt }, 1);
@@ -70,7 +82,7 @@ export class StockChart {
     } else this.mS = this.sS = this.hS = null;
     const ps = c.panes();
     ps[0].setStretchFactor(1); ps[1].setStretchFactor(0.24); ps.slice(2).forEach(p => p.setStretchFactor(0.2));
-    c.subscribeCrosshairMove(p => this.legend(p && p.time != null ? p.time : null));
+    c.subscribeCrosshairMove(p => { this.lastT = p && p.time != null ? p.time : null; this.legend(this.lastT); });
     c.subscribeClick(p => {
       if (!this.clickCb || !p.point || !this.bars) return;
       const price = this.ps.coordinateToPrice(p.point.y); if (price == null) return;
@@ -100,6 +112,8 @@ export class StockChart {
     this.ln.bbu.applyOptions({ color: ink }); this.ln.bbl.applyOptions({ color: ink }); this.rsS.applyOptions({ color: tok('--rs') }); this.vAvgS.applyOptions({ color: tok('--ma3') });
     if (this.rsiS) { this.rsiS.applyOptions({ color: tok('--blue') }); [this.r70, this.r30].forEach(p => p.applyOptions({ color: ink })); }
     if (this.mS) { this.mS.applyOptions({ color: tok('--ma3') }); this.sS.applyOptions({ color: tok('--orange') }); }
+    this.epsS.applyOptions({ color: tok('--eps') });
+    this.cmpS.forEach((x, i) => x.s.applyOptions({ color: tok(CMP_COLORS[i % 3]) }));
   }
 
   setRange(r) { try { this.chart.timeScale().setVisibleLogicalRange(r); } catch (e) { /* not ready */ } requestAnimationFrame(() => { try { this.chart.timeScale().setVisibleLogicalRange(r); } catch (e) { /* ignore */ } }); }
@@ -137,6 +151,9 @@ export class StockChart {
     this.ln.bbu.setData(ser(K.bbu)); this.ln.bbl.setData(ser(K.bbl)); [this.ln.bbu, this.ln.bbl].forEach(s => s.applyOptions({ visible: !!S.lines.bb }));
     this.rsS.setData(ser(K.rs)); this.rsS.applyOptions({ visible: !!S.lines.rs });
     this.rsMarkers.setMarkers(rsNewHigh(K.rs, S.tf === 'D' ? 252 : 52) ? [{ time: last, position: 'inBar', shape: 'circle', color: tok('--rs'), text: 'RS high' }] : []);
+    this.drawEps(S);
+    this.drawCompare(S);
+    this.ribbon.setData(S.mkt && S.tf === 'D' ? b.map((x, i) => S.mkt.states[i] ? { time: x.time, value: 1, color: tok(STATE_COLOR[S.mkt.states[i]]) + 'CC' } : { time: x.time }) : []);
     if (this.rsiS) this.rsiS.setData(withF(ser(K.rsi)));
     if (this.mS) {
       this.mS.setData(ser(K.macd.m)); this.sS.setData(ser(K.macd.sg));
@@ -157,9 +174,65 @@ export class StockChart {
     const b = this.bars, K = this.K, S = this.S; if (!b || !K) return;
     const i = t != null ? this.idxAt(t) : b.length - 1, x = b[i], pv = i ? b[i - 1].close : x.open, ch = x.close / pv - 1, cl = ch >= 0 ? 'up' : 'down';
     const av = K.vavg[i];
-    let h = `<span><b>${S.sym}</b> ${S.tf === 'D' ? 'daily' : 'weekly'} · ${fD(x.time)}</span><span>O <b>${f2(x.open)}</b></span><span>H <b>${f2(x.high)}</b></span><span>L <b>${f2(x.low)}</b></span><span>C <b class="${cl}">${f2(x.close)}</b></span><span class="${cl}">${pc(ch, 2)}</span><span>Vol <b>${fmtVol(x.volume)}</b>${av ? ' (' + pc(x.volume / av - 1, 0) + ')' : ''}</span>`;
+    const narrow = this.el.clientWidth < 560;
+    let h = narrow
+      ? `<span>${fD(x.time)}</span><span>C <b class="${cl}">${f2(x.close)}</b> <span class="${cl}">${pc(ch, 2)}</span></span><span>Vol <b>${fmtVol(x.volume)}</b></span>`
+      : `<span><b>${S.sym}</b> ${S.tf === 'D' ? 'daily' : 'weekly'} · ${fD(x.time)}</span><span>O <b>${f2(x.open)}</b></span><span>H <b>${f2(x.high)}</b></span><span>L <b>${f2(x.low)}</b></span><span>C <b class="${cl}">${f2(x.close)}</b></span><span class="${cl}">${pc(ch, 2)}</span><span>Vol <b>${fmtVol(x.volume)}</b>${av ? ' (' + pc(x.volume / av - 1, 0) + ')' : ''}</span>`;
     if (this.rsiS) h += `<span>RSI <b>${f2(K.rsi[i])}</b></span>`;
+    if (this.epsPts && this.epsPts.length) {
+      const t0 = S.tf === 'D' ? x.time : (x.last || x.time); let pt = null;
+      for (const p of this.epsPts) if (p.time <= t0) pt = p;
+      if (pt) h += `<span style="color:var(--eps)">EPS ${S.eps.mode === 'ttm' ? '(4Q)' : '(qtr)'} <b style="color:var(--eps)">${f2(pt.value)}</b>${pt.yoy != null ? ' ' + pc(pt.yoy, 0) + ' y/y' : ''}${narrow ? '' : ' · ' + fD(pt.time)}</span>`;
+    }
+    if (this.cmpPerf) this.cmpPerf.forEach(c => { h += `<span style="color:${c.color}">${narrow ? c.name.slice(0, 14) : c.name} <b style="color:${c.color}">${pc(c.idx, 1)}</b> vs ${narrow ? 'stock' : S.sym} ${pc(c.stock, 1)}</span>`; });
     this.legendEl.innerHTML = h;
+  }
+
+  /** EPS line: smooth curve through each report's EPS, dots coloured by year-over-year growth. */
+  drawEps(S) {
+    const pts = S.eps && S.eps.points && S.eps.points.length >= 2 ? S.eps.points : null;
+    this.epsPts = pts;
+    // on narrow screens the EPS axis would squeeze the chart: keep the line, read the value in the legend
+    const narrow = this.el.clientWidth < 560;
+    this.epsS.applyOptions({ priceScaleId: narrow ? 'eps' : 'left' });
+    if (narrow) this.chart.priceScale('eps').applyOptions({ visible: false, scaleMargins: { top: 0.22, bottom: 0.32 } });
+    this.chart.applyOptions({ leftPriceScale: { visible: !!pts && !narrow } });
+    if (!pts) { this.epsS.setData([]); this.epsMarkers.setMarkers([]); return; }
+    const times = this.bars.map(x => S.tf === 'D' ? x.time : (x.last || x.time));
+    const line = smoothLine(pts, times); // values at bar times
+    // weekly bars are keyed by their first day: map back
+    const byT = new Map(this.bars.map(x => [S.tf === 'D' ? x.time : (x.last || x.time), x.time]));
+    this.epsS.setData(line.map(p => ({ time: byT.get(p.time), value: p.value })).filter(p => p.time != null));
+    const first = this.bars[0].time, last = this.bars[this.bars.length - 1].time;
+    this.epsMarkers.setMarkers(pts.filter(p => p.time >= first && p.time <= (S.tf === 'D' ? last : last + 7 * 86400)).map(p => ({
+      time: this.snapT(p.time), position: 'inBar', shape: 'circle', size: 0.55,
+      color: p.yoy == null ? tok('--eps') : p.yoy >= 0.25 ? tok('--up') : p.yoy >= 0 ? tok('--warn') : tok('--down'),
+    })).sort((a, b) => a.time - b.time));
+  }
+
+  /** Index or sector lines, rebased to the stock's price at the first visible bar so performance compares directly. */
+  drawCompare(S) {
+    this.cmpS.forEach(x => { try { this.chart.removeSeries(x.s); } catch (e) { /* gone */ } });
+    this.cmpS = (S.compare || []).filter(c => c.bars && c.bars.length > 20).map((c, i) => ({
+      ...c, color: tok(CMP_COLORS[i % 3]),
+      s: this.chart.addSeries(LineSeries, { color: tok(CMP_COLORS[i % 3]), lineWidth: 2, lineStyle: LineStyle.Solid, lastValueVisible: false, priceLineVisible: false, crosshairMarkerVisible: false, title: c.short || '' }, 0),
+    }));
+    this.cmpPerf = null;
+    if (this.cmpS.length) requestAnimationFrame(() => { this.rebase(); this.legend(null); });
+  }
+  rebase() {
+    if (!this.cmpS.length || !this.bars) return;
+    const b = this.bars, r = this.chart.timeScale().getVisibleLogicalRange();
+    const i0 = Math.max(0, Math.min(b.length - 1, Math.ceil(r ? r.from : 0))), i1 = Math.max(i0, Math.min(b.length - 1, Math.floor(r ? r.to : b.length - 1)));
+    const tAt = x => this.S.tf === 'D' ? x.time : (x.last || x.time);
+    this.cmpPerf = [];
+    for (const c of this.cmpS) {
+      const v0 = valueAt(c.bars, tAt(b[i0])); if (!v0) { c.s.setData([]); continue; }
+      const k = b[i0].close / v0;
+      c.s.setData(b.map(x => { const v = valueAt(c.bars, tAt(x)); return v == null || x.time < c.bars[0].time ? { time: x.time } : { time: x.time, value: v * k }; }));
+      const v1 = valueAt(c.bars, tAt(b[i1]));
+      this.cmpPerf.push({ name: c.short || c.name, color: c.color, idx: v1 / v0 - 1, stock: b[i1].close / b[i0].close - 1 });
+    }
   }
 
   addLine(pts, opt) {
@@ -211,6 +284,11 @@ export class StockChart {
         : `${p.name}${p.weeks ? ' · ' + Math.round(p.weeks) + ' wk' : ''}${p.depth != null ? ' · −' + Math.round(p.depth * 100) + '%' : ''}`;
       markers.push({ time: this.snapT(T(p.a)), position: 'aboveBar', shape: 'arrowDown', color, text: lbl });
       if (p.bo != null) markers.push({ time: this.snapT(T(p.bo)), position: 'belowBar', shape: 'arrowUp', color: p.failed ? bad : p.volRatio >= 1.4 ? tok('--up') : tok('--muted'), text: p.failed ? 'failed' : 'BO' });
+    }
+    // market index: distribution days and follow-through days
+    if (S.mkt) {
+      S.mkt.ddAll.forEach(i => { if (S.mkt.dd.includes(i) || S.tf === 'D') markers.push({ time: this.snapT(d[i].time), position: 'aboveBar', shape: 'circle', color: S.mkt.dd.includes(i) ? tok('--down') : tok('--down') + '80', text: S.mkt.dd.includes(i) ? 'D' : '', size: S.mkt.dd.includes(i) ? 1 : 0.6 }); });
+      S.mkt.ftds.forEach(i => markers.push({ time: this.snapT(d[i].time), position: 'belowBar', shape: 'arrowUp', color: tok('--up'), text: 'FTD' }));
     }
     // the user's drawings
     const b = this.bars, last = b[b.length - 1].time, col = tok('--draw');

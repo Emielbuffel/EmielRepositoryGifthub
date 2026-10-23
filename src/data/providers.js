@@ -2,7 +2,7 @@
 // Tickers inside the app use Yahoo-style suffixes (AAPL, ASML.AS, 7203.T, 005930.KS); each provider maps them.
 // Endpoints follow each provider's public documentation; check them if a provider changes its API.
 import { Capacitor, CapacitorHttp } from '@capacitor/core';
-import { demoBars, DEMO, DEMO_INDEXES, DEMO_BENCH } from './demo.js';
+import { demoBars, demoEarnings, demoNews, DEMO, DEMO_INDEXES, DEMO_BENCH } from './demo.js';
 
 export class DataError extends Error {
   constructor(message, kind = 'error') { super(message); this.kind = kind; } // kind: auth | plan | limit | notfound | network | error
@@ -69,19 +69,66 @@ export const currencyOf = sym => (SUFFIX[splitSym(sym).sfx] || SUFFIX['']).cur;
 const sfxFromMic = mic => Object.keys(SUFFIX).find(k => SUFFIX[k].mic && SUFFIX[k].mic === mic);
 const sfxFromEod = ex => ex === 'US' || ['NASDAQ', 'NYSE', 'NYSE ARCA', 'NYSE MKT', 'BATS', 'AMEX'].includes(ex) ? '' : Object.keys(SUFFIX).find(k => SUFFIX[k].eod === ex);
 
-/* ---------- market indexes (with US ETF fallbacks that every provider covers) ---------- */
+/* ---------- indexes: real index where the plan has it, otherwise a US-listed ETF that tracks it ---------- */
+// fmp/eod = index symbols at FMP and EODHD; etf = fallback (prices in USD for non-US indexes).
+export const INDEXES = {
+  GSPC: { name: 'S&P 500', fmp: '^GSPC', eod: 'GSPC.INDX', etf: 'SPY' },
+  IXIC: { name: 'Nasdaq Composite', fmp: '^IXIC', eod: 'IXIC.INDX', etf: 'ONEQ' },
+  NDX: { name: 'Nasdaq-100', fmp: '^NDX', eod: 'NDX.INDX', etf: 'QQQ' },
+  DJI: { name: 'Dow Jones Industrial', fmp: '^DJI', eod: 'DJI.INDX', etf: 'DIA' },
+  RUT: { name: 'Russell 2000', fmp: '^RUT', eod: 'RUT.INDX', etf: 'IWM' },
+  SOX: { name: 'PHLX Semiconductor', fmp: '^SOX', eod: 'SOX.INDX', etf: 'SOXX' },
+  WORLD: { name: 'MSCI World', etf: 'URTH' },
+  STOXX50E: { name: 'Euro Stoxx 50', fmp: '^STOXX50E', eod: 'STOXX50E.INDX', etf: 'FEZ' },
+  GDAXI: { name: 'DAX', fmp: '^GDAXI', eod: 'GDAXI.INDX', etf: 'EWG' },
+  FCHI: { name: 'CAC 40', fmp: '^FCHI', eod: 'FCHI.INDX', etf: 'EWQ' },
+  AEX: { name: 'AEX', fmp: '^AEX', eod: 'AEX.INDX', etf: 'EWN' },
+  FTSEMIB: { name: 'FTSE MIB', fmp: 'FTSEMIB.MI', eod: 'FTSEMIB.INDX', etf: 'EWI' },
+  IBEX: { name: 'IBEX 35', fmp: '^IBEX', eod: 'IBEX.INDX', etf: 'EWP' },
+  BFX: { name: 'BEL 20', fmp: '^BFX', eod: 'BFX.INDX', etf: 'EWK' },
+  FTSE: { name: 'FTSE 100', fmp: '^FTSE', eod: 'FTSE.INDX', etf: 'EWU' },
+  SSMI: { name: 'SMI', fmp: '^SSMI', eod: 'SSMI.INDX', etf: 'EWL' },
+  OMXS30: { name: 'OMX Stockholm 30', fmp: '^OMX', eod: 'OMXS30.INDX', etf: 'EWD' },
+  OMXC25: { name: 'OMX Copenhagen 25', eod: 'OMXC25.INDX', etf: 'EDEN' },
+  OMXH25: { name: 'OMX Helsinki 25', eod: 'OMXH25.INDX', etf: 'EFNL' },
+  OBX: { name: 'Oslo OBX', eod: 'OBX.INDX', etf: 'ENOR' },
+  N225: { name: 'Nikkei 225', fmp: '^N225', eod: 'N225.INDX', etf: 'EWJ' },
+  KS11: { name: 'KOSPI', fmp: '^KS11', eod: 'KS11.INDX', etf: 'EWY' },
+  KQ11: { name: 'KOSDAQ', fmp: '^KQ11', eod: 'KQ11.INDX' },
+  HSI: { name: 'Hang Seng', fmp: '^HSI', eod: 'HSI.INDX', etf: 'EWH' },
+  SSEC: { name: 'Shanghai Composite', fmp: '000001.SS', eod: 'SSEC.INDX', etf: 'MCHI' },
+  GSPTSE: { name: 'S&P/TSX Composite', fmp: '^GSPTSE', eod: 'GSPTSE.INDX', etf: 'EWC' },
+  AXJO: { name: 'S&P/ASX 200', fmp: '^AXJO', eod: 'AXJO.INDX', etf: 'EWA' },
+};
+// US sector and industry ETFs (a stand-in for IBD's industry groups)
+export const SECTORS = {
+  XLK: 'Technology', SMH: 'Semiconductors', IGV: 'Software', XLC: 'Communication', XLY: 'Consumer discretionary', XLP: 'Consumer staples',
+  XLV: 'Health care', XBI: 'Biotech', XLF: 'Financials', XLI: 'Industrials', ITA: 'Aerospace & defence', XLE: 'Energy', XLB: 'Materials', XLU: 'Utilities', XLRE: 'Real estate',
+};
+// Which indexes fit a listing: the first is the default for the RS line.
+const HOME = {
+  '': ['GSPC', 'IXIC', 'NDX', 'DJI', 'RUT', 'SOX'],
+  DE: ['GDAXI', 'STOXX50E'], PA: ['FCHI', 'STOXX50E'], AS: ['AEX', 'STOXX50E'], MI: ['FTSEMIB', 'STOXX50E'], MC: ['IBEX', 'STOXX50E'],
+  BR: ['BFX', 'STOXX50E'], HE: ['OMXH25', 'STOXX50E'], LS: ['STOXX50E'], VI: ['STOXX50E'], L: ['FTSE', 'STOXX50E'], SW: ['SSMI', 'STOXX50E'],
+  ST: ['OMXS30', 'STOXX50E'], CO: ['OMXC25', 'STOXX50E'], OL: ['OBX', 'STOXX50E'],
+  T: ['N225'], KS: ['KS11', 'KQ11'], KQ: ['KQ11', 'KS11'], HK: ['HSI', 'SSEC'], SS: ['SSEC', 'HSI'], SZ: ['SSEC', 'HSI'], TO: ['GSPTSE'], AX: ['AXJO'],
+};
+/** Index keys that fit this ticker: home market first, then global comparisons. */
+export function indexesFor(sym) {
+  const own = HOME[splitSym(sym).sfx] || HOME[''];
+  return [...new Set([...own, 'GSPC', 'WORLD'])];
+}
+
+/* ---------- market tab indexes ---------- */
 export const MARKET = [
-  { k: 'IXIC', name: 'Nasdaq Composite', etf: 'QQQ', etfName: 'Nasdaq-100 ETF (QQQ)', region: 'US' },
-  { k: 'GSPC', name: 'S&P 500', etf: 'SPY', etfName: 'S&P 500 ETF (SPY)', region: 'US' },
-  { k: 'DJI', name: 'Dow Jones Industrial', etf: 'DIA', etfName: 'Dow ETF (DIA)', region: 'US' },
-  { k: 'STOXX50E', name: 'Euro Stoxx 50', etf: 'FEZ', etfName: 'Euro Stoxx 50 ETF (FEZ, USD)', region: 'EU' },
-];
+  { k: 'IXIC', region: 'US' }, { k: 'GSPC', region: 'US' }, { k: 'DJI', region: 'US' }, { k: 'STOXX50E', region: 'EU' },
+].map(m => ({ ...m, name: INDEXES[m.k].name, etf: INDEXES[m.k].etf }));
 
 /* ---------- providers ---------- */
 const fmpLimit = limiter(250);
 const FMP = {
   id: 'fmp', name: 'Financial Modeling Prep', short: 'FMP', needsKey: true, site: 'https://site.financialmodelingprep.com/developer/docs',
-  blurb: 'US stocks on the free plan (250 requests a day); worldwide listings, indexes and fundamentals on paid plans. Also gives earnings data for the CAN SLIM check.',
+  blurb: 'US stocks on the free plan (250 requests a day); worldwide listings, indexes and fundamentals on paid plans. Also gives earnings, sales and company news.',
   url: (path, key, q) => `https://financialmodelingprep.com/stable/${path}?${new URLSearchParams({ ...q, apikey: key })}`,
   async daily(sym, key, fromT) {
     const q = { symbol: sym }; if (fromT) q.from = ymd(fromT);
@@ -90,22 +137,27 @@ const FMP = {
     if (!arr) throw new DataError(errText(d) || 'No price history from FMP for ' + sym + '.', 'notfound');
     return { bars: clean(arr.map(x => ({ time: dToT(x.date), open: +x.open, high: +x.high, low: +x.low, close: +x.close, volume: +x.volume }))) };
   },
-  indexSym: k => '^' + k,
+  indexSym: k => INDEXES[k] && INDEXES[k].fmp,
+  async earnings(sym, key) {
+    try {
+      const d = await fmpLimit(() => getJSON(this.url('earnings', key, { symbol: sym, limit: 28 })));
+      if (Array.isArray(d) && d.length) return d.map(x => ({ time: dToT(x.date), eps: x.epsActual ?? null, est: x.epsEstimated ?? null, rev: x.revenueActual ?? null, revEst: x.revenueEstimated ?? null }));
+    } catch (e) { if (e.kind === 'auth' || e.kind === 'limit') throw e; }
+    // fallback: quarterly income statements, dated by their filing date
+    const q = await fmpLimit(() => getJSON(this.url('income-statement', key, { symbol: sym, period: 'quarter', limit: 20 })));
+    if (!Array.isArray(q) || !q.length) throw new DataError('FMP has no earnings data for ' + sym + ' on this plan.', 'plan');
+    return q.map(x => ({ time: dToT(String(x.filingDate || x.acceptedDate || x.date).slice(0, 10)), eps: +(x.epsDiluted ?? x.eps), rev: +x.revenue || null, period: (x.period || '') + ' ' + (x.fiscalYear || '') }));
+  },
+  async news(sym, key) {
+    const d = await fmpLimit(() => getJSON(this.url('news/stock', key, { symbols: sym, limit: 30 })));
+    return (Array.isArray(d) ? d : []).map(x => ({ title: x.title, link: x.url, date: Date.parse(x.publishedDate), source: x.site || x.publisher || 'FMP' }));
+  },
   async search(q, key) {
     const [a, b] = await Promise.allSettled([getJSON(this.url('search-symbol', key, { query: q, limit: 10 })), getJSON(this.url('search-name', key, { query: q, limit: 10 }))]);
     const out = new Map();
     for (const r of [a, b]) if (r.status === 'fulfilled' && Array.isArray(r.value)) r.value.forEach(x => { if (x.symbol && !out.has(x.symbol)) out.set(x.symbol, { symbol: x.symbol, name: x.name, exchange: x.exchangeFullName || x.exchange || '', currency: x.currency || '' }); });
     if (!out.size && a.status === 'rejected') throw a.reason;
     return [...out.values()];
-  },
-  async fundamentals(sym, key) {
-    const [q, y] = await Promise.all([
-      fmpLimit(() => getJSON(this.url('income-statement', key, { symbol: sym, period: 'quarter', limit: 8 }))),
-      fmpLimit(() => getJSON(this.url('income-statement', key, { symbol: sym, period: 'annual', limit: 4 }))),
-    ]);
-    if (!Array.isArray(q) || !q.length) throw new DataError('FMP has no earnings data for ' + sym + ' on this plan.', 'plan');
-    const pick = x => ({ date: x.date, period: (x.period || '') + ' ' + (x.fiscalYear || x.calendarYear || ''), eps: +(x.epsDiluted ?? x.epsdiluted ?? x.eps), revenue: +x.revenue, netIncome: +x.netIncome, pretax: +(x.incomeBeforeTax ?? 0) });
-    return { quarters: q.map(pick).reverse(), annual: Array.isArray(y) ? y.map(pick).reverse() : [], source: 'FMP income statements (reported EPS, diluted)' };
   },
   async fx(pair, key) { return this.daily(pair.replace('/', ''), key); },
 };
@@ -128,6 +180,13 @@ const TD = {
     return { bars, currency: d.meta && d.meta.currency, exchange: d.meta && d.meta.exchange };
   },
   indexSym: null,
+  async earnings(sym, key) {
+    const { base, sfx } = splitSym(sym); const q = { symbol: base, outputsize: 28 };
+    if (sfx && SUFFIX[sfx].mic) q.mic_code = SUFFIX[sfx].mic;
+    const d = await tdLimit(() => getJSON(this.url('earnings', key, q)));
+    if (!d || d.status === 'error' || !Array.isArray(d.earnings)) throw new DataError((d && d.message) || 'No earnings data from Twelve Data for ' + sym + '.', d && d.code === 403 ? 'plan' : 'notfound');
+    return d.earnings.map(x => ({ time: dToT(x.date), eps: x.eps_actual == null ? null : +x.eps_actual, est: x.eps_estimate == null ? null : +x.eps_estimate }));
+  },
   async search(q) {
     const d = await getJSON(`https://api.twelvedata.com/symbol_search?${new URLSearchParams({ symbol: q, outputsize: 12 })}`);
     return (d && d.data || []).filter(x => /stock|etf|common/i.test(x.instrument_type || 'stock')).map(x => {
@@ -151,7 +210,19 @@ const EOD = {
     // split-adjust OHLC with adjusted_close so long histories don't jump at splits
     return { bars: clean(d.map(x => { const f = x.adjusted_close && x.close ? x.adjusted_close / x.close : 1; return { time: dToT(x.date), open: x.open * f, high: x.high * f, low: x.low * f, close: x.close * f, volume: f ? x.volume / f : x.volume }; })) };
   },
-  indexSym: k => k + '.INDX',
+  indexSym: k => INDEXES[k] && INDEXES[k].eod,
+  async earnings(sym, key) {
+    const now = Date.now() / 1000;
+    const d = await eodLimit(() => getJSON(`https://eodhd.com/api/calendar/earnings?${new URLSearchParams({ symbols: this.map(sym), from: ymd(now - 5 * 365 * 86400), to: ymd(now + 150 * 86400), api_token: key, fmt: 'json' })}`));
+    const arr = d && Array.isArray(d.earnings) ? d.earnings : null;
+    if (!arr) throw new DataError(errText(d) || 'No earnings data from EODHD for ' + sym + '.', 'notfound');
+    return arr.map(x => ({ time: dToT(x.report_date || x.date), eps: x.actual == null ? null : +x.actual, est: x.estimate == null ? null : +x.estimate, period: x.date ? 'Q ending ' + x.date : '' }));
+  },
+  async news(sym, key) {
+    const target = sym.includes('.INDX') ? sym : this.map(sym);
+    const d = await eodLimit(() => getJSON(`https://eodhd.com/api/news?${new URLSearchParams({ s: target, limit: 30, api_token: key, fmt: 'json' })}`));
+    return (Array.isArray(d) ? d : []).map(x => ({ title: x.title, link: x.link, date: Date.parse(x.date), source: (() => { try { return new URL(x.link).hostname.replace(/^www\./, ''); } catch (e) { return 'EODHD'; } })() }));
+  },
   async search(q, key) {
     const d = await getJSON(`https://eodhd.com/api/search/${encodeURIComponent(q)}?${new URLSearchParams({ api_token: key, fmt: 'json', limit: 12 })}`);
     return (Array.isArray(d) ? d : []).map(x => { const s = sfxFromEod(x.Exchange); return s == null ? null : { symbol: x.Code + (s ? '.' + s : ''), name: x.Name, exchange: x.Exchange, currency: x.Currency, isin: x.ISIN }; }).filter(Boolean);
@@ -162,6 +233,8 @@ const EOD = {
 const DEMO_P = {
   id: 'demo', name: 'Demo data (fictional)', short: 'Demo', needsKey: false,
   blurb: 'Fictional companies with made-up prices, built to show every base pattern. No account or internet needed.',
+  async earnings(sym) { const e = demoEarnings(sym); if (!e) throw new DataError('No demo earnings for ' + sym + '.', 'notfound'); return e; },
+  async news(sym) { return demoNews(sym); },
   async daily(sym) { const d = demoBars(sym); if (!d) throw new DataError(sym + ' is not in the demo data. Add a data provider in Settings to load real stocks.', 'notfound'); return { bars: d.bars, name: d.name, currency: 'USD', exchange: d.exchange }; },
   indexSym: null,
   async search(q) {

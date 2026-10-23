@@ -31,7 +31,8 @@ export function analyseIndex(b) {
   };
   const i0 = Math.max(60, n - 320);
   let state = c[i0] > s50[i0] ? 'up' : 'corr', since = i0, low = state === 'corr' ? i0 : null, lastFtd = null, rallyLow = null;
-  const ftds = [];
+  const ftds = [], states = new Array(n + 1).fill(null);
+  states[i0] = state;
   for (let i = i0 + 1; i <= n; i++) {
     const dd = ddAt(i).length;
     let hi = -Infinity; for (let k = Math.max(0, i - 80); k <= i; k++) if (c[k] > hi) hi = c[k]; const dr = 1 - c[i] / hi;
@@ -42,13 +43,14 @@ export function analyseIndex(b) {
       else if (c[i] > s50[i] && c[i] > e21[i] && c[i] >= hi60 * 0.98) { state = 'up'; since = i; low = null; rallyLow = null; }
     } else {
       const failed = rallyLow != null && lastFtd != null && i - lastFtd <= 30 && c[i] < rallyLow;
-      if (failed || (c[i] < s50[i] && (dr >= 0.07 || (dd >= 6 && dr >= 0.05)))) { state = 'corr'; since = i; low = i; rallyLow = null; continue; }
+      if (failed || (c[i] < s50[i] && (dr >= 0.07 || (dd >= 6 && dr >= 0.05)))) { state = 'corr'; since = i; low = i; rallyLow = null; states[i] = state; continue; }
       const fresh = lastFtd != null && i - lastFtd <= 20, ns = (dd >= 5 || (!fresh && c[i] < s50[i])) ? 'press' : 'up';
       if (ns !== state) { state = ns; since = i; }
     }
+    states[i] = state;
   }
   let hi52 = -Infinity; for (let k = Math.max(0, n - 252); k <= n; k++) if (b[k].high > hi52) hi52 = b[k].high;
-  return { b, n, c, v, e21, s50, s200, v50, hasVol, dd: ddAt(n), ftds, lastFtd, state, since, low, rallyDay: low != null ? n - low + 1 : null, off: c[n] / hi52 - 1, day: c[n] / c[n - 1] - 1 };
+  return { b, n, c, v, e21, s50, s200, v50, hasVol, dd: ddAt(n), ddDetail: ddAt(n).map(j => ({ i: j, chg: c[j] / c[j - 1] - 1, volChg: v[j] / v[j - 1] - 1, expires: j + 25 - n })), states, ddAll: Array.from({ length: n - i0 + 1 }, (_, k) => i0 + k).filter(isDD), i0, ftds, lastFtd, state, since, low, rallyDay: low != null ? n - low + 1 : null, off: c[n] / hi52 - 1, day: c[n] / c[n - 1] - 1 };
 }
 
 /** US status = the weaker of the Nasdaq and S&P 500 readings. */

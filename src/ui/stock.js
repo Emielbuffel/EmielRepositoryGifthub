@@ -1,16 +1,23 @@
-// The Chart tab: one stock with its chart, every detected pattern, the base card, signal, CAN SLIM,
-// fundamentals, flags, key numbers, base history and the user's drawings.
+// The Chart tab: one stock with its chart (EPS line, index comparisons, every detected pattern), the base card,
+// signal, earnings, CAN SLIM, news, flags, key numbers, base history and the user's drawings.
 import PAT from '../core/pat.js';
 import { baseCard, signal, pc, fD, fDs, f2, lineVal, cupPivot } from '../core/analysis.js';
-import { daily, benchmarkFor, fundamentals, provider, isDemo, isDemoSym, DataError } from '../data/service.js';
+import { daily, benchmarkFor, indexSeries, compareOptions, defaultBenchmark, earnings, isIndexSym, provider, isDemo, isDemoSym, DataError } from '../data/service.js';
+import { splitSym } from '../data/providers.js';
+import { stockNews, lastSeen, markSeen, newsSettings } from '../data/news.js';
+import { enrich, epsPoints, nextReport, canslimCA, adGrade } from '../core/earnings.js';
+import { analyseIndex, STATUS, EXPOSURE } from '../core/market.js';
 import * as store from '../data/store.js';
 import { App, on, openStock, saveWatch, rememberName, rememberQuote, go } from '../app.js';
-import { StockChart, patternsToShow, outcome, PAT_LABEL, patColor } from './chart.js';
+import { StockChart, patternsToShow, outcome, PAT_LABEL, patColor, CMP_COLORS } from './chart.js';
+import { tok } from './dom.js';
 import { $, $$, html, raw, render, esc, money, ICON, toast, ago } from './dom.js';
 
-const V = { chart: null, S: null, data: null, bench: null, R: null, seq: 0, tool: null, pending: null, poly: null, drawingsAll: {}, fund: null };
+const V = { chart: null, S: null, data: null, bench: null, R: null, seq: 0, tool: null, pending: null, poly: null, drawingsAll: {}, earn: null, earnErr: null, news: null, newsSeen: 0, newsTag: 'all', cmp: [], mkt: null };
 const LINE_DEFS = [['l1', '10-day', '--ma1', '2-week'], ['l2', '21-day EMA', '--ma2', '4-week EMA'], ['l3', '50-day', '--ma3', '10-week'], ['l4', '200-day', '--ma4', '40-week'], ['rs', 'RS line', '--rs'], ['bb', 'Bollinger bands', '--muted']];
-let prefs = { tf: 'D', style: 'candles', lines: { l1: false, l2: true, l3: true, l4: true, rs: true, bb: false }, patMode: 'all', panes: { rsi: false, macd: false } };
+let prefs = { tf: 'D', style: 'candles', lines: { l1: false, l2: true, l3: true, l4: true, rs: true, bb: false }, patMode: 'all', panes: { rsi: false, macd: false }, eps: 'ttm', cmp: {}, rsBench: {} };
+// comparison choices and the RS benchmark are remembered per market (US, .DE, .T …)
+const group = sym => isDemoSym(sym) ? 'demo' : splitSym(sym).sfx || 'US';
 
 export async function initStock(el) {
   prefs = Object.assign(prefs, await store.get('chartPrefs', {}));
@@ -33,6 +40,8 @@ export async function initStock(el) {
       <div class="chart-tools">
         <div class="seg" role="group" aria-label="Time frame"><button data-tf="D">Daily</button><button data-tf="W">Weekly</button></div>
         <div class="menu"><button class="btn sm" id="mLines">${raw(ICON.layers)}Lines</button><div class="menu-pop" id="pLines" hidden></div></div>
+        <div class="menu"><button class="btn sm" id="mCmp">Compare</button><div class="menu-pop" id="pCmp" hidden></div></div>
+        <div class="menu"><button class="btn sm" id="mEps">EPS</button><div class="menu-pop" id="pEps" hidden></div></div>
         <div class="menu"><button class="btn sm" id="mPat">Patterns</button><div class="menu-pop" id="pPat" hidden></div></div>
         <div class="menu"><button class="btn sm" id="mDraw">${raw(ICON.pen)}Draw</button><div class="menu-pop" id="pDraw" hidden></div></div>
         <span class="spacer"></span>
@@ -42,12 +51,17 @@ export async function initStock(el) {
       <div class="chart-hint" id="sHint" hidden></div>
       <div class="pat-strip" id="sPats" aria-label="Patterns on this chart"></div>
     </section>
+    <section class="card" id="cMkt" hidden></section>
     <div class="grid2">
       <section class="card" id="cBase"></section>
       <section class="card" id="cSig"></section>
     </div>
     <div class="grid2">
+      <section class="card" id="cEarn"></section>
       <section class="card" id="cCanslim"></section>
+    </div>
+    <div class="grid2">
+      <section class="card" id="cNews"></section>
       <section class="card" id="cFlags"></section>
     </div>
     <section class="card" id="cHist"></section>
@@ -65,7 +79,7 @@ export async function initStock(el) {
     if (type === 'stock') load(App.sym);
     if (type === 'watch' || type === 'quote') chips();
     if (type === 'market' && V.R) cards();
-    if (type === 'provider') { V.fund = null; load(App.sym); }
+    if (type === 'provider') load(App.sym);
   });
   load(App.sym);
 }
@@ -78,20 +92,24 @@ async function load(sym, force = false) {
   $('#sSym').textContent = sym; $('#sName').textContent = App.names[sym] || '';
   chips();
   try {
-    const [d, bench] = await Promise.all([daily(sym, { force }), benchmarkFor(sym).catch(() => null)]);
+    const g = group(sym);
+    const [d, bench] = await Promise.all([daily(sym, { force }), benchmarkFor(sym, prefs.rsBench[g]).catch(() => null)]);
     if (seq !== V.seq) return;
-    V.data = d; V.bench = bench; V.sym = sym;
+    // an index has no RS line against itself
+    V.data = d; V.bench = bench && bench.sym !== sym ? bench : null; V.sym = sym; V.earn = null; V.earnErr = null; V.news = null; V.cmp = [];
     if (d.name) await rememberName(sym, d.name);
     V.R = PAT.scan(d.bars);
+    V.mkt = isIndexSym(sym) ? analyseIndex(d.bars) : null;
     const n = d.bars.length - 1;
     await rememberQuote(sym, d.bars[n].close, d.bars[n].close / d.bars[n - 1].close - 1);
     head(); draw(false); cards();
-    const src = isDemoSym(sym) ? 'Demo data · fictional company' : provider().short;
+    const src = isDemoSym(sym) ? 'Demo data · fictional ' + (isIndexSym(sym) ? 'index' : 'company') : provider().short;
     const dt = fD(d.bars[n].time);
     if (d.stale) status(`Showing saved prices through ${dt}: ${d.error ? d.error.message : 'refresh failed'}`, 'warn');
     else status(`${src} · daily data through ${dt}${d.cached && !isDemoSym(sym) ? ' · updated ' + ago(d.fetchedAt) : ''}`, isDemoSym(sym) ? 'demo' : 'ok');
-    if (!isDemoSym(sym)) loadFund(sym, seq);
-    else { V.fund = null; renderCanslim(); }
+    loadCompare(sym, seq);
+    if (!V.mkt) loadEarnings(sym, seq); else earnCard();
+    loadNews(sym, seq);
   } catch (e) {
     if (seq !== V.seq) return;
     status(e.message || String(e), 'warn');
@@ -99,22 +117,41 @@ async function load(sym, force = false) {
   }
 }
 
+async function loadCompare(sym, seq) {
+  const ids = (prefs.cmp[group(sym)] || []).filter(id => id !== '__none');
+  const res = await Promise.all(ids.map(id => indexSeries(id, isDemo() || isDemoSym(sym)).then(x => ({ ...x, short: shortName(x.name) })).catch(() => null)));
+  if (seq !== V.seq) return;
+  V.cmp = res.filter(x => x && x.sym !== sym).map(x => ({ ...x, bars: x.bars.map(b => ({ time: b.time, close: b.close })) }));
+  if (ids.length && V.cmp.length < ids.length) toast('Some comparison data is not available on your plan.');
+  if (V.cmp.length || ids.length === 0) draw(true);
+}
+const shortName = n => n.replace(/\s*\(.*\)\s*/, '').replace(' (fictional index)', '');
+
+async function loadEarnings(sym, seq) {
+  try { const rows = await earnings(sym); if (seq !== V.seq) return; V.earn = rows; }
+  catch (e) { if (seq !== V.seq) return; V.earnErr = e.message; }
+  draw(true); cards();
+}
+
+async function loadNews(sym, seq) {
+  V.newsSeen = await lastSeen(sym);
+  newsCard(true);
+  const r = await stockNews(sym, V.data && V.data.name, cached => { if (seq === V.seq) { V.news = cached; newsCard(true); } });
+  if (seq !== V.seq) return;
+  V.news = r; newsCard(false);
+  markSeen(sym);
+}
+
 function emptyState(sym, e) {
   const msg = e instanceof DataError && e.kind === 'auth'
     ? html`<p>${e.message}</p><button class="btn primary" id="eSet">Open Settings</button>`
     : html`<p>${e.message || 'Could not load ' + sym + '.'}</p>${isDemo() ? html`<button class="btn primary" id="eDemo">Open a demo stock</button>` : ''}`;
-  ['#cBase', '#cSig', '#cCanslim', '#cFlags', '#cHist', '#cNums', '#cDraw'].forEach(id => { $(id).innerHTML = ''; });
+  ['#cBase', '#cSig', '#cCanslim', '#cFlags', '#cHist', '#cNums', '#cDraw', '#cEarn', '#cNews'].forEach(id => { $(id).innerHTML = ''; });
+  $('#cMkt').hidden = true;
   render($('#cBase'), html`<div class="empty">${raw(ICON.info)}${msg}</div>`);
   $('#eSet') && ($('#eSet').onclick = () => go('settings'));
   $('#eDemo') && ($('#eDemo').onclick = () => openStock('ACME.DEMO'));
   $('#sPats').innerHTML = '';
-}
-
-async function loadFund(sym, seq) {
-  if (!provider().fundamentals) { V.fund = { none: true }; renderCanslim(); return; }
-  V.fund = { loading: true }; renderCanslim();
-  try { const f = await fundamentals(sym); if (seq === V.seq) { V.fund = f; renderCanslim(); } }
-  catch (e) { if (seq === V.seq) { V.fund = { error: e.message }; renderCanslim(); } }
 }
 
 function status(t, cls) { $('#sStatus').textContent = t; $('#sDot').className = 'dot ' + (cls || ''); }
@@ -137,7 +174,11 @@ function chips() {
 }
 
 function chartState() {
-  return { sym: V.sym, daily: V.data.bars, bench: V.bench ? V.bench.bars : null, R: V.R, tf: prefs.tf, lines: prefs.lines, patMode: prefs.patMode, drawings: drawings(), cur: V.data.currency, pending: V.pending, poly: V.poly };
+  return {
+    sym: V.sym, daily: V.data.bars, bench: V.bench ? V.bench.bars : null, R: V.R, tf: prefs.tf, lines: prefs.lines, patMode: prefs.patMode,
+    drawings: drawings(), cur: V.data.currency, pending: V.pending, poly: V.poly, mkt: V.mkt, compare: V.cmp,
+    eps: prefs.eps !== 'off' && V.earn ? { mode: prefs.eps, points: epsPoints(V.earn, prefs.eps) } : null,
+  };
 }
 function draw(keep) {
   if (!V.data) return;
@@ -176,6 +217,20 @@ function cards() {
   const C = baseCard(V.R, d, bench, fp);
   const S = V.sig = signal(V.R, d, bench, fp, App.mkt, drawings());
   const B = C.B, tone = t => 't-' + t;
+  // earnings-date warning and extra professional numbers
+  const nx = nextReport(V.earn), n = d.length - 1;
+  if (nx) {
+    const days = Math.round((nx.time - d[n].time) / 86400);
+    if (days >= 0 && days <= 21) S.flags.unshift(['warn', `Earnings in ${days} day${days === 1 ? '' : 's'} (${fD(nx.time)}). O'Neil avoids new buys right before a report; a gap can wipe out a breakout.`]);
+  }
+  const lastQ = enrich(V.earn || []).pop();
+  if (lastQ && d[n].time - lastQ.time < 6 * 86400) S.flags.unshift([lastQ.yoy >= 0.25 ? 'bull' : lastQ.yoy < 0 ? 'bear' : 'info', `Results just in: EPS ${f2(lastQ.eps)}${lastQ.yoy != null ? ' (' + pc(lastQ.yoy, 0) + ' y/y)' : ''}${lastQ.surprise != null ? ', ' + pc(lastQ.surprise, 0) + ' vs estimate' : ''}.`]);
+  if (S.flags.length > 1) S.flags = S.flags.filter(f => f[1] !== 'Nothing new today.');
+  const ad = adGrade(d);
+  let dv = 0; for (let i = Math.max(0, n - 49); i <= n; i++) dv += d[i].close * d[i].volume; dv /= Math.min(50, n + 1);
+  S.nums.splice(7, 0, ['A/D grade, 13 weeks (approx.)', ad ? ad.grade + ' · ratio ' + ad.ratio.toFixed(2) : '—'], ['Avg daily value traded (50d)', bigNum(dv, V.data.currency)]);
+  if (nx) S.nums.push(['Next earnings', fD(nx.time)]);
+  if (V.mkt) mktCard(); else $('#cMkt').hidden = true;
   render($('#cBase'), html`
     <div class="card-head"><h2>Base pattern · O'Neil rules</h2>${B.p ? html`<span class="tag" style="color:${patColor(B.p.type)}">${PAT_LABEL[B.p.type] || ''}</span>` : ''}</div>
     <div class="row" style="justify-content:flex-start;flex-wrap:wrap"><span class="pill lg ${tone(B.tone)}">${B.st}</span><h3>${C.title}</h3></div>
@@ -193,7 +248,60 @@ function cards() {
   render($('#cFlags'), html`<h2>Flags right now</h2><ul class="flags">${S.flags.map(([l, t]) => html`<li><span class="tag ${lab[l][1]}">${lab[l][0]}</span><span>${t}</span></li>`)}</ul>`);
   render($('#cNums'), html`<h2>Key numbers</h2><div class="kv">${S.nums.map(([a, b]) => html`<div><span>${a}</span><span class="num">${b}</span></div>`)}</div>
     ${V.bench ? html`<p class="muted tiny" style="margin:0">RS line vs ${V.bench.name}.</p>` : ''}`);
-  histCard(); renderCanslim(); drawList();
+  histCard(); renderCanslim(); earnCard(); drawList();
+}
+
+const bigNum = (x, cur) => { const s = money(0, cur).replace(/[\d.,]+.*$/, ''); const a = Math.abs(x); return s + (a >= 1e9 ? (a / 1e9).toFixed(2) + 'B' : a >= 1e6 ? (a / 1e6).toFixed(1) + 'M' : (a / 1e3).toFixed(0) + 'K') + (cur === 'GBp' ? ' (pence)' : ''); };
+
+/* ---------- index status (when the chart shows a market index) ---------- */
+function mktCard() {
+  const R = V.mkt, el = $('#cMkt'); if (!R) return;
+  el.hidden = false;
+  const st = STATUS[R.state];
+  render(el, html`<div class="card-head"><h2>Market status · this index</h2><button class="btn sm" id="mkGo">Market tab</button></div>
+    <div class="row" style="justify-content:flex-start;flex-wrap:wrap"><span class="pill lg t-${st[1]}">${st[0]}</span><span class="small">Since ${fDs(R.b[R.since].time)} · ${R.hasVol ? R.dd.length + ' active distribution day' + (R.dd.length === 1 ? '' : 's') : 'no volume data'}${R.lastFtd != null ? ' · last follow-through day ' + fDs(R.b[R.lastFtd].time) : ''}${R.state === 'corr' && R.rallyDay ? ' · rally attempt day ' + R.rallyDay : ''}</span></div>
+    <p class="small" style="margin:0">${EXPOSURE[R.state]}</p>
+    <p class="muted tiny" style="margin:0">On the chart: <b style="color:var(--down)">D</b> = active distribution day (faint dots = expired ones), <b style="color:var(--up)">FTD</b> = follow-through day; the thin band at the bottom shows the status day by day (green uptrend, orange under pressure, red correction). Draw on the index like on any stock.</p>`);
+  $('#mkGo').onclick = () => go('market');
+}
+
+/* ---------- earnings (MarketSurge-style datagraph) ---------- */
+function earnCard() {
+  const el = $('#cEarn'); if (!el || !V.data) return;
+  if (V.mkt) { render(el, html`<h2>Earnings</h2><p class="muted small" style="margin:0">Indexes have no earnings line here. Use Compare to set this index against others.</p>`); return; }
+  if (!V.earn) {
+    const P = provider(), msg = V.earnErr ? V.earnErr : isDemoSym(V.sym) || P.earnings ? 'Loading earnings…' : 'Earnings come with a data provider (FMP, Twelve Data or EODHD).';
+    render(el, html`<h2>Earnings</h2><p class="muted small" style="margin:0">${msg}</p>`); return;
+  }
+  const q = enrich(V.earn), nx = nextReport(V.earn), last8 = q.slice(-8);
+  const cls = x => x == null ? '' : x >= 0.25 ? 't-ok' : x < 0 ? 't-bad' : 't-warn';
+  const ttm = q.filter(r => r.ttm != null);
+  render(el, html`<div class="card-head"><h2>Earnings · quarter by quarter</h2>${nx ? html`<span class="tag t-blue">Next report ${fDs(nx.time)}${nx.est != null ? ' · est. ' + f2(nx.est) : ''}</span>` : ''}</div>
+    ${last8.length ? html`<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Reported</th><th class="n">EPS</th><th class="n">vs yr ago</th><th class="n">vs est.</th><th class="n">Sales vs yr ago</th><th class="n">4Q EPS</th></tr></thead><tbody>
+      ${[...last8].reverse().map(r => html`<tr><td>${fDs(r.time)}${r.period ? html` <span class="muted tiny">${r.period}</span>` : ''}</td><td class="n">${f2(r.eps)}</td><td class="n ${cls(r.yoy)}">${pc(r.yoy, 0)}</td><td class="n ${r.surprise == null ? '' : r.surprise >= 0 ? 't-ok' : 't-bad'}">${pc(r.surprise, 0)}</td><td class="n ${cls(r.revYoy)}">${pc(r.revYoy, 0)}</td><td class="n">${f2(r.ttm)}</td></tr>`)}
+    </tbody></table></div>` : html`<p class="muted small" style="margin:0">No reported quarters.</p>`}
+    ${ttm.length >= 2 ? html`<p class="small" style="margin:0">4-quarter EPS ${f2(ttm[ttm.length - 1].ttm)}, ${ttm.length >= 5 ? pc(ttm[ttm.length - 1].ttm / ttm[ttm.length - 5].ttm - 1, 0) + ' vs a year ago' : ''}. On the chart, the <b style="color:var(--eps)">EPS line</b> uses the left axis; dots mark each report (green = EPS up 25%+ y/y, orange = up less, red = down).</p>` : ''}
+    <p class="muted tiny" style="margin:0">Source: ${isDemoSym(V.sym) ? 'fictional demo figures' : provider().name}. EPS as the provider reports it (usually adjusted/non-GAAP for estimates).</p>`);
+}
+
+/* ---------- news ---------- */
+const TAG_LBL = { earnings: ['Earnings', 't-ok'], analyst: ['Analyst', 't-blue'], deal: ['Deal', 't-warn'], filing: ['Filing', 't-mute'], product: ['Product', 't-blue'], other: ['News', 't-mute'] };
+function newsCard(loading) {
+  const el = $('#cNews'); if (!el) return;
+  const r = V.news, items = r ? r.items : [];
+  const shown = items.filter(x => V.newsTag === 'all' || x.tag === V.newsTag).slice(0, 25);
+  const tags = ['all', ...new Set(items.map(x => x.tag))];
+  const agoT = ms => { if (!ms) return ''; const h = (Date.now() - ms) / 36e5; return h < 1 ? Math.max(1, Math.round(h * 60)) + 'm' : h < 48 ? Math.round(h) + 'h' : Math.round(h / 24) + 'd'; };
+  render(el, html`<div class="card-head"><h2>News</h2><div class="toolbar">${loading ? html`<span class="spinner" aria-label="Checking for news"></span>` : ''}<button class="btn sm" id="nRef" aria-label="Check for new headlines">${raw(ICON.refresh)}</button></div></div>
+    ${items.length > 3 ? html`<div class="chips">${tags.map(t => html`<button class="chip${V.newsTag === t ? ' on' : ''}" data-tag="${t}">${t === 'all' ? 'All' : TAG_LBL[t][0]}</button>`)}</div>` : ''}
+    ${shown.length ? html`<div class="news-list">${shown.map(x => {
+      const isNew = V.newsSeen && x.date && x.date > V.newsSeen;
+      const body = html`<span class="nt">${isNew ? html`<span class="new">NEW</span> ` : ''}${x.title}</span><span class="nm"><span class="tag ${TAG_LBL[x.tag] ? TAG_LBL[x.tag][1] : 't-mute'}">${TAG_LBL[x.tag] ? TAG_LBL[x.tag][0] : 'News'}</span>${x.source || x.domain}${x.date ? ' · ' + agoT(x.date) : ''}${x.paywalled ? ' · may need a subscription' : ''}</span>`;
+      return x.link ? html`<a class="news-item" href="${x.link}" target="_blank" rel="noopener">${body}</a>` : html`<div class="news-item">${body}</div>`;
+    })}</div>` : html`<p class="muted small" style="margin:0">${loading ? 'Checking the news sources…' : r && r.browserBlocked ? 'News feeds load in the iPhone, iPad and Mac app. Web browsers block these feeds for security (CORS).' : 'No recent headlines from the enabled sources.'}</p>`}
+    <p class="muted tiny" style="margin:0">${r && r.demo ? 'Example headlines for a fictional company.' : `Checked ${r ? ago(r.at) : '…'} from ${Object.entries(newsSettings().sources).filter(([, v]) => v).length} free sources${newsSettings().hidePaywalled ? ', paywalled sites hidden' : ''}${r && r.errors && r.errors.length && !r.browserBlocked ? ` · not reachable now: ${r.errors.join(', ')}` : ''}. Headlines link to the original site.`}</p>`);
+  $('#nRef').onclick = () => loadNews(V.sym, V.seq);
+  $$('[data-tag]', el).forEach(b => { b.onclick = () => { V.newsTag = b.dataset.tag; newsCard(false); }; });
 }
 
 function histCard() {
@@ -219,30 +327,16 @@ function histCard() {
 }
 
 /* ---------- CAN SLIM ---------- */
-function growth(a, b) { return a == null || b == null || !isFinite(a) || !isFinite(b) || b <= 0 ? null : (a - b) / b; }
 function renderCanslim() {
   const el = $('#cCanslim'); if (!el || !V.sig) return;
-  const f = V.fund, cs = V.sig.canslim;
-  let C = ['na', 'Needs earnings data.'], A = ['na', 'Needs earnings data.'], rows = [];
-  if (f && f.quarters && f.quarters.length >= 5) {
-    const q = f.quarters, n = q.length - 1;
-    const eg = growth(q[n].eps, q[n - 4].eps), sg = growth(q[n].revenue, q[n - 4].revenue);
-    C = [eg == null ? 'na' : eg >= 0.25 ? 'pass' : eg >= 0 ? 'mid' : 'fail', `Latest quarter EPS ${eg == null ? 'n/a' : pc(eg, 0)} vs a year ago; sales ${sg == null ? 'n/a' : pc(sg, 0)}. O'Neil wants +25% or more.`];
-    rows = q.map((x, j) => [x.period || x.date, x.eps, growth(x.eps, q[j - 4]?.eps), x.revenue, growth(x.revenue, q[j - 4]?.revenue)]).slice(-4);
-  }
-  if (f && f.annual && f.annual.length >= 4) {
-    const y = f.annual, n = y.length - 1, a = y[n].eps, b = y[n - 3].eps;
-    const cagr = a > 0 && b > 0 ? Math.pow(a / b, 1 / 3) - 1 : null;
-    A = [cagr == null ? 'na' : cagr >= 0.25 ? 'pass' : cagr >= 0.1 ? 'mid' : 'fail', `3-year EPS growth ${cagr == null ? 'n/a' : pc(cagr, 0) + ' a year'}. O'Neil wants 25%+ a year.`];
-  }
-  const L = [['C', 'Quarter EPS', C], ['A', 'Annual EPS', A], ['N', 'New high', cs.N], ['S', 'Demand', cs.S], ['L', 'Leader', cs.L], ['I', 'Funds', ['na', 'Not scored: needs fund-ownership data.']], ['M', 'Market', cs.M]];
-  const fundNote = !f ? '' : f.none ? 'Earnings data (C and A) comes with the FMP provider.' : f.loading ? 'Loading earnings…' : f.error ? f.error : f.source || '';
+  const cs = V.sig.canslim, ca = V.earn ? canslimCA(V.earn) : null;
+  const na = V.mkt ? ['na', 'Not used for an index.'] : ['na', V.earnErr || (provider().earnings || isDemoSym(V.sym) ? 'Loading earnings…' : 'Needs earnings from a data provider.')];
+  const L = [['C', 'Quarter EPS', ca ? ca.C : na], ['A', 'Annual EPS', ca ? ca.A : na], ['N', 'New high', cs.N], ['S', 'Demand', cs.S], ['L', 'Leader', cs.L], ['I', 'Funds', ['na', 'Not scored: needs fund-ownership data.']], ['M', 'Market', cs.M]];
   render(el, html`
     <div class="card-head"><h2>CAN SLIM checklist</h2><span class="muted tiny">Tap a letter for details</span></div>
     <div class="canslim">${L.map(([k, nm, [st, why]]) => html`<div class="cs ${st}" title="${why}" tabindex="0" data-why="${k}: ${why}"><b>${k}</b><span>${nm}</span></div>`)}</div>
-    ${rows.length ? html`<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Quarter</th><th class="n">EPS</th><th class="n">vs yr ago</th><th class="n">Sales</th><th class="n">vs yr ago</th></tr></thead><tbody>
-      ${rows.map(r => html`<tr><td>${r[0]}</td><td class="n">${f2(r[1])}</td><td class="n ${r[2] >= 0.25 ? 't-ok' : r[2] < 0 ? 't-bad' : ''}">${pc(r[2], 0)}</td><td class="n">${r[3] ? (r[3] / 1e9).toFixed(2) + 'B' : '—'}</td><td class="n ${r[4] >= 0.2 ? 't-ok' : r[4] < 0 ? 't-bad' : ''}">${pc(r[4], 0)}</td></tr>`)}</tbody></table></div>` : ''}
-    <p class="muted tiny" style="margin:0" id="csWhy">${fundNote}</p>`);
+    <p class="small" style="margin:0" id="csWhy">${L.filter(x => x[2][0] !== 'na').length}/7 letters scored. ${L.filter(x => x[2][0] === 'pass').map(x => x[0]).join(' ') || 'None'} pass.</p>
+    <p class="muted tiny" style="margin:0">Green = meets O'Neil's threshold, orange = close, red = fails. A checklist, not a rating.</p>`);
   $$('.cs', el).forEach(x => { const show = () => { $('#csWhy').textContent = x.dataset.why; }; x.onclick = show; x.onfocus = show; });
 }
 
@@ -303,6 +397,27 @@ function openMenu(id) {
     if (id === 'pLines') render(p, html`${LINE_DEFS.map(([k, l, c, w]) => html`<label><input type="checkbox" data-line="${k}" ${prefs.lines[k] ? raw('checked') : ''}><span class="sw" style="background:var(${c})"></span>${prefs.tf === 'W' && w ? w : l}</label>`)}<hr>
       <label><input type="checkbox" data-pane="rsi" ${prefs.panes.rsi ? raw('checked') : ''}>RSI pane</label><label><input type="checkbox" data-pane="macd" ${prefs.panes.macd ? raw('checked') : ''}>MACD pane</label><hr>
       <button data-style="candles" class="${prefs.style === 'candles' ? 'on' : ''}">Candles</button><button data-style="bars" class="${prefs.style === 'bars' ? 'on' : ''}">OHLC bars</button>`);
+    if (id === 'pCmp') {
+      const opts = compareOptions(V.sym), g = group(V.sym), sel = prefs.cmp[g] || [], rs = prefs.rsBench[g] || defaultBenchmark(V.sym);
+      const custom = sel.filter(x => !opts.some(o => o.id === x));
+      const grp = [...new Set(opts.map(o => o.group))];
+      render(p, html`<div class="menu-title">Plot against (up to 3)</div>
+        ${grp.map(gr => html`${grp.length > 1 ? html`<div class="menu-sub">${gr}</div>` : ''}${opts.filter(o => o.group === gr).map(o => html`<label><input type="checkbox" data-cmp="${o.id}" ${sel.includes(o.id) ? raw('checked') : ''}>${sel.includes(o.id) ? html`<span class="sw" style="background:var(${CMP_COLORS[sel.indexOf(o.id) % 3]})"></span>` : ''}${o.name}</label>`)}`)}
+        ${custom.map(t => html`<label><input type="checkbox" data-cmp="${t}" checked>${t}</label>`)}
+        <form class="menu-form" id="cmpForm"><input class="input" id="cmpIn" placeholder="Other ticker, e.g. SMH or ^GDAXI" autocapitalize="characters" autocomplete="off" spellcheck="false"><button class="btn sm" type="submit">Add</button></form>
+        <hr><div class="menu-title">RS line measured against</div>
+        <select class="input" id="rsSel" style="margin:2px 8px 6px;width:calc(100% - 16px)">${opts.filter(o => o.group === 'Indexes').map(o => html`<option value="${o.id}" ${o.id === rs ? raw('selected') : ''}>${o.name}</option>`)}</select>
+        <p class="muted tiny" style="margin:0 10px 6px">Lines are rebased to the stock's price at the left edge of the chart, so you compare performance over the period you see. Index data needs a plan that includes it; otherwise a tracking ETF is used.</p>`);
+      const setSel = list => { prefs.cmp[g] = list.slice(0, 3); savePrefs(); loadCompare(V.sym, V.seq); openMenu('pCmp'); openMenu('pCmp'); };
+      $$('[data-cmp]', p).forEach(x => { x.onchange = () => { const l = (prefs.cmp[g] || []).filter(v => v !== x.dataset.cmp); if (x.checked) { if (l.length >= 3) { toast('Up to three comparisons at a time.'); x.checked = false; return; } l.push(x.dataset.cmp); } setSel(l); }; });
+      $('#cmpForm', p).onsubmit = e => { e.preventDefault(); const t = $('#cmpIn', p).value.toUpperCase().trim().replace(/[^A-Z0-9.\-^]/g, ''); if (!t) return; const l = (prefs.cmp[g] || []).filter(v => v !== t); if (l.length >= 3) { toast('Up to three comparisons at a time.'); return; } setSel([...l, t]); };
+      $('#rsSel', p).onchange = async () => { prefs.rsBench[g] = $('#rsSel', p).value; savePrefs(); V.bench = await benchmarkFor(V.sym, prefs.rsBench[g]).catch(() => V.bench); draw(true); cards(); toast('RS line now measured against ' + (V.bench ? V.bench.name : 'the index') + '.'); };
+    }
+    if (id === 'pEps') {
+      render(p, html`${[['ttm', '4-quarter EPS line (like MarketSurge)'], ['q', 'Quarterly EPS'], ['off', 'Hide EPS line']].map(([k, l]) => html`<button data-eps="${k}" class="${prefs.eps === k ? 'on' : ''}">${l}</button>`)}
+        <p class="muted tiny" style="margin:4px 10px 6px">Smooth line on the left axis; a dot marks each report: <b style="color:var(--up)">●</b> EPS up 25%+ y/y, <b style="color:var(--warn)">●</b> up less, <b style="color:var(--down)">●</b> down. ${V.earn ? '' : V.earnErr || 'Earnings data not loaded yet.'}</p>`);
+      $$('[data-eps]', p).forEach(x => { x.onclick = () => { prefs.eps = x.dataset.eps; savePrefs(); draw(true); p.hidden = true; }; });
+    }
     if (id === 'pPat') render(p, html`${[['all', 'Current + all past patterns'], ['cur', 'Current base only'], ['off', 'Hide patterns']].map(([k, l]) => html`<button data-pm="${k}" class="${prefs.patMode === k ? 'on' : ''}">${l}</button>`)}<hr>
       <div class="pat-legend" style="padding:6px 10px">${Object.entries(PAT_LABEL).map(([k, l]) => html`<span><i style="background:${patColor(k)}"></i>${l}</span>`)}</div>`);
     if (id === 'pDraw') render(p, html`${[['trend', 'Trend line'], ['hline', 'Level'], ['zone', 'Zone'], ['cup', 'Cup ◡ (your own base)'], ['note', 'Note']].map(([k, l]) => html`<button data-tool="${k}">${l}</button>`)}<hr><button data-undo>Undo last drawing</button>`);
@@ -319,6 +434,8 @@ function wireTools() {
   $$('[data-tf]').forEach(b => { b.onclick = () => { prefs.tf = b.dataset.tf; savePrefs(); draw(false); }; });
   $('#mLines').onclick = e => { e.stopPropagation(); openMenu('pLines'); };
   $('#mPat').onclick = e => { e.stopPropagation(); openMenu('pPat'); };
+  $('#mCmp').onclick = e => { e.stopPropagation(); openMenu('pCmp'); };
+  $('#mEps').onclick = e => { e.stopPropagation(); openMenu('pEps'); };
   $('#mDraw').onclick = e => { e.stopPropagation(); openMenu('pDraw'); };
   $$('.menu-pop').forEach(p => p.addEventListener('click', e => e.stopPropagation()));
   document.addEventListener('click', () => $$('.menu-pop').forEach(p => { p.hidden = true; }));

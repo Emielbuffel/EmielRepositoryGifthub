@@ -15,6 +15,7 @@ Your watchlists, portfolio holdings, chart drawings, settings, data-provider API
 ## Network requests
 
 - In **demo mode** the app makes no network requests.
+- **News:** to show headlines, the app requests public news feeds directly from your device: Yahoo Finance, Nasdaq.com, Google News, SEC EDGAR and any feeds you add yourself. A request contains the ticker or company name you are viewing. It contains no API key and no personal data. You can switch each source off in Settings.
 - If you choose a market-data provider (Financial Modeling Prep, Twelve Data or EODHD), the app sends requests **directly from your device to that provider**. A request contains the ticker symbols you view or scan and your API key. Those requests are covered by that provider's own privacy policy and terms, published on its website (financialmodelingprep.com, twelvedata.com or eodhd.com).
 - Links you tap (for example to a provider's website) open in your browser.
 

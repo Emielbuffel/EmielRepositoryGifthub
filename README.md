@@ -10,8 +10,8 @@ This is a standalone rebuild of the "Base Pattern Desk" claude.ai artifact. That
 
 | Tab | What it does |
 |---|---|
-| **Chart** | Daily/weekly candles, 10/21/50/200-day lines, RS line, volume, RSI and MACD. Every detected base is drawn in its own colour, both the current base and every past one (with its outcome). A strip under the chart lists them all; tap one to jump to it. Also: base card with buy point and plan, signal + 11-point checklist, CAN SLIM, flags, key numbers, base history, and your own drawings (trend line, level, zone, your own cup, note). |
-| **Market** | Nasdaq, S&P 500, Dow and Euro Stoxx 50 with distribution days (D), follow-through days (FTD), the market status and IBD's exposure guideline. |
+| **Chart** | **EPS line** (4-quarter or quarterly, smooth, a dot per report coloured by y/y growth). **Compare** with the home index (S&P 500, Nasdaq, Nikkei 225, DAX, Euro Stoxx 50, FTSE 100, KOSPI…), MSCI World or a US sector ETF, rebased to the left edge; the RS line can use any of these indexes. Earnings table with surprises and the next report date, CAN SLIM, A/D grade, liquidity, and **news** from free sources, refreshed every time you open a stock. Daily/weekly candles, 10/21/50/200-day lines, RS line, volume, RSI and MACD. Every detected base is drawn in its own colour, both the current base and every past one (with its outcome). A strip under the chart lists them all; tap one to jump to it. Also: base card with buy point and plan, signal + 11-point checklist, CAN SLIM, flags, key numbers, base history, and your own drawings (trend line, level, zone, your own cup, note). |
+| **Market** | Nasdaq, S&P 500, Dow and Euro Stoxx 50 with distribution days (D), follow-through days (FTD), a day-by-day status ribbon, base patterns on the indexes, a list of every distribution day in the count, market headlines and IBD's exposure guideline. "Analyse & draw" opens an index in the full chart, where you can draw and see all its patterns. |
 | **Screener** | Scans your watchlist, portfolio, a US large-cap list or your own list: breakouts, stocks near a buy point, volume surges, sell signals, an RS rank, sortable columns and sparklines. |
 | **Portfolio** | Enter your holdings. You get value, gain/loss, O'Neil sell signals (7–8% stop, 50/200-day breaks, failed breakouts), volatility, beta and downside beta, risk contribution, a correlation heatmap and a stress replay. |
 | **Learn** | All eight bases with diagrams, rules and a live example of each, plus buy/sell rules and CAN SLIM. |
@@ -24,6 +24,9 @@ This is a standalone rebuild of the "Base Pattern Desk" claude.ai artifact. That
 - **Real data:** bring your own API key from [Financial Modeling Prep](https://site.financialmodelingprep.com/developer/docs), [Twelve Data](https://twelvedata.com/docs) or [EODHD](https://eodhd.com/financial-apis/). The key stays on the device. Free plans mostly cover US stocks; international listings need paid plans.
 - Tickers use Yahoo-style suffixes: `AAPL`, `ASML.AS`, `VOD.L`, `7203.T`, `005930.KS`.
 - Prices are cached on the device for 3 hours, and later updates only fetch the new days.
+- **Earnings:** FMP (`earnings`, falling back to quarterly income statements), Twelve Data (`earnings`), EODHD (earnings calendar). Coverage depends on the plan.
+- **Indexes:** the real index when the plan includes it (FMP `^GSPC`-style symbols, EODHD `.INDX`), otherwise a US-listed ETF that tracks it (SPY, QQQ, EWJ, EWG, FEZ…; non-US ETFs are priced in USD and labelled as such).
+- **News** comes straight from free public feeds on the device: Yahoo Finance, Nasdaq.com, Google News, SEC EDGAR, plus FMP/EODHD news when the plan includes it, and your own RSS feeds. Paywalled sites are hidden by default. Browsers block these feeds (CORS), so news shows in the iOS/Mac app, not in `npm run dev`. Set `SEC_CONTACT` in `src/data/news.js` to your support e-mail before release (the SEC asks automated tools to identify themselves).
 
 ## Develop
 

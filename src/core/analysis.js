@@ -122,7 +122,7 @@ export function signal(R, d, bench, fp, mkt, drawings = []) {
     }
     return null;
   };
-  const ago = x => x ? x + ' sessions ago' : 'today';
+  const ago = x => x ? x + (x === 1 ? ' session ago' : ' sessions ago') : 'today';
   if (B.bo && n - B.p.bo <= 2) add(B.p.volRatio >= 1.4 ? 'bull' : 'warn', `Broke out of a ${B.p.name.toLowerCase()} ${ago(n - B.p.bo)} on volume ${pc(B.p.volRatio - 1, 0)} vs average.`);
   if (B.p && B.p.pivot && !B.bo && B.dist >= -0.03) add('info', `Within ${(Math.abs(B.dist) * 100).toFixed(1)}% of the buy point ${fp(B.p.pivot)}.`);
   if (R.last && R.last.failed && n - R.last.failed <= 10) add('bear', `Failed breakout: closed back under the ${fp(R.last.pivot)} buy point ${ago(n - R.last.failed)}.`);

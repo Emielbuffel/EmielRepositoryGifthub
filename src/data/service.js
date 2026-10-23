@@ -1,5 +1,5 @@
 // Loads prices through the chosen provider with an on-device cache and incremental updates.
-import { PROVIDERS, MARKET, DataError, splitSym, currencyOf, DEMO_BENCH } from './providers.js';
+import { PROVIDERS, MARKET, INDEXES, SECTORS, indexesFor, DataError, splitSym, currencyOf } from './providers.js';
 import * as store from './store.js';
 
 export const settings = { provider: 'demo', keys: {} };
@@ -49,46 +49,74 @@ export async function daily(sym, { force = false } = {}) {
   }
 }
 
-/* ---------- benchmark for the RS line ---------- */
-const HOME_INDEX = { KS: 'KS11', KQ: 'KQ11', T: 'N225', HK: 'HSI', AS: 'AEX', PA: 'FCHI', DE: 'GDAXI', MC: 'IBEX', L: 'FTSE', SW: 'SSMI', ST: 'OMXS30', BR: 'BFX', MI: 'STOXX50E', HE: 'STOXX50E', LS: 'STOXX50E', VI: 'STOXX50E' };
-const INDEX_NAMES = { KS11: 'KOSPI', KQ11: 'KOSDAQ', N225: 'Nikkei 225', HSI: 'Hang Seng', AEX: 'AEX', FCHI: 'CAC 40', GDAXI: 'DAX', IBEX: 'IBEX 35', FTSE: 'FTSE 100', SSMI: 'SMI', OMXS30: 'OMX Stockholm 30', BFX: 'BEL 20', STOXX50E: 'Euro Stoxx 50' };
+/* ---------- indexes for the RS line, comparisons and the Market tab ---------- */
+const DEMO_IDX = { GSPC: 'DEMO-500', IXIC: 'DEMO-COMP' };
 
-export async function benchmarkFor(sym) {
-  const P = provider();
-  if (P.id === 'demo' || isDemoSym(sym)) { const d = await daily(DEMO_BENCH); return { name: d.name, bars: d.bars }; }
-  const { sfx } = splitSym(sym);
-  const home = HOME_INDEX[sfx];
-  if (home && P.indexSym) {
-    try { const d = await daily(P.indexSym(home)); return { name: INDEX_NAMES[home], bars: d.bars }; } catch (e) { /* fall back to the S&P 500 */ }
+/** Comparison choices for a ticker: [{id, name, group}]. id is an index key (e.g. 'GSPC'), 'S:XLK' for a sector ETF, or a ticker. */
+export function compareOptions(sym) {
+  if (isDemo() || isDemoSym(sym)) return [{ id: 'GSPC', name: 'Demo 500 (fictional)', group: 'Indexes' }, { id: 'IXIC', name: 'Demo Composite (fictional)', group: 'Indexes' }];
+  const out = indexesFor(sym).map(k => ({ id: k, name: INDEXES[k].name, group: 'Indexes' }));
+  if (!splitSym(sym).sfx) Object.entries(SECTORS).forEach(([t, n]) => out.push({ id: 'S:' + t, name: n + ' (' + t + ')', group: 'US sectors' }));
+  return out;
+}
+export const defaultBenchmark = sym => compareOptions(sym)[0].id;
+
+/**
+ * Daily bars for an index key, sector ('S:XLK') or plain ticker. Tries the real index on the user's plan,
+ * then a US-listed ETF that tracks it. Returns {id, name, bars, sym, proxy, note}.
+ */
+export async function indexSeries(id, demo = isDemo()) {
+  if (demo) { const s = DEMO_IDX[id] || 'DEMO-500'; const d = await daily(s); return { id, name: d.name, bars: d.bars, sym: s, proxy: false }; }
+  if (id.startsWith('S:')) { const t = id.slice(2), d = await daily(t); return { id, name: SECTORS[t] + ' ETF (' + t + ')', bars: d.bars, sym: t, proxy: false }; }
+  const ix = INDEXES[id];
+  if (!ix) { const d = await daily(id); return { id, name: d.name || id, bars: d.bars, sym: id, proxy: false }; }
+  const P = provider(); let err = null;
+  const real = P.indexSym && P.indexSym(id);
+  if (real) { try { const d = await daily(real); return { id, name: ix.name, bars: d.bars, sym: real, proxy: false }; } catch (e) { err = e; } }
+  if (ix.etf) {
+    const d = await daily(ix.etf);
+    const usd = !['GSPC', 'IXIC', 'NDX', 'DJI', 'RUT', 'SOX', 'WORLD'].includes(id);
+    return { id, name: `${ix.name} (${ix.etf} ETF${usd ? ', in USD' : ''})`, bars: d.bars, sym: ix.etf, proxy: true };
   }
-  const d = await daily('SPY');
-  return { name: home ? 'S&P 500 ETF (SPY, in USD: no home index on this plan)' : 'S&P 500 (SPY)', bars: d.bars };
+  throw err || new DataError('No data for the ' + ix.name + ' on this plan.', 'plan');
+}
+
+/** Benchmark for the RS line: the chosen index, falling back to the S&P 500. */
+export async function benchmarkFor(sym, id) {
+  const demo = isDemo() || isDemoSym(sym);
+  try { return await indexSeries(id || defaultBenchmark(sym), demo); }
+  catch (e) { return indexSeries('GSPC', demo); }
 }
 
 /* ---------- market indexes ---------- */
 export async function marketSeries() {
-  const P = provider(), out = [];
-  if (P.id === 'demo') {
-    for (const [k, s] of [['IXIC', 'DEMO-COMP'], ['GSPC', 'DEMO-500']]) { const d = await daily(s); out.push({ k, name: d.name, region: 'US', bars: d.bars, proxy: false }); }
-    return out;
-  }
-  for (const m of MARKET) {
-    let d = null, proxy = false, err = null;
-    if (P.indexSym) { try { d = await daily(P.indexSym(m.k)); } catch (e) { err = e; } }
-    if (!d) { try { d = await daily(m.etf); proxy = true; } catch (e) { err = e; } }
-    out.push(d ? { k: m.k, name: proxy ? m.etfName : m.name, region: m.region, bars: d.bars, proxy } : { k: m.k, name: m.name, region: m.region, error: err });
+  const out = [];
+  const list = isDemo() ? [{ k: 'IXIC', region: 'US' }, { k: 'GSPC', region: 'US' }] : MARKET;
+  for (const m of list) {
+    try { const d = await indexSeries(m.k); out.push({ k: m.k, region: m.region, ...d }); }
+    catch (e) { out.push({ k: m.k, name: INDEXES[m.k].name, region: m.region, error: e }); }
   }
   return out;
 }
 
-/* ---------- fundamentals (FMP only) ---------- */
-export async function fundamentals(sym) {
-  const P = provider();
-  if (!P.fundamentals) return null;
-  const ck = 'fund:' + P.id + ':' + sym, c = await store.cacheGet(ck);
-  if (c && Date.now() - c.fetchedAt < 24 * 3600e3) return c;
-  const f = await P.fundamentals(sym, key());
-  const doc = { ...f, fetchedAt: Date.now() }; await store.cacheSet(ck, doc); return doc;
+/** Symbols the Market tab and the Chart tab treat as a market index (for D-day / FTD markers). */
+export function isIndexSym(sym) {
+  if (/^DEMO-/.test(sym) || sym.startsWith('^') || sym.endsWith('.INDX')) return true;
+  return Object.values(INDEXES).some(x => x.etf === sym || x.fmp === sym);
+}
+
+/* ---------- earnings ---------- */
+export async function earnings(sym) {
+  const P = isDemoSym(sym) ? PROVIDERS.demo : provider();
+  if (!P.earnings) return null;
+  if (P.needsKey && !key()) return null;
+  if (P.id === 'demo') return P.earnings(sym);
+  const ck = 'earn:' + P.id + ':' + sym, c = await store.cacheGet(ck);
+  if (c && Date.now() - c.fetchedAt < 12 * 3600e3) return c.rows;
+  try {
+    const rows = (await P.earnings(sym, key())).filter(r => isFinite(r.time)).sort((a, b) => a.time - b.time);
+    await store.cacheSet(ck, { rows, fetchedAt: Date.now() }); return rows;
+  } catch (e) { if (c) return c.rows; throw e; }
 }
 
 /** FX as a Map(weekKey -> base units per 1 unit of `cur`), a fixed number, or null when cur is the base. */

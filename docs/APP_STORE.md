@@ -35,7 +35,7 @@ A native Mac Catalyst build (Xcode → target → *General* → *Supported Desti
 | Category | Finance (secondary: Education) |
 | Age rating | 4+; no objectionable content. Answer "No" to gambling, contests and unrestricted web access. |
 | Price | Your choice (free, or paid up front). Don't add in-app purchases without updating the app. |
-| **App Privacy ("nutrition label")** | **Data Not Collected.** The app has no analytics, no account and no tracking. Prices are fetched from the provider the user picks, with the user's own key. |
+| **App Privacy ("nutrition label")** | **Data Not Collected.** The app has no analytics, no account and no tracking. Prices are fetched from the provider the user picks, with the user's own key. News feeds are requested directly from the device, with only the ticker or company name. |
 | Encryption (export compliance) | Uses only standard HTTPS. `ITSAppUsesNonExemptEncryption = NO` is already in Info.plist. |
 | Content rights | The app shows data that users fetch with their own provider accounts. It bundles no third-party market data; the demo data is synthetic. |
 | Sign-in required? | No |
@@ -60,6 +60,16 @@ PATTERNS, DRAWN FOR YOU
 • Each pattern in its own colour, current and past, with the outcome of every breakout
 • Buy point, 5% buy zone, 7–8% stop and profit targets
 • Faulty bases (too short, V-shaped, loose handle) are flagged, not hidden
+
+PRO CHARTING
+• Smooth 4-quarter EPS line with a dot at every report, coloured by year-over-year growth
+• Compare with the S&P 500, Nasdaq, Nikkei 225, DAX, Euro Stoxx 50, FTSE 100, KOSPI and more, or a sector ETF
+• RS line against the index of your choice, with a dot at new highs
+• Earnings table with surprises and the next report date
+
+NEWS, ALWAYS FRESH
+• Headlines from free sources and official SEC filings, checked every time you open a stock
+• Paywalled sites filtered out; add your own RSS feeds
 
 A CHECKLIST, NOT A GUESS
 • Signal with an 11-point O'Neil checklist
@@ -99,5 +109,6 @@ Apple requires screenshots that show the real app. These come from the actual bu
 1. **Guideline 5.1.1(ix): regulated fields.** Apple says apps "in highly regulated fields (such as banking and financial services…)" should come from a legal entity, not an individual. The guideline aims at apps that *provide* financial services. This app provides none: no trading, no accounts, no advice. Developer-forum reports show reviewers sometimes apply it to finance-related apps anyway. **Lower the risk:** enroll as an organization if you can. Keep the "educational, not advice" wording, and the review note above, which explains that no financial service is provided.
 2. **Guideline 3.2.1(viii):** apps "used for financial trading, investing, or money management" should come from the financial institution. This app doesn't execute trades or manage money; it's an analysis and education tool. The review note says so.
 3. **Guideline 5.2.2: third-party data.** The app doesn't bundle or resell market data. Users fetch it with their own accounts, under each provider's terms. The old artifact used unofficial Naver/onvista endpoints. They were removed on purpose, because a published app would need permission to use them.
-4. **Guideline 4.2: minimum functionality.** The app runs fully offline in demo mode, bundles all its code (no remote website) and has native-style navigation. That's well beyond "a repackaged website".
-5. **Not verified here:** the build was produced on Linux. Xcode compiling, signing and running on devices still needs to be done on a Mac. The live provider APIs couldn't be called from the build machine (network policy), so the parsers are tested against the documented response formats. Test each provider with a real key before you submit.
+4. **News feeds (also guideline 5.2.2).** The app reads public RSS feeds on the user's device and shows only headline, source and a link to the original article, like an RSS reader. It doesn't copy article text or host anything. Some feed owners say their feeds are for personal, non-commercial use: Google News did in older terms, and Yahoo has been removing feeds. The safest sources are SEC EDGAR (public government data) and the news APIs in the user's own FMP/EODHD plan. Every source has its own switch in Settings. If you charge for the app and want to be careful, switch Google News and Yahoo off by default (`newsSettings()` in `src/data/news.js`), or ask those services for permission. Set `SEC_CONTACT` in `src/data/news.js` to your support e-mail.
+5. **Guideline 4.2: minimum functionality.** The app runs fully offline in demo mode, bundles all its code (no remote website) and has native-style navigation. That's well beyond "a repackaged website".
+6. **Not verified here:** the build was produced on Linux. Xcode compiling, signing and running on devices still needs to be done on a Mac. The live provider APIs couldn't be called from the build machine (network policy), so the parsers are tested against the documented response formats. Test each provider with a real key before you submit.

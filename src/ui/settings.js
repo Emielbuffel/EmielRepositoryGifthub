@@ -3,6 +3,7 @@ import { PROVIDERS } from '../data/providers.js';
 import { settings, saveSettings, daily, provider } from '../data/service.js';
 import * as store from '../data/store.js';
 import { App, emit, loadState } from '../app.js';
+import { NEWS_SOURCES, newsSettings } from '../data/news.js';
 import { $, $$, html, raw, render, toast } from './dom.js';
 
 export const VERSION = '1.0.0';
@@ -18,6 +19,13 @@ export async function initSettings(el) {
       <div id="stKey"></div>
     </section>
     <section class="card">
+      <h2>News sources</h2>
+      <p class="small" style="margin:0">The app checks these free sources every time you open a stock or the Market tab. Only headlines and links are shown; articles open on the publisher's site.</p>
+      <div class="list" id="stNews">${Object.entries(NEWS_SOURCES).map(([k, x]) => html`<label class="row" style="cursor:pointer"><span><b class="small">${x.name}</b><br><span class="muted tiny">${x.about}</span></span><input type="checkbox" class="switch" data-src="${k}" ${newsSettings().sources[k] ? raw('checked') : ''}></label>`)}
+        <label class="row" style="cursor:pointer"><span><b class="small">Hide paywalled sites</b><br><span class="muted tiny">Skips sites that usually need a subscription (WSJ, FT, Bloomberg, Barron's…).</span></span><input type="checkbox" class="switch" id="stPw" ${newsSettings().hidePaywalled ? raw('checked') : ''}></label></div>
+      <label class="field"><span>Your own RSS feeds (one per line, https only; {SYMBOL} is replaced by the ticker)</span><textarea class="input" id="stFeeds" rows="2" placeholder="https://example.com/rss?s={SYMBOL}" autocapitalize="off" spellcheck="false">${newsSettings().custom.join('\n')}</textarea></label>
+    </section>
+    <section class="card">
       <h2>Appearance</h2>
       <div class="seg" role="group" aria-label="Appearance">${[['system', 'Automatic'], ['light', 'Light'], ['dark', 'Dark']].map(([k, l]) => html`<button data-theme="${k}" class="${theme === k ? 'on' : ''}">${l}</button>`)}</div>
     </section>
@@ -30,7 +38,7 @@ export async function initSettings(el) {
       <h2>Privacy</h2>
       <div class="prose small">
         <p><b>Base Pattern Desk collects no data.</b> There is no account, no analytics, no tracking and no advertising. Your watchlist, holdings, drawings and API key stay on this device.</p>
-        <p>To load prices, the app sends the tickers you look at, with your API key, directly to the data provider you chose. That provider's own privacy policy applies to those requests. In demo mode the app makes no network requests at all.</p>
+        <p>To load prices, the app sends the tickers you look at, with your API key, directly to the data provider you chose. To check news, it requests public feeds (for example Yahoo Finance, Nasdaq.com, Google News, SEC EDGAR) with the ticker or company name, but no key or personal data. Each provider's own privacy policy applies. In demo mode the app makes no network requests at all.</p>
       </div>
     </section>
     <section class="card">
@@ -53,6 +61,14 @@ export async function initSettings(el) {
   $$('[data-theme]', el).forEach(b => {
     b.onclick = async () => { await store.set('theme', b.dataset.theme); applyTheme(b.dataset.theme); $$('[data-theme]', el).forEach(x => x.classList.toggle('on', x === b)); };
   });
+  const saveNews = async () => {
+    const n = newsSettings();
+    $$('[data-src]', el).forEach(c => { n.sources[c.dataset.src] = c.checked; });
+    n.hidePaywalled = $('#stPw').checked;
+    n.custom = $('#stFeeds').value.split(/\n+/).map(x => x.trim()).filter(x => /^https:\/\/\S+$/.test(x)).slice(0, 10);
+    settings.news = n; await saveSettings();
+  };
+  $$('[data-src]', el).forEach(c => { c.onchange = saveNews; }); $('#stPw').onchange = saveNews; $('#stFeeds').onchange = saveNews;
   $('#stClear').onclick = async () => { await store.cacheClear(); toast('Price cache cleared.'); };
   $('#stReset').onclick = async () => {
     if (!confirm('Erase your watchlists, holdings, drawings, API keys and cached prices from this device?')) return;

@@ -42,6 +42,8 @@ export function initLearn(el) {
       <div class="prose">
         <p>William O'Neil studied the biggest stock winners and found that most broke out of a few recurring <b>bases</b>: periods of sideways consolidation after an advance. The app's detector finds these bases in the daily prices, marks the <b>buy point</b> (the pivot, +10¢), and checks the rules O'Neil wrote down: length, depth, shape, volume, the prior uptrend and the base stage.</p>
         <p>On the chart, <b>every pattern has its own colour</b>. Solid lines are sound bases; dashed lines are failed breakouts or alternative readings. The strip under the chart lists every pattern found, newest first. Tap one to jump to it.</p>
+        <p><b>EPS line:</b> the 4-quarter (trailing 12-month) earnings per share as a smooth line on the left axis, with a dot at each report: green when EPS rose 25%+ from a year earlier, orange when it rose less, red when it fell. Price running ahead of a flat EPS line is a warning; price and EPS rising together is what O'Neil looked for.</p>
+        <p><b>Compare:</b> plot the stock against its home index (S&amp;P 500 or Nasdaq for US stocks, Nikkei 225 for Tokyo, DAX or Euro Stoxx 50 for Germany…), a world index or a US sector ETF. The lines start at the same point at the left edge of the chart, so you see who outperformed over the period on screen. The RS line can be measured against any of these indexes.</p>
       </div>
     </section>
     <div class="section-title" style="margin-top:4px">The eight bases</div>

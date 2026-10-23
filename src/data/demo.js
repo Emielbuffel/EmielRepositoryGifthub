@@ -105,3 +105,40 @@ export function demoBars(sym) {
 
 export const DEMO_INDEXES = INDEX.map(x => ({ sym: x.sym, name: x.name }));
 export const DEMO_BENCH = 'DEMO-500';
+
+/* ---------- demo earnings: quarterly EPS that fits each story (leaders accelerate, laggards shrink) ---------- */
+const EPS_PROFILE = {
+  'ACME.DEMO': [0.42, 0.06, 0.004], 'BOLT.DEMO': [0.30, 0.04, 0], 'CRUX.DEMO': [0.25, 0.05, 0.003], 'DUNE.DEMO': [0.18, 0.07, 0],
+  'ECHO.DEMO': [0.55, 0.05, 0.004], 'FLUX.DEMO': [0.05, 0.10, 0.012], 'GLOW.DEMO': [0.80, 0.03, 0], 'HAZE.DEMO': [0.95, -0.02, -0.004],
+  'IRIS.DEMO': [0.35, 0.06, 0.006], 'JADE.DEMO': [0.60, 0.07, -0.006], 'KITE.DEMO': [0.40, 0.02, 0], 'LUMA.DEMO': [0.10, 0.08, 0.004],
+};
+export function demoEarnings(sym) {
+  const p = EPS_PROFILE[sym], d = demoBars(sym); if (!p || !d) return null;
+  const r = rng(sym.length * 97 + sym.charCodeAt(0)), b = d.bars, out = [];
+  let eps = p[0], g = p[1], rev = 400e6 * (1 + p[0]);
+  for (let i = 20, k = 0; i < b.length; i += 63, k++) {
+    const est = eps * (1 + g) * (0.97 + r() * 0.03);
+    eps = eps * (1 + g) * (0.98 + r() * 0.06); g += p[2]; rev *= 1 + g * 0.6;
+    out.push({ time: b[i].time, eps: +eps.toFixed(2), est: +est.toFixed(2), rev: Math.round(rev), revEst: Math.round(rev * 0.99), period: 'Q' + ((k % 4) + 1) });
+  }
+  // the next report, a few weeks after the last one
+  const last = out[out.length - 1].time, next = last + 91 * 86400;
+  if (next > b[b.length - 1].time) out.push({ time: next, eps: null, est: +(eps * (1 + g)).toFixed(2) });
+  return out;
+}
+
+/* ---------- demo news: fictional example headlines ---------- */
+export function demoNews(sym) {
+  const d = demoBars(sym), e = demoEarnings(sym); if (!d) return [];
+  const nm = d.name.replace(' (demo)', ''), last = d.bars[d.bars.length - 1].time * 1000, day = 864e5;
+  const q = (e || []).filter(x => x.eps != null), lr = q[q.length - 1];
+  const yoy = q.length > 4 ? Math.round((lr.eps / q[q.length - 5].eps - 1) * 100) : null;
+  const items = [
+    { title: `${nm} shares move as traders eye its buy point`, date: last - 0.2 * day, tag: 'other' },
+    { title: `Analyst raises ${nm} price target, citing demand`, date: last - 3 * day, tag: 'analyst' },
+    lr && { title: `${nm} reports quarterly EPS of $${lr.eps.toFixed(2)}${yoy != null ? `, ${yoy >= 0 ? 'up' : 'down'} ${Math.abs(yoy)}% from a year ago` : ''}`, date: lr.time * 1000 + 0.5 * day, tag: 'earnings' },
+    { title: `${nm} to present at an industry conference next month`, date: last - 12 * day, tag: 'other' },
+    { title: `${nm} unveils new product line`, date: last - 26 * day, tag: 'product' },
+  ].filter(Boolean);
+  return items.map(x => ({ ...x, source: 'Example headline (fictional)', link: null }));
+}
