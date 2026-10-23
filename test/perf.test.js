@@ -48,3 +48,17 @@ test('names match in any word order and without legal suffixes', async () => {
   const r = resolveTickers([{ name: 'ELI LILLY AND COMPANY', qty: 8 }, { name: 'TD SYNNEX CORPORATION', qty: 35 }], [['LLY', 'Lilly (Eli)', ''], ['SNX', 'TD SYNNEX CORP', '']]);
   assert.deepEqual(r.map(x => x.ticker), ['LLY', 'SNX']);
 });
+
+test('snapshots: exact on statement dates, deposit left out of the return', async () => {
+  const { evolutionSnaps } = await import('../src/core/perf.js');
+  const P = { A: bars([10, 11, 12, 12, 12, 12]) }, t0 = 1e9;
+  const E = evolutionSnaps({
+    snaps: [{ t: t0, holdings: [{ sym: 'A', shares: 100 }], cash: 0 }, { t: t0 + 5 * D, holdings: [{ sym: 'A', shares: 150 }], cash: 0 }],
+    prices: P, fx: () => 1, cur: { A: 'USD' },
+    events: [{ kind: 'flow', t: t0 + 3 * D, amount: 600 }, { kind: 'trade', t: t0 + 3 * D, sym: 'A', side: 'buy', shares: 50, amount: 600 }],
+  });
+  assert.equal(E.days.length, 6);
+  assert.equal(E.end, 1800); assert.equal(E.netFlows, 600);
+  assert.ok(Math.abs(E.twr - 0.2) < 1e-9); // 10 → 12
+  assert.ok(Math.abs(E.made - 200) < 1e-9);
+});

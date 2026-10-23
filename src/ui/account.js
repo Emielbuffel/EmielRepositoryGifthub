@@ -2,20 +2,21 @@
 // account (absolute and time-weighted %), what the stocks are made of (sectors, regions, currencies) and their
 // factor profile. The holdings rows come from portfolio.js (prices already loaded and converted).
 import { createChart, AreaSeries, LineSeries, createSeriesMarkers } from 'lightweight-charts';
-import { evolution, account } from '../core/perf.js';
+import { evolution, evolutionSnaps, account } from '../core/perf.js';
 import { factorExposure, FACTOR_ETFS } from '../core/factors.js';
 import { pc, fDs } from '../core/analysis.js';
 import { daily, fxWeekly, isDemo } from '../data/service.js';
 import { currencyOf, snapshotMeta, universe } from '../data/providers.js';
 import { factor } from '../data/fx.js';
-import { cashBalance, setCash, flows, addFlow, deleteFlow, journal } from '../data/plans.js';
+import { cashBalance, setCash, flows, addFlow, deleteFlow, journal, snapshots, saveSnapshots, ledger, clearLedger } from '../data/plans.js';
+import { summarize, KIND_LABEL } from '../core/ledger.js';
 import * as store from '../data/store.js';
 import { $, $$, html, raw, render, big, money, tok, sheet, toast } from './dom.js';
 import { fade } from './chart.js';
 
 const A = { mode: 'value', range: '1Y', chart: null, ctx: null, seq: 0 };
 const DAY = 86400, now = () => Math.floor(Date.now() / 1000);
-const RANGES = { '3M': 91, '6M': 182, YTD: 'ytd', '1Y': 365, '2Y': 730, '4Y': 1570 };
+const RANGES = { '3M': 91, '6M': 182, YTD: 'ytd', '1Y': 365, '2Y': 730, All: 'all' };
 const n0 = (x, d = 0) => (x == null || !isFinite(x) ? '—' : x.toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d }));
 const sign = x => (x > 0 ? '+' : '');
 
@@ -43,13 +44,20 @@ async function fxLookup(curs, base) {
 /** Called by portfolio.js after every analysis. rows: [{sym, shares, value (base), cur, d: {bars, name}}]. */
 export async function drawAccount(rows, { base, bench, perAnalysis }) {
   const seq = ++A.seq;
-  const cash = await cashBalance(), F = await flows(), J = await journal();
+  const cash = await cashBalance(), F = await flows(), J = await journal(), snaps = await snapshots(), Lg = await ledger();
   let cashBase = 0, cashFx = 1;
   if (cash) { try { const f = await factor(cash.cur, base); cashFx = f ? f.v : 1; } catch (e) { /* 1 */ } cashBase = cash.amount * cashFx; }
-  const stocks = rows.reduce((s, r) => s + r.value, 0);
-  A.ctx = { rows, base, bench, cash, cashBase, F, J, stocks, perAnalysis };
+  // positions in the newest holdings file without a ticker: counted at their statement value (no price history)
+  const lastSnap = snaps[snaps.length - 1];
+  let unpriced = 0;
+  if (lastSnap && now() - lastSnap.t < 45 * DAY) {
+    const u = lastSnap.rows.filter(r => !r.sym).reduce((s2, r) => s2 + (r.eur || 0), 0);
+    if (u) { try { const f = await factor('EUR', base); unpriced = u * (f ? f.v : 1); } catch (e) { unpriced = u; } }
+  }
+  const stocks = rows.reduce((s, r) => s + r.value, 0) + unpriced;
+  A.ctx = { rows, base, bench, cash, cashBase, F, J, snaps, Lg, stocks, unpriced, perAnalysis };
   if (seq !== A.seq) return;
-  cashCard(); flowsList();
+  cashCard(); flowsList(); incomeCard();
   if (!rows.length) { ['#pEvo', '#pMix', '#pFactor'].forEach(id => { const e = $(id); if (e) e.innerHTML = ''; }); return; }
   mixCard();
   evoCard();
@@ -75,7 +83,7 @@ function cashCard() {
     <div class="acc">
       <div class="acc-donut">${raw(donut(parts))}<div class="acc-mid"><span class="muted tiny">Account value</span><b>${big(a.equity, base)}</b><span class="muted tiny">${n0(a.equity)} ${base}</span></div></div>
       <div class="acc-legend">
-        ${leg(cStock, 'Stocks', big(stocks, base), `${pc(a.stockPct, 0).replace('+', '')} · ${rows.length} positions`)}
+        ${leg(cStock, 'Stocks', big(stocks, base), `${pc(a.stockPct, 0).replace('+', '')} · ${rows.length} positions${A.ctx.unpriced ? ` + ${big(A.ctx.unpriced, base)} without a ticker` : ''}`)}
         ${cashBase >= 0 ? leg(cCash, 'Cash', big(cashBase, base), cash ? `${pc(a.cashPct, 0).replace('+', '')}${cash.cur !== base ? ` · ${money(cash.amount, cash.cur)}` : ''} · updated ${fDs(cash.at)}` : 'not entered yet')
         : leg(cMargin, 'Margin loan', big(a.margin, base), `you borrow ${pc(a.margin / a.equity, 0).replace('+', '')} of your own money`)}
         <div class="acc-bar" title="Invested share of your own money"><i style="width:${Math.min(100, (a.leverage || 0) * 100).toFixed(1)}%;background:${(a.leverage || 0) > 1 ? cMargin : cStock}"></i>${(a.leverage || 0) > 1 ? html`<i style="width:${Math.min(100, ((a.leverage || 0) - 1) * 100).toFixed(1)}%;background:${cMargin}"></i>` : ''}</div>
@@ -122,14 +130,77 @@ function editFlow() {
 
 function flowsList() {
   const el = $('#aFlows'); if (!el) return;
-  const { F } = A.ctx;
-  if (!F.length) { render(el, html`<p class="muted tiny" style="margin:0">No deposits or withdrawals recorded. Add them so the % return isn't distorted by money you move in or out.</p>`); return; }
+  const { F, snaps } = A.ctx;
+  const files = snaps.length ? html`<details class="acc-flows"><summary class="small"><b>Holdings files</b> · ${snaps.length} imported · ${fDs(snaps[0].t)} – ${fDs(snaps[snaps.length - 1].t)}</summary>
+    <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Date</th><th>File</th><th class="n">Positions</th><th class="n">Cash</th><th></th></tr></thead><tbody>
+    ${[...snaps].reverse().map(x => html`<tr><td class="small">${fDs(x.t)}</td><td class="small" style="max-width:200px;overflow:hidden;text-overflow:ellipsis">${x.file || ''}</td><td class="n">${x.rows.length}</td><td class="n">${money(x.cash, x.cashCur || 'EUR')}</td><td><button class="btn sm danger" data-dels="${x.id}" aria-label="Delete">×</button></td></tr>`)}
+    </tbody></table></div></details>` : '';
+  const delS = () => $$('[data-dels]', el).forEach(b => { b.onclick = async () => { if (confirm('Delete this holdings file from the history?')) await saveSnapshots(A.ctx.snaps.filter(x => x.id !== b.dataset.dels)); }; });
+  if (!F.length) { render(el, html`${files}<p class="muted tiny" style="margin:0">${A.ctx.Lg.some(l => l.kind === 'deposit' || l.kind === 'withdrawal') ? 'Deposits and withdrawals come from your account statement. Add others here only if they are missing from it.' : 'No deposits or withdrawals recorded. Import your account statement, or add them with the button, so the % return isn\'t distorted by money you move in or out.'}</p>`); delS(); return; }
   const net = F.reduce((s, f) => s + f.amount, 0), cur = F[F.length - 1].cur;
-  render(el, html`<details class="acc-flows"><summary class="small"><b>Deposits and withdrawals</b> · ${F.length} recorded · net ${sign(net)}${money(net, cur)}</summary>
+  render(el, html`${files}<details class="acc-flows"><summary class="small"><b>Deposits and withdrawals entered by hand</b> · ${F.length} recorded · net ${sign(net)}${money(net, cur)}</summary>
     <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Date</th><th class="n">Amount</th><th>Note</th><th></th></tr></thead><tbody>
     ${[...F].reverse().map(f => html`<tr><td class="small">${fDs(f.t)}</td><td class="n ${f.amount >= 0 ? 'up' : 'down'}">${sign(f.amount)}${money(f.amount, f.cur)}</td><td class="small">${f.note || ''}</td><td><button class="btn sm danger" data-delf="${f.id}" aria-label="Delete">×</button></td></tr>`)}
     </tbody></table></div></details>`);
+  delS();
   $$('[data-delf]', el).forEach(b => { b.onclick = async () => { if (confirm('Delete this entry? If it changed your cash balance, that change is undone.')) await deleteFlow(b.dataset.delf); }; });
+}
+
+/* ---------- dividends, costs and taxes (from the account statement) ---------- */
+function monthChart(months, base) {
+  // net dividends up; costs, taxes and dividend tax stacked down
+  const n = months.length, bw = 18, gap = 8, W = Math.max(300, n * (bw + gap) + 60), H = 200, top = 14, bot = 30;
+  const up = months.map(([, v]) => Math.max(0, v.dividend)), dn = months.map(([, v]) => -(Math.min(0, v.fee) + Math.min(0, v.tax) + Math.min(0, v.divtax)));
+  const mx = Math.max(1, ...up), mn = Math.max(1, ...dn), z = top + (H - top - bot) * mx / (mx + mn), sc = (H - top - bot) / (mx + mn);
+  const C = { div: tok('--up'), fee: tok('--orange'), tax: tok('--red'), divtax: tok('--pink') };
+  let g = `<line x1="40" x2="${W}" y1="${z}" y2="${z}" stroke="var(--sep)"/>`;
+  g += `<text x="34" y="${top + 8}" text-anchor="end" font-size="10" fill="var(--muted)">${big(mx, base)}</text><text x="34" y="${H - bot}" text-anchor="end" font-size="10" fill="var(--muted)">−${big(mn, base).replace('−', '')}</text>`;
+  months.forEach(([ym, v], i) => {
+    const x = 48 + i * (bw + gap);
+    if (v.dividend > 0) g += `<rect x="${x}" y="${z - v.dividend * sc}" width="${bw}" height="${v.dividend * sc}" rx="3" fill="${C.div}"><title>${ym} dividends ${big(v.dividend, base)}</title></rect>`;
+    let y = z;
+    for (const [k, c] of [['divtax', C.divtax], ['fee', C.fee], ['tax', C.tax]]) { const h = -Math.min(0, v[k]) * sc; if (h > 0) { g += `<rect x="${x}" y="${y}" width="${bw}" height="${h}" fill="${c}"><title>${ym} ${KIND_LABEL[k].toLowerCase()} ${big(v[k], base)}</title></rect>`; y += h; } }
+    if (n <= 24 || i % Math.ceil(n / 24) === 0) g += `<text x="${x + bw / 2}" y="${H - 10}" text-anchor="middle" font-size="10" fill="var(--muted)">${ym.slice(5) === '01' || i === 0 ? ym.slice(2, 4) + '/' : ''}${ym.slice(5)}</text>`;
+  });
+  return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;max-width:${Math.round(W * 1.6)}px;height:auto;min-width:${Math.min(W, 520)}px" role="img" aria-label="Dividends and costs per month">${g}</svg>`;
+}
+
+async function incomeCard() {
+  const el = $('#pIncome'); if (!el) return;
+  const { Lg, base, stocks, cashBase } = A.ctx;
+  if (!Lg.length) { render(el, html`<div class="card-head"><h2>Dividends, costs and taxes</h2></div><p class="muted small" style="margin:0">Import your account statement (DEGIRO: Inbox → Account statement → CSV, "Account.csv") with the <b>Import</b> button to see dividends, dividend tax, transaction costs, other fees, taxes and interest over time. It also adds your deposits and withdrawals to the return calculation.</p>`); return; }
+  const fx = await fxLookup(Lg.map(l => l.cur), base);
+  const R = A.incRange || 'All', y = new Date().getUTCFullYear();
+  const from = R === 'YTD' ? Date.UTC(y, 0, 1) / 1000 : R === '1Y' ? now() - 365 * DAY : 0;
+  const S = summarize(Lg, fx, from), T = S.tot, all = summarize(Lg, fx);
+  const costs = T.fee + T.tax + T.divtax + Math.min(0, T.interest), eq = stocks + cashBase;
+  const kp = (k, v, sub, cls = '') => html`<div class="kpi"><span class="k">${k}</span><span class="v ${cls}">${v}</span><span class="s">${sub}</span></div>`;
+  const leg = [[tok('--up'), 'Dividends (gross)'], [tok('--pink'), 'Dividend tax'], [tok('--orange'), 'Costs'], [tok('--red'), 'Taxes']];
+  const yr = v => v.fee + v.tax + v.divtax + Math.min(0, v.interest);
+  render(el, html`<div class="card-head"><h2>Dividends, costs and taxes</h2><div class="toolbar"><div class="seg" id="iRange">${['YTD', '1Y', 'All'].map(k => html`<button data-r="${k}" class="${R === k ? 'on' : ''}">${k}</button>`)}</div></div></div>
+    <div class="kpis">
+      ${kp('Dividends', big(T.dividend, base), 'gross, before tax', 'up')}
+      ${kp('Dividend tax', big(T.divtax, base), T.dividend ? Math.round(-T.divtax / T.dividend * 100) + '% withheld' : '')}
+      ${kp('Net dividends', big(T.dividend + T.divtax, base), 'what you received')}
+      ${kp('Transaction costs and fees', big(T.fee, base), 'broker, exchange and ADR fees', 'down')}
+      ${kp('Taxes', big(T.tax, base), 'e.g. transaction taxes', T.tax < 0 ? 'down' : '')}
+      ${T.interest ? kp('Interest', big(T.interest, base), T.interest < 0 ? 'paid (margin)' : 'received', T.interest < 0 ? 'down' : 'up') : ''}
+      ${kp('All costs and taxes', big(costs, base), eq > 0 ? (-costs / eq * 100).toFixed(2) + '% of today\'s account value' : '', 'down')}
+    </div>
+    <div class="tbl-wrap">${raw(monthChart(S.months, base))}</div>
+    <div class="legend small">${leg.map(([c, t]) => html`<span><i style="background:${c};height:10px;width:10px;border-radius:3px"></i>${t}</span>`)}</div>
+    <div class="grid2">
+      <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Year</th><th class="n">Dividends</th><th class="n">Div. tax</th><th class="n">Costs</th><th class="n">Taxes</th><th class="n">Deposits</th><th class="n">Withdrawals</th></tr></thead><tbody>
+        ${[...all.years].reverse().map(([k, v]) => html`<tr><td><b>${k}</b></td><td class="n up">${big(v.dividend, base)}</td><td class="n">${big(v.divtax, base)}</td><td class="n down">${big(v.fee, base)}</td><td class="n">${big(v.tax, base)}</td><td class="n">${big(v.deposit, base)}</td><td class="n">${big(v.withdrawal, base)}</td></tr>`)}
+      </tbody></table><p class="muted tiny" style="margin:4px 0 0">Costs and taxes together per year: ${[...all.years].reverse().map(([k, v]) => `${k} ${big(yr(v), base)}`).join(' · ')}</p></div>
+      <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Dividends per stock (${R})</th><th class="n">Gross</th><th class="n">Tax</th><th class="n">Net</th></tr></thead><tbody>
+        ${S.stocks.length ? S.stocks.slice(0, 12).map(x => html`<tr><td class="small" style="max-width:200px;overflow:hidden;text-overflow:ellipsis">${x.name}</td><td class="n">${big(x.gross, base)}</td><td class="n">${big(x.tax, base)}</td><td class="n">${big(x.gross + x.tax, base)}</td></tr>`) : html`<tr><td colspan="4" class="muted small">No dividends in this period.</td></tr>`}
+      </tbody></table></div>
+    </div>
+    ${S.other.length ? html`<details><summary class="small t-warn">${S.other.length} statement lines not recognised (not counted)</summary><ul class="small">${S.other.slice(0, 40).map(l => html`<li>${fDs(l.t)} · ${l.desc} · ${money(l.amount, l.cur)}</li>`)}</ul></details>` : ''}
+    <p class="muted tiny" style="margin:0">From your account statement (${fDs(Lg[0].t)} – ${fDs(Lg[Lg.length - 1].t)}, ${Lg.length} lines). Amounts in other currencies are converted at the rate of their week. Currency exchanges, the money-market fund and transfers between your cash accounts are internal and left out. <button class="btn sm" id="iClear" style="margin-left:6px">Remove statement data</button></p>`);
+  $$('#iRange [data-r]').forEach(b => { b.onclick = () => { A.incRange = b.dataset.r; incomeCard(); }; });
+  $('#iClear').onclick = async () => { if (confirm('Remove all imported account-statement lines? You can import the file again later.')) await clearLedger(); };
 }
 
 /* ---------- evolution of the account ---------- */
@@ -143,24 +214,51 @@ async function evoCard() {
     <div class="evo-chart" id="eChart"></div><div class="small" id="eLegend"></div><div id="eNote"></div>`);
   $$('#eMode [data-m]').forEach(b => { b.onclick = () => { A.mode = b.dataset.m; store.set('evo.mode', A.mode); evoCard(); }; });
   $$('#eRange [data-r]').forEach(b => { b.onclick = () => { A.range = b.dataset.r; store.set('evo.range', A.range); evoCard(); }; });
-  // prices for every stock held now or traded in the journal
+  const { snaps, Lg } = A.ctx;
+  // ledger trades need a ticker: from the ISINs in the holdings files
+  const isin2sym = new Map(); snaps.forEach(sn => sn.rows.forEach(r => { if (r.isin && r.sym) isin2sym.set(r.isin, r.sym); }));
+  const ledTrades = Lg.filter(l => (l.kind === 'buy' || l.kind === 'sell') && isin2sym.has(l.isin) && l.qty);
+  // prices for every stock held now, in a holdings file, or traded
   const prices = {}, cur = {};
   rows.forEach(r => { prices[r.sym] = r.d.bars; cur[r.sym] = r.cur; });
-  for (const s of new Set(J.map(t => t.sym))) {
+  const more = new Set([...J.map(t => t.sym), ...snaps.flatMap(sn => sn.rows.map(r => r.sym).filter(Boolean)), ...ledTrades.map(l => isin2sym.get(l.isin))]);
+  for (const s of more) {
     if (prices[s]) continue;
     try { const d = await daily(s); prices[s] = d.bars; cur[s] = d.currency || currencyOf(s); } catch (e) { cur[s] = currencyOf(s); }
+    if (seq !== A.seq) return;
   }
   if (seq !== A.seq) return;
-  const fx = await fxLookup([...Object.values(cur), ...F.map(f => f.cur), ...J.map(t => t.cur)], base);
-  const r = RANGES[A.range], t0 = r === 'ytd' ? Math.floor(Date.UTC(new Date().getUTCFullYear(), 0, 1) / 1000) : now() - r * DAY;
-  const trades = J.map(t => ({ t: t.t, sym: t.sym, side: t.side, shares: t.shares, price: t.price, cur: t.cur || cur[t.sym] }));
-  const fl = F.map(f => ({ t: f.t, amount: f.amount * fx(f.cur, f.t) }));
-  const E = evolution({ holdings: rows.map(x => ({ sym: x.sym, shares: x.shares })), cash: cashBase, prices, fx, cur, trades, flows: fl, from: t0 });
+  const fx = await fxLookup([...Object.values(cur), ...F.map(f => f.cur), ...J.map(t => t.cur), ...Lg.map(l => l.cur), ...snaps.map(sn => sn.cashCur), 'USD'], base);
+  const r = RANGES[A.range], t0 = r === 'ytd' ? Math.floor(Date.UTC(new Date().getUTCFullYear(), 0, 1) / 1000) : r === 'all' ? 0 : now() - r * DAY;
+  // deposits/withdrawals: from the account statement, plus ones entered by hand (unless the statement has the same one)
+  const ledFlows = Lg.filter(l => l.kind === 'deposit' || l.kind === 'withdrawal').map(l => ({ t: l.t, amount: l.amount * fx(l.cur, l.t) }));
+  const manual = F.map(f => ({ t: f.t, amount: f.amount * fx(f.cur, f.t) })).filter(f => !ledFlows.some(l => Math.abs(l.t - f.t) <= 5 * DAY && Math.abs(l.amount - f.amount) <= Math.max(1, Math.abs(f.amount) * 0.01)));
+  const fl = [...ledFlows, ...manual];
+  let E, mode;
+  if (snaps.length) {
+    mode = 'snaps';
+    const sn = snaps.map(x => {
+      const priced = x.rows.filter(q => q.sym), other = x.rows.filter(q => !q.sym).reduce((s2, q) => s2 + (q.eur || 0), 0) * fx('EUR', x.t);
+      return { t: x.t, holdings: priced.map(q => ({ sym: q.sym, shares: q.shares, price: q.price, cur: q.cur })), other, cash: x.cash * fx(x.cashCur || 'EUR', x.t) };
+    });
+    if (now() - sn[sn.length - 1].t > DAY / 2) sn.push({ t: now(), holdings: rows.map(x => ({ sym: x.sym, shares: x.shares })), other: A.ctx.unpriced, cash: cashBase });
+    const ev = [
+      ...fl.map(f => ({ kind: 'flow', ...f })),
+      ...Lg.filter(l => ['dividend', 'divtax', 'fee', 'tax', 'interest'].includes(l.kind)).map(l => ({ kind: 'cash', t: l.t, amount: l.amount * fx(l.cur, l.t) })),
+      ...(ledTrades.length ? ledTrades.map(l => ({ kind: 'trade', t: l.t, sym: isin2sym.get(l.isin), side: l.kind, shares: l.qty, amount: Math.abs(l.amount) * fx(l.cur, l.t) }))
+        : J.filter(t => !/^Statement import/.test(t.reason || '')).map(t => ({ kind: 'trade', t: t.t, sym: t.sym, side: t.side, shares: t.shares, amount: t.shares * t.price * fx(t.cur || cur[t.sym], t.t) }))),
+    ];
+    E = evolutionSnaps({ snaps: sn, prices, fx, cur, events: ev, from: t0 });
+  } else {
+    mode = 'back';
+    const trades = J.map(t => ({ t: t.t, sym: t.sym, side: t.side, shares: t.shares, price: t.price, cur: t.cur || cur[t.sym] }));
+    E = evolution({ holdings: rows.map(x => ({ sym: x.sym, shares: x.shares })), cash: cashBase, prices, fx, cur, trades, flows: fl, from: t0 });
+  }
   if (seq !== A.seq) return;
-  if (!E || E.days.length < 3) { render($('#eKpi'), html`<p class="muted small" style="margin:0">Not enough price history for this range yet.</p>`); return; }
-  // exact history starts when the account was first entered (or at the first journal trade, if earlier); before
-  // that the line assumes today's holdings and cash
-  const firstRec = Math.min(...[...J.map(t => t.t), cash ? cash.since || cash.at : Infinity].filter(isFinite));
+  if (!E || E.days.length < 3) { render($('#eKpi'), html`<p class="muted small" style="margin:0">Not enough history for this range yet${snaps.length ? ' (the chart starts at your first holdings file)' : ''}.</p>`); render($('#eChart'), ''); return; }
+  // without holdings files: exact history starts when the account was first entered (or the first journal trade);
+  // before that the line assumes today's holdings and cash
+  const firstRec = mode === 'snaps' ? E.days[0].t : Math.min(...[...J.map(t => t.t), cash ? cash.since || cash.at : Infinity].filter(isFinite));
   const recFrom = isFinite(firstRec) ? Math.floor(firstRec / DAY) * DAY : Infinity;
   // benchmark in the base currency, rebased to the start
   let bRet = null;
@@ -172,14 +270,14 @@ async function evoCard() {
   const bEnd = bRet && bRet.length ? bRet[bRet.length - 1].value / 100 : null;
   render($('#eKpi'), html`
     ${kp('Return (time-weighted)', pc(E.twr, 1), bEnd != null ? `${bench.name}: ${pc(bEnd, 1)}` : 'deposits and withdrawals left out', E.twr >= 0 ? 'up' : 'down')}
-    ${kp('Money made', sign(E.made) + big(E.made, base), 'gains minus losses, in ' + base, E.made >= 0 ? 'up' : 'down')}
+    ${kp('Money made', sign(E.made) + big(E.made, base), 'gains minus losses, after costs', E.made >= 0 ? 'up' : 'down')}
     ${kp('Net deposits', sign(E.netFlows) + big(E.netFlows, base), E.netFlows ? 'added (+) or taken out (−)' : 'none recorded in this range')}
     ${kp('Value', big(E.end, base), `was ${big(E.start, base)} on ${fDs(E.days[0].t)}`)}
     ${kp('Max drawdown', pc(E.mdd, 1), 'worst fall from a peak (time-weighted)', 't-bad')}`);
   drawEvo(E, recFrom, bRet);
   const sim = recFrom > E.days[0].t;
-  render($('#eNote'), html`<p class="muted tiny" style="margin:0">${sim ? html`<b>Lighter line = reconstruction:</b> before ${isFinite(recFrom) ? fDs(recFrom) : 'today'} the app doesn't know your holdings, so it shows today's holdings and cash as if you had held them (deposits you recorded are still taken into account). From then on the line is exact as long as you record buys and sells (Plan button, or import statements regularly) and deposits/withdrawals. ` : ''}
-    <b>How the % is calculated:</b> each day's return leaves out that day's deposits and withdrawals, and the days are chained (time-weighted return). Example: 1,000 grows to 2,000 (+100%), then you withdraw 1,000. The account is back at 1,000, but the return stays +100% and "money made" is +1,000 — 1,000 of it taken out. Margin: a negative cash balance lowers the value and raises the swings.</p>`);
+  render($('#eNote'), html`<p class="muted tiny" style="margin:0">${mode === 'snaps' ? html`<b>Built from ${snaps.length} holdings file${snaps.length > 1 ? 's' : ''}</b> (grey dots): the value is exact on those dates. In between it follows daily prices${Lg.length ? ', plus the trades, dividends, costs and deposits in your account statement' : ' with the holdings of the previous file (import your account statement to include trades, dividends and costs in between)'}. ${t0 < snaps[0].t && A.range !== 'All' ? `The chart starts at your first file (${fDs(snaps[0].t)}). ` : ''}` : sim ? html`<b>Lighter line = reconstruction:</b> before ${isFinite(recFrom) ? fDs(recFrom) : 'today'} the app doesn't know your holdings, so it shows today's holdings and cash as if you had held them (deposits you recorded are still taken into account). Import your monthly holdings files to make the past exact. ` : ''}
+    <b>How the % is calculated:</b> each day's return leaves out that day's deposits and withdrawals, and the days are chained (time-weighted return). Example: 1,000 grows to 2,000 (+100%), then you withdraw 1,000. The account is back at 1,000, but the return stays +100% and "money made" is +1,000 — 1,000 of it taken out. Dividends count as gains; costs and taxes as losses. Margin: a negative cash balance lowers the value and raises the swings.</p>`);
 }
 
 function drawEvo(E, recFrom, bRet) {
@@ -202,8 +300,11 @@ function drawEvo(E, recFrom, bRet) {
   } else if (bRet) { line(bRet, tok('--orange'), 1.5, true); legend.push([tok('--orange'), A.ctx.bench.name]); }
   // deposits / withdrawals as markers
   const mk = E.days.filter(d => d.flow).map(d => ({ time: d.t, position: d.flow > 0 ? 'belowBar' : 'aboveBar', shape: d.flow > 0 ? 'arrowUp' : 'arrowDown', color: d.flow > 0 ? tok('--up') : tok('--down'), text: (d.flow > 0 ? '+' : '−') + big(Math.abs(d.flow), A.ctx.base).replace('−', '') }));
+  E.days.filter(d => d.snap).forEach(d => mk.push({ time: d.t, position: 'inBar', shape: 'circle', color: muted, size: 0.6 }));
+  mk.sort((a, b) => a.time - b.time);
   if (mk.length && main) createSeriesMarkers(main, mk);
-  if (mk.length) legend.push([tok('--up'), 'Deposit ▲ / withdrawal ▼']);
+  if (E.days.some(d => d.flow)) legend.push([tok('--up'), 'Deposit ▲ / withdrawal ▼']);
+  if (E.days.some(d => d.snap)) legend.push([muted, 'Holdings file (exact value)']);
   chart.timeScale().fitContent();
   render($('#eLegend'), html`<div class="legend">${legend.map(([c, t]) => html`<span><i style="background:${c}"></i>${t}</span>`)}</div>`);
 }
@@ -270,7 +371,7 @@ async function factorCard() {
   if (!missing) for (const s of FACTOR_ETFS) { try { bars[s] = (await daily(s)).bars; } catch (e) { missing = true; break; } if (seq !== A.seq) return; }
   const R = missing ? null : factorExposure(w, bars, 104);
   if (seq !== A.seq) return;
-  if (!R) { render($('#fReg'), html`<p class="muted small" style="margin:0">The factor regression needs daily prices of ${FACTOR_ETFS.join(', ')} (S&P 500, small caps, value, growth, momentum, quality and low-volatility ETFs). ${missing ? 'They load in the desktop app, not in the web preview.' : 'At least 30 weeks of shared history are needed.'}</p>`); return; }
+  if (!R) { render($('#fReg'), html`<p class="muted small" style="margin:0">The factor regression needs daily prices of ${FACTOR_ETFS.join(', ')} (S&P 500, small caps, value, growth, momentum, quality and low-volatility ETFs). ${missing ? 'They load in the desktop app, or in the web version when you add an FMP key in Settings → Data.' : 'At least 30 weeks of shared history are needed.'}</p>`); return; }
   const mx = Math.max(1.2, ...R.factors.map(f => Math.abs(f.beta)));
   render($('#fReg'), html`<h3 style="margin:4px 0 0">Factor regression · last ${R.weeks} weeks</h3>
     <div class="fbars">${R.factors.map(f => { const clear = f.t != null && Math.abs(f.t) >= 2; const wd = Math.min(50, Math.abs(f.beta) / mx * 50); return html`<div class="frow" title="${f.about}"><span class="lbl">${f.name}</span><div class="ftrack"><span class="zero"></span><i style="${f.beta >= 0 ? `left:50%` : `right:50%`};width:${wd.toFixed(1)}%;background:${clear ? (f.beta >= 0 ? 'var(--blue)' : 'var(--orange)') : 'var(--muted)'};opacity:${clear ? 1 : 0.45}"></i></div><span class="val">${f.beta >= 0 ? '+' : ''}${f.beta.toFixed(2)}</span><span class="muted tiny">${clear ? 'clear' : 'weak'}</span></div>`; })}</div>
@@ -279,4 +380,4 @@ async function factorCard() {
     <p class="muted tiny" style="margin:0">How: weekly returns of today's stock weights, explained by ETF return gaps (Size = IWM − SPY, Value = VTV − VUG, Momentum = MTUM − SPY, Quality = QUAL − SPY, Low volatility = USMV − SPY). Grey bars are not statistically clear (|t| below 2). Returns in each stock's own currency.</p>`);
 }
 
-export async function loadAccountPrefs() { A.mode = await store.get('evo.mode', 'value'); A.range = await store.get('evo.range', '1Y'); }
+export async function loadAccountPrefs() { A.mode = await store.get('evo.mode', 'value'); A.range = await store.get('evo.range', '1Y'); if (!RANGES[A.range]) A.range = '1Y'; }

@@ -9,15 +9,11 @@ import { currencyOf } from '../data/providers.js';
 import * as store from '../data/store.js';
 import { App, on, openStock } from '../app.js';
 import { $, $$, html, raw, render, money, big, ICON, toast, sheet } from './dom.js';
-import { parseStatement, resolveTickers } from '../core/importer.js';
-import { snapshotMeta, universe } from '../data/providers.js';
-import { secCompanies } from '../data/sec.js';
-import { isApp } from '../data/net.js';
+import { importSheet } from './importui.js';
 import { drawAccount, loadAccountPrefs } from './account.js';
 import { factor } from '../data/fx.js';
 import { addAlert, checkBars, allAlerts } from '../data/alerts.js';
-import { allPlans, journal, strategy, deletePlan, cashBalance, setCash, addJournalEntries, addFlow } from '../data/plans.js';
-import { secAgent } from '../data/service.js';
+import { allPlans, journal, strategy, deletePlan } from '../data/plans.js';
 import { sizingChecks, pyramid } from '../core/strategy.js';
 
 const DEMO_HOLD = [{ sym: 'ACME.DEMO', shares: 40, cost: 90 }, { sym: 'IRIS.DEMO', shares: 60, cost: 70 }, { sym: 'LUMA.DEMO', shares: 100, cost: 45 }, { sym: 'FLUX.DEMO', shares: 150, cost: 30 }, { sym: 'JADE.DEMO', shares: 50, cost: 88 }];
@@ -30,6 +26,7 @@ export async function initPortfolio(el) {
     <section class="card" id="pTop"></section>
     <section class="card" id="pCash"></section>
     <section class="card" id="pEvo"></section>
+    <section class="card" id="pIncome"></section>
     <section class="card">
       <div class="card-head"><h2>Holdings</h2><div class="toolbar"><select class="input" id="pBase" style="width:auto;padding:6px 10px;font-size:14px" aria-label="Portfolio currency">${['USD', 'EUR', 'GBP', 'CHF', 'JPY', 'CAD', 'AUD'].map(c => html`<option ${c === P.base ? raw('selected') : ''}>${c}</option>`)}</select><button class="btn sm" id="pImp">${raw(ICON.upload)}Import</button><button class="btn sm" id="pStops">${raw(ICON.bell)}Stop alerts</button><button class="btn sm primary" id="pAdd">${raw(ICON.plus)}Add</button></div></div>
       <div id="pHold"></div>
@@ -42,7 +39,7 @@ export async function initPortfolio(el) {
     <section class="card" id="pJournal"></section>
     <p class="disclaimer">Educational analysis, not personal investment advice. Values use end-of-day prices and, for other currencies, end-of-day exchange rates. Holdings stay on this device.</p>`);
   $('#pAdd').onclick = () => editHolding();
-  $('#pImp').onclick = importSheet;
+  $('#pImp').onclick = () => importSheet(hold => { if (hold) { App.holdings = hold; saveHoldings(); } });
   $('#pStops').onclick = async () => {
     const withCost = App.holdings.filter(h => h.cost);
     if (!withCost.length) { toast('Add your average cost to holdings first: stops are set 8% below the cost.'); return; }
@@ -85,85 +82,6 @@ function editHolding(h) {
   const del = sh.querySelector('#hDel');
   if (del) del.onclick = () => { App.holdings = App.holdings.filter(x => x.sym !== h.sym); sh.close(); saveHoldings(); };
   setTimeout(() => (h ? f.shares : f.sym).focus(), 50);
-}
-
-/* import holdings (and cash) from a broker export (CSV) or pasted statement text */
-async function importDirectory() {
-  const dir = [];
-  try { const meta = await snapshotMeta(); dir.push(...meta.stocks.map(x => [x.s, x.n, '']), ...meta.directory.map(x => [x[0], x[1], x[2]])); } catch (e) { /* no directory */ }
-  try { (await universe()).items.forEach(x => dir.push([x[0], x[1], x[4]])); } catch (e) { /* no universe */ }
-  return dir;
-}
-function importSheet() {
-  const sh = sheet('Import a broker statement', html`
-    <div class="card" style="gap:10px">
-      <p class="small" style="margin:0">Export your positions from your broker as CSV (for example DEGIRO: Portfolio → Export → CSV) and choose the file, or paste the table. Columns are recognised in English, Dutch, French and German. A cash line (e.g. "CASH & CASH FUND") sets your cash balance.</p>
-      <input type="file" id="imFile" accept=".csv,.txt,text/csv,text/plain">
-      <textarea class="input" id="imText" rows="4" placeholder="Or paste: Product;Symbol/ISIN;Amount;Closing;Value in EUR" spellcheck="false"></textarea>
-      <div class="toolbar"><button class="btn" id="imRead">Read</button><span class="small" id="imMsg"></span></div>
-    </div>
-    <div id="imRows"></div>`);
-  let parsed = [], st = null;
-  const show = async text => {
-    const m = $('#imMsg', sh);
-    try {
-      st = parseStatement(text);
-      parsed = resolveTickers(st.rows, await importDirectory());
-      // US names outside the built-in list: the SEC list of every listed company (desktop app)
-      if (parsed.some(r => !r.matched) && isApp()) {
-        try {
-          const sec = (await secCompanies(secAgent())).filter(x => /^(Nasdaq|NYSE)/i.test(x.x)).map(x => [x.s, x.n, '']);
-          const again = resolveTickers(parsed.filter(r => !r.matched), sec); let j = 0;
-          parsed = parsed.map(r => (r.matched ? r : again[j++]));
-        } catch (e) { /* SEC list unavailable */ }
-      }
-      const old = await cashBalance(), cashRow = st.cash.length ? { amount: st.cash.reduce((s, x) => s + x.amount, 0), cur: st.cash[0].cur } : null;
-      m.className = 'small t-ok'; m.textContent = `${parsed.length} positions found, ${parsed.filter(r => r.matched).length} matched to a ticker${cashRow ? ', cash ' + money(cashRow.amount, cashRow.cur) : ''}.`;
-      render($('#imRows', sh), html`<div class="results">${parsed.map((r, i) => html`<div class="row" style="padding:8px 14px;border-top:.5px solid var(--sep)"><span class="small" style="min-width:0"><b>${r.name || r.sym || r.isin}</b><br><span class="muted tiny">${r.isin || ''} · ${r.qty} shares${r.price ? ' · ' + r.price + ' ' + (r.cur || '') : ''}</span></span>
-        <input class="input" data-tk="${i}" value="${r.ticker}" placeholder="Ticker" style="width:120px;padding:6px 8px;font-size:14px" autocapitalize="characters"></div>`)}</div>
-        ${cashRow ? html`<label class="small"><input type="checkbox" id="imCash" checked> Set my cash balance to <b>${money(cashRow.amount, cashRow.cur)}</b>${old ? html` (now ${money(old.amount, old.cur)})` : ''}${cashRow.amount < 0 ? ' — a margin loan' : ''}</label>` : ''}
-        ${App.holdings.length ? html`<label class="small"><input type="checkbox" id="imJour" checked> Record share changes since my last holdings in the trade journal (so the evolution chart knows when they happened)</label>` : ''}
-        <label class="small" id="imFlowL" hidden><input type="checkbox" id="imFlow"> <span id="imFlowT"></span></label>
-        <div class="toolbar"><button class="btn primary" id="imReplace">Replace portfolio</button><button class="btn" id="imAdd">Add to portfolio</button></div>
-        <p class="muted tiny" style="margin:0">Check the tickers (Yahoo-style, e.g. ASML.AS, 7203.T). Rows without a ticker are skipped. Statements rarely include your purchase price: the average cost you entered before is kept.</p>`);
-      const tick = () => { $$('[data-tk]', sh).forEach(inp => { parsed[+inp.dataset.tk].ticker = inp.value.toUpperCase().trim(); }); };
-      // share changes vs the current holdings, valued at the statement's prices (in the statement currency)
-      const changes = replace => {
-        tick();
-        const now = Math.floor(Date.now() / 1000), list = [];
-        const add = parsed.filter(r => r.ticker);
-        for (const r of add) {
-          const h = App.holdings.find(x => x.sym === r.ticker), d = r.qty - (h ? h.shares : 0);
-          if (Math.abs(d) > 1e-9 && r.price) list.push({ t: now, sym: r.ticker, side: d > 0 ? 'buy' : 'sell', shares: Math.abs(d), price: r.price, cur: r.cur || currencyOf(r.ticker), reason: 'Statement import (change since last holdings)', eurPer: r.eur && r.qty ? r.eur / r.qty : null });
-        }
-        if (replace) for (const h of App.holdings) if (!add.some(r => r.ticker === h.sym)) { const c = App.last[h.sym]; if (c) list.push({ t: now, sym: h.sym, side: 'sell', shares: h.shares, price: c.c, cur: currencyOf(h.sym), reason: 'Statement import (no longer held)', eurPer: null }); }
-        return list;
-      };
-      // a cash change the trades don't explain may be a deposit or withdrawal (or dividends, interest, fees)
-      const gap = () => {
-        if (!cashRow || !old || old.cur !== cashRow.cur || cashRow.cur !== 'EUR' || !App.holdings.length) return null;
-        const ch = changes(true); if (ch.some(t => t.eurPer == null)) return null;
-        const spent = ch.reduce((s, t) => s + (t.side === 'buy' ? 1 : -1) * t.shares * t.eurPer, 0);
-        const g = cashRow.amount - old.amount + spent; return Math.abs(g) > 1 ? g : null;
-      };
-      const g = gap();
-      if (g != null) { $('#imFlowL', sh).hidden = false; $('#imFlowT', sh).textContent = `Record ${g > 0 ? '+' : '−'}${money(Math.abs(g), 'EUR')} as a ${g > 0 ? 'deposit' : 'withdrawal'}: the cash changed by that much more than your buys and sells explain. Tick only if you moved money in or out (not for dividends, interest or fees).`; }
-      const apply = async replace => {
-        const on = id => !!($(id, sh) && $(id, sh).checked), setC = on('#imCash'), doFlow = on('#imFlow');
-        const jour = on('#imJour') ? changes(replace).map(({ eurPer, ...t }) => t) : [];
-        const add = parsed.filter(r => r.ticker).map(r => { const h = App.holdings.find(x => x.sym === r.ticker); return { sym: r.ticker, shares: r.qty, cost: r.cost || (h && h.cost) || null }; });
-        const keep = replace ? [] : App.holdings.filter(h => !add.some(a => a.sym === h.sym));
-        if (jour.length) await addJournalEntries(jour);
-        if (g != null && doFlow) await addFlow({ t: Math.floor(Date.now() / 1000), amount: g, cur: 'EUR', note: 'From statement import' }, { keepCash: true });
-        if (cashRow && setC) await setCash(cashRow.amount, cashRow.cur);
-        App.holdings = [...keep, ...add]; sh.close(); saveHoldings();
-        toast(`${add.length} holdings imported${cashRow && setC ? ', cash updated' : ''}${jour.length ? `, ${jour.length} changes in the journal` : ''}.`);
-      };
-      $('#imAdd', sh).onclick = () => apply(false); $('#imReplace', sh).onclick = () => apply(true);
-    } catch (e) { m.className = 'small t-bad'; m.textContent = e.message; $('#imRows', sh).innerHTML = ''; }
-  };
-  $('#imFile', sh).onchange = async e => { const f = e.target.files[0]; if (f) show(await f.text()); };
-  $('#imRead', sh).onclick = () => { const t = $('#imText', sh).value; if (t.trim()) show(t); };
 }
 
 async function analyse() {

@@ -57,6 +57,14 @@ export async function daily(sym, { force = false, long = false, years = YEARS } 
     if (P.id !== 'demo' && meta.live !== false) await store.cacheSet(ck, doc); // built-in data is already on the device
     return doc;
   } catch (e) {
+    // the free data lacks this ticker (or the free feed failed): an FMP key, if added, is the backup (US listings)
+    const fk = (settings.keys.fmp || '').trim();
+    if (P.id === 'free' && fk && !splitSym(sym).sfx && !sym.startsWith('^')) {
+      try {
+        const r = await PROVIDERS.fmp.daily(sym, fk, Date.now() / 1000 - YEARS * 365.25 * 86400);
+        if (r.bars.length >= 60) { const doc = { sym, name: (cached && cached.name) || '', currency: 'USD', exchange: '', bars: r.bars, splits: [], fetchedAt: Date.now(), live: true, via: 'FMP' }; await store.cacheSet(ck, doc); return doc; }
+      } catch (e2) { /* fall through */ }
+    }
     if (cached) return { ...cached, cached: true, stale: true, error: e }; // show what we have
     throw e;
   }

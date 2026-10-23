@@ -137,7 +137,20 @@ export async function initSettings(el) {
 
 function keyBox() {
   const p = provider(), el = $('#stKey');
-  if (!p.needsKey) { render(el, html`<p class="small muted" style="margin:0">${p.id === 'free' ? 'No key needed. Add a key from FMP, Twelve Data or EODHD for earnings data on every stock and official index data.' : 'Fictional companies, no internet needed.'}</p>`); return; }
+  if (p.id === 'free') {
+    render(el, html`<p class="small muted" style="margin:0">No key needed. Optional: add a free or paid FMP key as a <b>backup</b>. The app keeps the free data as its main source (worldwide, full history, no daily limit) and asks FMP only for US tickers the free data can't load — for example the factor ETFs in the web version, or when the free feed is down. FMP's free Basic plan allows 250 requests a day and about 5 years of daily prices.</p>
+      <label class="field"><span>FMP API key (backup, optional)</span><input class="input" id="stFmpIn" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Paste your FMP key" value="${settings.keys.fmp || ''}"></label>
+      <div class="toolbar"><button class="btn" id="stFmpSave">Save and test</button><span class="small" id="stFmpMsg"></span></div>`);
+    $('#stFmpSave').onclick = async () => {
+      settings.keys.fmp = $('#stFmpIn').value.trim(); await saveSettings();
+      const m = $('#stFmpMsg'); if (!settings.keys.fmp) { m.className = 'small muted'; m.textContent = 'Removed.'; return; }
+      m.className = 'small muted'; m.textContent = 'Testing…';
+      try { const r = await PROVIDERS.fmp.daily('SPY', settings.keys.fmp, Date.now() / 1000 - 60 * 86400); m.className = 'small t-ok'; m.textContent = `Works: SPY loaded from FMP (${r.bars.length} days).`; }
+      catch (e) { m.className = 'small t-bad'; m.textContent = e.message; }
+    };
+    return;
+  }
+  if (!p.needsKey) { render(el, html`<p class="small muted" style="margin:0">Fictional companies, no internet needed.</p>`); return; }
   render(el, html`<label class="field"><span>${p.name} API key</span><input class="input" id="stKeyIn" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Paste your key" value="${settings.keys[p.id] || ''}"></label>
     <div class="toolbar"><button class="btn primary" id="stSave">Save and test</button><span class="small" id="stMsg"></span></div>`);
   $('#stSave').onclick = async () => {

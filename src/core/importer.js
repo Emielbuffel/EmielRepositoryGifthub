@@ -2,7 +2,7 @@
 // English, Dutch, French and German, e.g. DEGIRO "Portfolio.csv" (Product, Symbol/ISIN, Amount, Closing, Value in EUR).
 
 /** Splits one CSV line, respecting quotes. */
-function splitLine(line, d) {
+export function splitLine(line, d) {
   const out = []; let cur = '', q = false;
   for (let i = 0; i < line.length; i++) {
     const ch = line[i];
@@ -109,4 +109,34 @@ export function resolveTickers(rows, directory) {
     const t = r.isin && byIsin.get(r.isin) || (r.sym && bySym.has(r.sym) ? r.sym : '') || byName.get(f) || (f && bySorted.get(sortedKey(f))) || '';
     return { ...r, ticker: t, matched: !!t };
   });
+}
+
+/** 'account' for an account statement (cash movements), else 'holdings'. */
+export function fileKind(text) {
+  const h = String(text).replace(/^﻿/, '').split(/\r?\n/)[0].toLowerCase();
+  return /(omschrijving|description|beschreibung|descri)/.test(h) && /(mutatie|change|änderung|mouvement|variaz|saldo|balance|solde)/.test(h) ? 'account' : 'holdings';
+}
+
+/** A date in a file name ("Portfolio 2026-09-30.csv", "portfolio_30-09-2026", "20260930"), as epoch seconds (noon UTC). */
+export function dateFromName(name) {
+  const s = String(name || ''); let m;
+  const T = (y, mo, d) => { const t = Date.UTC(+y, +mo - 1, +d, 12); return +mo >= 1 && +mo <= 12 && +d >= 1 && +d <= 31 && +y > 1990 ? t / 1000 : null; };
+  if ((m = /(20\d\d)[-_. ]?(\d\d)[-_. ]?(\d\d)/.exec(s))) return T(m[1], m[2], m[3]);
+  if ((m = /(\d\d)[-_. ](\d\d)[-_. ](20\d\d)/.exec(s))) return T(m[3], m[2], m[1]);
+  return null;
+}
+
+/**
+ * Guesses a statement's date from its closing prices: the trading day on which most positions closed at the
+ * statement's price (within 0.3%). prices: {ticker: bars}. Returns {t, hits, of} or null.
+ */
+export function guessDate(rows, prices) {
+  const votes = new Map(); let of = 0;
+  for (const r of rows) {
+    const b = r.ticker && prices[r.ticker]; if (!b || !r.price) continue; of++;
+    for (const x of b) if (Math.abs(x.close / r.price - 1) < 0.003) votes.set(x.time, (votes.get(x.time) || 0) + 1);
+  }
+  if (!votes.size) return null;
+  const [t, hits] = [...votes].sort((a, b) => b[1] - a[1] || b[0] - a[0])[0];
+  return hits >= Math.max(2, Math.ceil(of * 0.5)) || (of === 1 && hits === 1) ? { t, hits, of } : null;
 }

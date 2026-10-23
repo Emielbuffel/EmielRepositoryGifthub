@@ -90,6 +90,24 @@ export async function deleteFlow(fid) {
   emit('cash');
 }
 
+/* ---------- monthly holdings statements and the account statement ---------- */
+// snapshots: [{id, t, file, rows: [{sym, name, isin, shares, price, cur, eur}], cash, cashCur}] (holdings on a date)
+export async function snapshots() { return store.get(k('snapshots'), []); }
+export async function saveSnapshots(list) { await store.set(k('snapshots'), [...list].sort((a, b) => a.t - b.t)); emit('cash'); }
+/** Adds or replaces snapshots (one per day). */
+export async function addSnapshots(add) {
+  const day = t => Math.floor(t / 86400), S = (await snapshots()).filter(s => !add.some(a => day(a.t) === day(s.t)));
+  await saveSnapshots([...S, ...add.map(a => ({ id: id(), ...a }))]);
+}
+// ledger: account-statement lines (see core/ledger.js), kept once each
+export async function ledger() { return store.get(k('ledger'), []); }
+/** Adds new lines, skipping ones already stored; returns how many were new. */
+export async function addLedger(lines) {
+  const L = await ledger(), have = new Set(L.map(l => l.id)), add = lines.filter(l => !have.has(l.id));
+  await store.set(k('ledger'), [...L, ...add].sort((a, b) => a.t - b.t)); emit('cash'); return add.length;
+}
+export async function clearLedger() { await store.set(k('ledger'), []); emit('cash'); }
+
 /* ---------- checks ---------- */
 /** Works out the next step for the open plan of `sym` from its latest bars; raises an alert when it becomes due. */
 export async function checkPlan(sym, bars, name = '') {
