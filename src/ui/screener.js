@@ -2,7 +2,7 @@
 import PAT from '../core/pat.js';
 import { screenRow, rankRS, pc, fDs } from '../core/analysis.js';
 import { daily, benchmarkFor, provider, isDemo, settings } from '../data/service.js';
-import { DEMO } from '../data/providers.js';
+import { DEMO, snapshotMeta } from '../data/providers.js';
 import * as store from '../data/store.js';
 import { App, on, openStock } from '../app.js';
 import { $, $$, html, raw, render, money, ICON, toast, ago } from './dom.js';
@@ -54,19 +54,23 @@ export async function initScreener(el) {
   $('#scCustom').oninput = () => { S.custom = $('#scCustom').value; store.set('screen.custom', S.custom); note(); };
   $('#scQ').oninput = () => { S.q = $('#scQ').value.trim().toUpperCase(); table(); };
   $('#scRs').oninput = () => { S.minRs = +$('#scRs').value || 0; table(); };
-  on(type => { if (type === 'provider') reset(); if (type === 'view' && App.view === 'screener') { sources(); if (!S.rows.length && isDemo() && !S.running) run(); } });
+  on(type => { if (type === 'provider') reset(); if (type === 'view' && App.view === 'screener') { sources(); if (!S.rows.length && (isDemo() || provider().id === 'free') && !S.running) run(); } });
   await reset();
-  if (App.view === 'screener' && isDemo() && !S.rows.length) run();
+  if (App.view === 'screener' && (isDemo() || provider().id === 'free') && !S.rows.length) run();
 }
 
 async function reset() {
   const saved = await store.get('screen.' + provider().id, null);
   S.rows = saved ? saved.rows : []; S.at = saved ? saved.at : null;
-  S.source = await store.get('screen.src.' + provider().id, isDemo() ? 'demo' : 'watch');
+  await snapshotMeta().catch(() => null); if (!BUILTIN.length) { try { BUILTIN = (await snapshotMeta()).stocks.map(x => x.s); } catch (e) { /* none */ } }
+  S.source = await store.get('screen.src.' + provider().id, isDemo() ? 'demo' : provider().id === 'free' ? 'builtin' : 'watch');
   sources(); tiles(); presets(); table();
 }
 
+let BUILTIN = [];
+snapshotMeta().then(m => { BUILTIN = m.stocks.map(x => x.s); }).catch(() => {});
 function list(src) {
+  if (src === 'builtin') return BUILTIN.slice();
   if (src === 'demo') return DEMO.map(d => d.sym);
   if (src === 'watch') return App.watch.slice();
   if (src === 'portfolio') return (App.holdings || []).map(h => h.sym);
@@ -76,7 +80,7 @@ function list(src) {
 }
 function sources() {
   const opts = [['watch', `Your watchlist (${App.watch.length})`], ['portfolio', `Your portfolio (${(App.holdings || []).length})`]];
-  if (isDemo()) opts.unshift(['demo', `Demo stocks (${DEMO.length}, fictional)`]); else opts.push(['us50', 'US large caps (50)']);
+  if (isDemo()) opts.unshift(['demo', `Demo stocks (${DEMO.length}, fictional)`]); else { if (BUILTIN.length && provider().id === 'free') opts.unshift(['builtin', `All built-in stocks (${BUILTIN.length}: US, Europe, Asia)`]); opts.push(['us50', 'US large caps (50)']); }
   opts.push(['custom', 'Your own list…']);
   if (!opts.some(o => o[0] === S.source)) S.source = opts[0][0];
   render($('#scSrc'), html`${opts.map(([k, l]) => html`<option value="${k}" ${k === S.source ? raw('selected') : ''}>${l}</option>`)}`);
@@ -86,7 +90,7 @@ function sources() {
 function note() {
   const n = list(S.source).length, P = provider();
   const per = P.id === 'twelvedata' ? 7.6 : P.id === 'demo' ? 0 : 0.3;
-  $('#scNote').textContent = P.id === 'demo' ? 'Runs on the demo stocks instantly.' :
+  $('#scNote').textContent = P.id === 'demo' ? 'Runs on the demo stocks instantly.' : P.id === 'free' ? `${n} stocks · uses the built-in data (and fresh prices from the free feeds in the app). A full scan takes about ${Math.max(1, Math.round(n / 25))} s.` :
     `${n} stocks · uses up to ${n + 1} requests on your ${P.short} plan the first time (cached prices are reused for 3 hours)${per > 1 ? ` · about ${Math.ceil(n * per / 60)} min on the free plan (8 requests a minute)` : ''}.`;
   $('#scAt').textContent = S.at ? 'Last scan ' + ago(S.at) : '';
 }

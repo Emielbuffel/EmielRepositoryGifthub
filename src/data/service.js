@@ -1,13 +1,19 @@
 // Loads prices through the chosen provider with an on-device cache and incremental updates.
 import { PROVIDERS, MARKET, INDEXES, SECTORS, indexesFor, DataError, splitSym, currencyOf } from './providers.js';
 import * as store from './store.js';
+import { Capacitor } from '@capacitor/core';
+import { snapshotMeta } from './providers.js';
 
-export const settings = { provider: 'demo', keys: {} };
+let SNAP_IDX = null;
+export const snapshotReady = snapshotMeta().then(m => { SNAP_IDX = new Set(Object.keys(m.indexes)); return m; }).catch(() => null);
+const liveFeeds = () => Capacitor.isNativePlatform();
+
+export const settings = { provider: 'free', keys: {} };
 
 export async function loadSettings() {
   const s = await store.get('settings', null);
   if (s) Object.assign(settings, s);
-  if (!PROVIDERS[settings.provider]) settings.provider = 'demo';
+  if (!PROVIDERS[settings.provider]) settings.provider = 'free';
   return settings;
 }
 export async function saveSettings() { await store.set('settings', settings); }
@@ -40,8 +46,8 @@ export async function daily(sym, { force = false } = {}) {
       bars = r.bars.filter(b => b.time >= fromFull); meta = r;
     }
     if (bars.length < 60) throw new DataError(`Only ${bars.length} days of history for ${sym}: the detector needs at least 60.`, 'notfound');
-    const doc = { sym, name: meta.name || (cached && cached.name) || '', currency: meta.currency || currencyOf(sym), exchange: meta.exchange || '', bars, fetchedAt: Date.now() };
-    if (P.id !== 'demo') await store.cacheSet(ck, doc);
+    const doc = { sym, name: meta.name || (cached && cached.name) || '', currency: meta.currency || currencyOf(sym), exchange: meta.exchange || '', bars, fetchedAt: Date.now(), live: meta.live, builtIn: P.id === 'free' && meta.live === false };
+    if (P.id !== 'demo' && meta.live !== false) await store.cacheSet(ck, doc); // built-in data is already on the device
     return doc;
   } catch (e) {
     if (cached) return { ...cached, cached: true, stale: true, error: e }; // show what we have
@@ -55,8 +61,11 @@ const DEMO_IDX = { GSPC: 'DEMO-500', IXIC: 'DEMO-COMP' };
 /** Comparison choices for a ticker: [{id, name, group}]. id is an index key (e.g. 'GSPC'), 'S:XLK' for a sector ETF, or a ticker. */
 export function compareOptions(sym) {
   if (isDemo() || isDemoSym(sym)) return [{ id: 'GSPC', name: 'Demo 500 (fictional)', group: 'Indexes' }, { id: 'IXIC', name: 'Demo Composite (fictional)', group: 'Indexes' }];
-  const out = indexesFor(sym).map(k => ({ id: k, name: INDEXES[k].name, group: 'Indexes' }));
-  if (!splitSym(sym).sfx) Object.entries(SECTORS).forEach(([t, n]) => out.push({ id: 'S:' + t, name: n + ' (' + t + ')', group: 'US sectors' }));
+  let keys = indexesFor(sym);
+  const builtInOnly = settings.provider === 'free' && !liveFeeds() && SNAP_IDX;
+  if (builtInOnly) { keys = keys.filter(k => SNAP_IDX.has(k)); if (!keys.length) keys = ['GSPC']; }
+  const out = keys.map(k => ({ id: k, name: INDEXES[k].name, group: 'Indexes' }));
+  if (!builtInOnly && !splitSym(sym).sfx) Object.entries(SECTORS).forEach(([t, n]) => out.push({ id: 'S:' + t, name: n + ' (' + t + ')', group: 'US sectors' }));
   return out;
 }
 export const defaultBenchmark = sym => compareOptions(sym)[0].id;

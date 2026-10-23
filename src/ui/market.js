@@ -47,7 +47,7 @@ async function load(force = false, quiet = false) {
     M.rows = series.map(s => ({ ...s, R: s.bars ? analyseIndex(s.bars) : null }));
     M.loadedFor = key;
     App.mktRes = M.rows;
-    App.mkt = combine(M.rows.filter(r => r.region === 'US').map(r => r.R));
+    App.mkt = combine(M.rows.filter(r => r.k === 'IXIC' || r.k === 'GSPC').map(r => r.R)); // US status = weaker of Nasdaq and S&P 500
     emit('market');
   } catch (e) {
     M.rows = null; M.err = e;

@@ -11,7 +11,7 @@ export const VIEWS = [
 ];
 
 const DEMO_WATCH = ['ACME.DEMO', 'IRIS.DEMO', 'LUMA.DEMO', 'CRUX.DEMO', 'FLUX.DEMO', 'DUNE.DEMO'];
-const REAL_WATCH = ['NVDA', 'AAPL', 'MSFT', 'META', 'AMZN'];
+const REAL_WATCH = ['NVDA', 'AAPL', 'MSFT', 'META', 'AMZN', 'GOOGL', 'TSM', 'ASML.AS', 'RHM.DE', 'SAP.DE', '7203.T', '005930.KS'];
 
 export const App = {
   view: 'chart',
@@ -29,7 +29,7 @@ export const watchKey = () => isDemo() ? 'watch.demo' : 'watch.real';
 export async function loadState() {
   App.names = await store.get('names', {});
   App.watch = await store.get(watchKey(), isDemo() ? DEMO_WATCH : REAL_WATCH);
-  App.sym = await store.get(isDemo() ? 'lastSym.demo' : 'lastSym.real', App.watch[0] || (isDemo() ? 'ACME.DEMO' : 'AAPL'));
+  App.sym = await store.get(isDemo() ? 'lastSym.demo' : 'lastSym.real', App.watch[0] || (isDemo() ? 'ACME.DEMO' : 'NVDA'));
   App.last = await store.get('lastQuotes', {});
 }
 

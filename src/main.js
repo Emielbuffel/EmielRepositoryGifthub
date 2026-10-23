@@ -1,6 +1,7 @@
 // App entry: navigation (tab bar on iPhone, sidebar on iPad/Mac), first-launch welcome and boot.
 import { App, VIEWS, on, go, openStock, loadState } from './app.js';
 import { loadSettings, isDemo, provider } from './data/service.js';
+import { Capacitor } from '@capacitor/core';
 import * as store from './data/store.js';
 import { $, $$, html, raw, render, ICON, sheet } from './ui/dom.js';
 import { pc } from './core/analysis.js';
@@ -44,7 +45,14 @@ function sideWatch() {
 
 function banner() {
   const el = $('#banner');
-  if (!isDemo()) { el.hidden = true; return; }
+  if (!isDemo()) {
+    // web preview: say where live updates and news come from
+    if (provider().id === 'free' && !Capacitor.isNativePlatform()) {
+      el.hidden = false;
+      render(el, html`<span><b>Preview.</b> Real built-in data for about 380 stocks and the main indexes. Live price updates, other tickers and news load in the iPhone, iPad and Mac app.</span>`);
+    } else el.hidden = true;
+    return;
+  }
   el.hidden = false;
   render(el, html`<span><b>Demo mode.</b> Fictional companies, built to show every pattern. Add a data provider for real stocks.</span><button class="btn sm" id="bnSet">Set up data</button>`);
   $('#bnSet').onclick = () => go('settings');

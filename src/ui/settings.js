@@ -80,7 +80,7 @@ export async function initSettings(el) {
 
 function keyBox() {
   const p = provider(), el = $('#stKey');
-  if (!p.needsKey) { render(el, html`<p class="small muted" style="margin:0">Demo mode: fictional companies, no internet needed. Switch to a provider above for real stocks.</p>`); return; }
+  if (!p.needsKey) { render(el, html`<p class="small muted" style="margin:0">${p.id === 'free' ? 'No key needed. Add a key from FMP, Twelve Data or EODHD for earnings data on every stock and official index data.' : 'Fictional companies, no internet needed.'}</p>`); return; }
   render(el, html`<label class="field"><span>${p.name} API key</span><input class="input" id="stKeyIn" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Paste your key" value="${settings.keys[p.id] || ''}"></label>
     <div class="toolbar"><button class="btn primary" id="stSave">Save and test</button><span class="small" id="stMsg"></span></div>`);
   $('#stSave').onclick = async () => {

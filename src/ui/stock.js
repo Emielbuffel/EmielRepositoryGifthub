@@ -15,7 +15,7 @@ import { $, $$, html, raw, render, esc, money, ICON, toast, ago } from './dom.js
 
 const V = { chart: null, S: null, data: null, bench: null, R: null, seq: 0, tool: null, pending: null, poly: null, drawingsAll: {}, earn: null, earnErr: null, news: null, newsSeen: 0, newsTag: 'all', cmp: [], mkt: null };
 const LINE_DEFS = [['l1', '10-day', '--ma1', '2-week'], ['l2', '21-day EMA', '--ma2', '4-week EMA'], ['l3', '50-day', '--ma3', '10-week'], ['l4', '200-day', '--ma4', '40-week'], ['rs', 'RS line', '--rs'], ['bb', 'Bollinger bands', '--muted']];
-let prefs = { tf: 'D', style: 'candles', lines: { l1: false, l2: true, l3: true, l4: true, rs: true, bb: false }, patMode: 'all', panes: { rsi: false, macd: false }, eps: 'ttm', cmp: {}, rsBench: {} };
+let prefs = { tf: 'D', style: 'candles', lines: { l1: false, l2: false, l3: true, l4: true, rs: true, bb: false }, patMode: 'all', panes: { rsi: false, macd: false }, eps: 'ttm', cmp: {}, rsBench: {} };
 // comparison choices and the RS benchmark are remembered per market (US, .DE, .T …)
 const group = sym => isDemoSym(sym) ? 'demo' : splitSym(sym).sfx || 'US';
 
@@ -106,7 +106,8 @@ async function load(sym, force = false) {
     const src = isDemoSym(sym) ? 'Demo data · fictional ' + (isIndexSym(sym) ? 'index' : 'company') : provider().short;
     const dt = fD(d.bars[n].time);
     if (d.stale) status(`Showing saved prices through ${dt}: ${d.error ? d.error.message : 'refresh failed'}`, 'warn');
-    else status(`${src} · daily data through ${dt}${d.cached && !isDemoSym(sym) ? ' · updated ' + ago(d.fetchedAt) : ''}`, isDemoSym(sym) ? 'demo' : 'ok');
+    else if (d.builtIn) status(`Built-in data through ${dt}. Live updates run in the iPhone, iPad and Mac app.`, 'ok');
+    else status(`${provider().id === 'free' ? 'Live · free public feeds' : src} · daily data through ${dt}${d.cached && !isDemoSym(sym) ? ' · updated ' + ago(d.fetchedAt) : ''}`, isDemoSym(sym) ? 'demo' : 'ok');
     loadCompare(sym, seq);
     if (!V.mkt) loadEarnings(sym, seq); else earnCard();
     loadNews(sym, seq);
@@ -414,7 +415,7 @@ function openMenu(id) {
       $('#rsSel', p).onchange = async () => { prefs.rsBench[g] = $('#rsSel', p).value; savePrefs(); V.bench = await benchmarkFor(V.sym, prefs.rsBench[g]).catch(() => V.bench); draw(true); cards(); toast('RS line now measured against ' + (V.bench ? V.bench.name : 'the index') + '.'); };
     }
     if (id === 'pEps') {
-      render(p, html`${[['ttm', '4-quarter EPS line (like MarketSurge)'], ['q', 'Quarterly EPS'], ['off', 'Hide EPS line']].map(([k, l]) => html`<button data-eps="${k}" class="${prefs.eps === k ? 'on' : ''}">${l}</button>`)}
+      render(p, html`${[['ttm', '4-quarter EPS (trailing 12 months)'], ['q', 'Quarterly EPS'], ['off', 'Hide EPS line']].map(([k, l]) => html`<button data-eps="${k}" class="${prefs.eps === k ? 'on' : ''}">${l}</button>`)}
         <p class="muted tiny" style="margin:4px 10px 6px">Smooth line on the left axis; a dot marks each report: <b style="color:var(--up)">●</b> EPS up 25%+ y/y, <b style="color:var(--warn)">●</b> up less, <b style="color:var(--down)">●</b> down. ${V.earn ? '' : V.earnErr || 'Earnings data not loaded yet.'}</p>`);
       $$('[data-eps]', p).forEach(x => { x.onclick = () => { prefs.eps = x.dataset.eps; savePrefs(); draw(true); p.hidden = true; }; });
     }

@@ -20,7 +20,8 @@ This is a standalone rebuild of the "Base Pattern Desk" claude.ai artifact. That
 
 ## Data
 
-- **Demo mode** (default): 12 fictional companies and 2 fictional indexes. They are generated so that every pattern appears. No account or internet needed, so App Review can test everything.
+- **Built-in data + free live updates** (default, no key): real daily prices for 382 stocks (US, Europe, Japan, Hong Kong, Korea), the Nasdaq, S&P 500, Dow, Euro Stoxx 50 and other indexes, and earnings for 18 researched stocks, taken from the original desk's database (`public/data`, built with `node scripts/build-snapshot.mjs <export-dir>`). In the iPhone/Mac app the newest days, and any other ticker, come from free public chart feeds (Yahoo Finance, Stooq fallback). These are unofficial endpoints: fine for personal use, but check their terms before selling the app.
+- **Fictional pattern examples**: 12 made-up companies built to show every pattern (Settings).
 - **Real data:** bring your own API key from [Financial Modeling Prep](https://site.financialmodelingprep.com/developer/docs), [Twelve Data](https://twelvedata.com/docs) or [EODHD](https://eodhd.com/financial-apis/). The key stays on the device. Free plans mostly cover US stocks; international listings need paid plans.
 - Tickers use Yahoo-style suffixes: `AAPL`, `ASML.AS`, `VOD.L`, `7203.T`, `005930.KS`.
 - Prices are cached on the device for 3 hours, and later updates only fetch the new days.

@@ -230,8 +230,97 @@ const EOD = {
   async fx(pair, key) { return this.daily(pair.replace('/', '') + '.FOREX', key); },
 };
 
+/* ---------- built-in data + free live updates (no key) ---------- */
+// The app ships with daily prices for ~380 stocks and the main indexes (public/data, built by
+// scripts/build-snapshot.mjs). On iPhone, iPad and Mac it tops them up, and loads any other ticker,
+// from free public chart feeds (Yahoo Finance, Stooq as a fallback). Browsers block those feeds (CORS),
+// so a web preview shows the built-in data only.
+let metaP = null; const shardP = new Map();
+const base = () => (typeof document !== 'undefined' ? new URL('./data/', document.baseURI).href : './data/');
+export function snapshotMeta() {
+  if (!metaP) metaP = fetch(base() + 'meta.json').then(r => { if (!r.ok) throw new Error('no data'); return r.json(); }).catch(e => { metaP = null; throw e; });
+  return metaP;
+}
+const shardOf = (sym, n) => { let h = 0; for (const c of sym) h = (h * 31 + c.charCodeAt(0)) >>> 0; return h % n; };
+async function snapBars(sym) {
+  let m; try { m = await snapshotMeta(); } catch (e) { return null; }
+  const i = shardOf(sym, m.shards);
+  if (!shardP.has(i)) shardP.set(i, fetch(base() + `px-${i}.json`).then(r => r.json()).catch(e => { shardP.delete(i); return {}; }));
+  const rows = (await shardP.get(i))[sym];
+  if (!rows) return null;
+  const info = sym.startsWith('^') ? { n: (m.indexes[sym.slice(1)] || {}).name, c: '', x: 'Index' } : (m.stocks.find(x => x.s === sym) || {});
+  return { bars: rows.map(r => ({ time: r[0], open: r[1], high: r[2], low: r[3], close: r[4], volume: r[5] })), name: info.n || '', currency: info.c || '', exchange: info.x || '', asOf: rows[rows.length - 1][0] };
+}
+// index ids used by the app -> Yahoo symbols
+const YH_INDEX = { GSPC: '^GSPC', IXIC: '^IXIC', NDX: '^NDX', DJI: '^DJI', RUT: '^RUT', SOX: '^SOX', WORLD: 'URTH', STOXX50E: '^STOXX50E', GDAXI: '^GDAXI', FCHI: '^FCHI', AEX: '^AEX', FTSEMIB: 'FTSEMIB.MI', IBEX: '^IBEX', BFX: '^BFX', FTSE: '^FTSE', SSMI: '^SSMI', OMXS30: '^OMX', OMXC25: '^OMXC25', OMXH25: '^OMXH25', OBX: 'OBX.OL', N225: '^N225', KS11: '^KS11', KQ11: '^KQ11', HSI: '^HSI', SSEC: '000001.SS', GSPTSE: '^GSPTSE', AXJO: '^AXJO' };
+const yahooSym = sym => sym.startsWith('^') ? YH_INDEX[sym.slice(1)] || sym : sym;
+async function yahoo(sym, fromT) {
+  const now = Math.floor(Date.now() / 1000), from = fromT || now - Math.round(4.3 * 365.25 * 86400);
+  const d = await getJSON(`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(yahooSym(sym))}?period1=${from}&period2=${now + 86400}&interval=1d&includePrePost=false`);
+  const r = d && d.chart && d.chart.result && d.chart.result[0];
+  if (!r || !r.timestamp) throw new DataError((d && d.chart && d.chart.error && d.chart.error.description) || 'No data for ' + sym + '.', 'notfound');
+  const q = r.indicators.quote[0], off = r.meta.gmtoffset || 0;
+  const bars = clean(r.timestamp.map((t, i) => ({ time: Math.floor((t + off) / 86400) * 86400, open: q.open[i], high: q.high[i], low: q.low[i], close: q.close[i], volume: q.volume[i] || 0 })));
+  return { bars, currency: r.meta.currency, name: r.meta.longName || r.meta.shortName || '', exchange: r.meta.fullExchangeName || r.meta.exchangeName || '' };
+}
+const STOOQ = { '': 'us', L: 'uk', DE: 'de', T: 'jp', HK: 'hk' };
+async function stooq(sym) {
+  const { base: b, sfx } = splitSym(sym); if (sym.startsWith('^') || !(sfx in STOOQ)) throw new DataError('Not on Stooq.', 'notfound');
+  const url = `https://stooq.com/q/d/l/?s=${encodeURIComponent((b + '.' + STOOQ[sfx]).toLowerCase())}&i=d`;
+  let txt;
+  if (Capacitor.isNativePlatform()) { const r = await CapacitorHttp.get({ url, responseType: 'text' }); txt = r.data; } else txt = await (await fetch(url)).text();
+  const rows = String(txt).trim().split(/\r?\n/).slice(1).map(l => l.split(',')).filter(c => c.length >= 5);
+  if (rows.length < 60) throw new DataError('No data for ' + sym + ' on Stooq.', 'notfound');
+  return { bars: clean(rows.map(c => ({ time: dToT(c[0]), open: +c[1], high: +c[2], low: +c[3], close: +c[4], volume: +(c[5] || 0) }))) };
+}
+let liveDownUntil = 0; // after a failure (e.g. a browser blocking the feeds) don't retry for a while
+async function live(sym, fromT) {
+  if (Date.now() < liveDownUntil) throw new DataError('Live feeds unavailable.', 'network');
+  try { return await yahoo(sym, fromT); }
+  catch (e) { try { return await stooq(sym); } catch (e2) { if (e.kind === 'network' || !Capacitor.isNativePlatform()) liveDownUntil = Date.now() + 10 * 60e3; throw e; } }
+}
+
+const FREE = {
+  id: 'free', name: 'Built-in data + free live updates', short: 'Built-in', needsKey: false,
+  blurb: 'Daily prices for about 380 stocks and the main indexes come with the app, so it works offline. On iPhone, iPad and Mac the app adds the latest days, and any other ticker, from free public chart feeds (Yahoo Finance, Stooq). No account or key needed.',
+  async daily(sym, key, fromT) {
+    const snap = await snapBars(sym);
+    if (fromT) { const r = await live(sym, fromT); return { ...r, live: true }; } // incremental update of a cached series
+    try {
+      const r = await live(sym, snap ? snap.bars[snap.bars.length - 1].time - 10 * 86400 : null);
+      if (!snap) return { ...r, live: true };
+      const m = new Map(snap.bars.map(b => [b.time, b])); r.bars.forEach(b => m.set(b.time, b));
+      return { ...snap, name: snap.name || r.name, currency: snap.currency || r.currency, bars: [...m.values()].sort((a, b) => a.time - b.time), live: true };
+    } catch (e) {
+      if (snap) return { ...snap, live: false };
+      throw new DataError(`${sym} is not in the built-in data${Capacitor.isNativePlatform() ? ' and the free feeds did not answer' : '. Other tickers load in the iPhone/Mac app (browsers block the free feeds)'}.`, 'notfound');
+    }
+  },
+  indexSym: k => '^' + k,
+  async earnings(sym) {
+    const m = await snapshotMeta(), e = m.earnings[sym];
+    if (!e) throw new DataError('No earnings for ' + sym + ' in the built-in data. A key from FMP, Twelve Data or EODHD (Settings) adds earnings for any stock.', 'notfound');
+    return e.q.map(x => ({ time: dToT(x.t), eps: x.eps, est: x.est, rev: x.rev, revEst: x.revEst, period: x.p, tentative: x.tentative }));
+  },
+  async search(q) {
+    const Q = q.toUpperCase().trim(), m = await snapshotMeta(), have = new Set(m.stocks.map(x => x.s));
+    const fold = t => String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase();
+    const score = (s, n) => (s === Q || s.split('.')[0] === Q ? 100 : s.startsWith(Q) ? 40 : 0) + (fold(n).startsWith(Q) ? 60 : fold(n).includes(' ' + Q) ? 35 : fold(n).includes(Q) ? 20 : 0);
+    const rows = [...m.stocks.map(x => [x.s, x.n, '', x.x]), ...m.directory.filter(r => !have.has(r[0]))];
+    const local = rows.map(r => [score(r[0], r[1]), r]).filter(x => x[0] > 0).sort((a, b) => b[0] - a[0] || (have.has(b[1][0]) - have.has(a[1][0]))).slice(0, 10)
+      .map(([, r]) => ({ symbol: r[0], name: r[1], exchange: have.has(r[0]) ? 'Built-in data' : (r[3] || '') + (Capacitor.isNativePlatform() ? '' : ' · loads in the app'), isin: r[2] }));
+    if (!Capacitor.isNativePlatform() || local.length >= 8) return local;
+    try {
+      const d = await getJSON(`https://query2.finance.yahoo.com/v1/finance/search?${new URLSearchParams({ q, quotesCount: 10, newsCount: 0 })}`);
+      const extra = (d.quotes || []).filter(x => x.symbol && /EQUITY|ETF|INDEX/.test(x.quoteType || '') && !local.some(l => l.symbol === x.symbol)).map(x => ({ symbol: x.symbol, name: x.longname || x.shortname, exchange: x.exchDisp || x.exchange }));
+      return [...local, ...extra].slice(0, 14);
+    } catch (e) { return local; }
+  },
+  async fx(pair) { const [a, b] = pair.split('/'); return yahoo(a + b + '=X'); },
+};
+
 const DEMO_P = {
-  id: 'demo', name: 'Demo data (fictional)', short: 'Demo', needsKey: false,
+  id: 'demo', name: 'Fictional pattern examples', short: 'Demo', needsKey: false,
   blurb: 'Fictional companies with made-up prices, built to show every base pattern. No account or internet needed.',
   async earnings(sym) { const e = demoEarnings(sym); if (!e) throw new DataError('No demo earnings for ' + sym + '.', 'notfound'); return e; },
   async news(sym) { return demoNews(sym); },
@@ -244,5 +333,5 @@ const DEMO_P = {
   async fx() { return { bars: [] }; },
 };
 
-export const PROVIDERS = { demo: DEMO_P, fmp: FMP, twelvedata: TD, eodhd: EOD };
+export const PROVIDERS = { free: FREE, fmp: FMP, twelvedata: TD, eodhd: EOD, demo: DEMO_P };
 export { DEMO, DEMO_INDEXES, DEMO_BENCH };

@@ -1,5 +1,7 @@
 // The Learn tab: every base pattern with a diagram, its rules and a live example, plus the O'Neil method.
 import { openStock } from '../app.js';
+import { snapshotMeta } from '../data/providers.js';
+import { isDemo } from '../data/service.js';
 import { $$, html, raw, render } from './dom.js';
 import { patColor } from './chart.js';
 
@@ -53,10 +55,10 @@ export function initLearn(el) {
         <div class="body"><h3><i></i>${name}</h3>
           <dl>${rules.map(([k, v]) => html`<dt>${k}</dt><dd>${v}</dd>`)}</dl>
           <p class="muted small" style="margin:0">${note}</p>
-          <div><button class="btn sm" data-demo="${demo}">See an example</button></div>
+          <div><button class="btn sm" data-demo="${demo}" data-type="${t}">See an example</button> <span class="muted tiny" data-ex="${t}"></span></div>
         </div>
       </article>`)}</div>
-    <p class="muted tiny" style="margin:0">Examples open fictional demo companies built to show each pattern clearly. Faulty bases (too short, V-shaped, loose handle) are still drawn, marked “(faulty)”.</p>
+    <p class="muted tiny" style="margin:0">Examples are real stocks from the built-in data where the detector currently finds that base (or found it recently). Faulty bases (too short, V-shaped, loose handle) are still drawn, marked “(faulty)”.</p>
 
     <div class="grid2">
       <section class="card">
@@ -106,4 +108,13 @@ export function initLearn(el) {
       </div>
     </section>`);
   $$('[data-demo]', el).forEach(b => { b.onclick = () => openStock(b.dataset.demo); });
+  // point the examples at real stocks showing each pattern in the built-in data
+  if (!isDemo()) snapshotMeta().then(m => {
+    $$('[data-type]', el).forEach(b => {
+      const ex = m.examples[b.dataset.type]; if (!ex) return;
+      const st = m.stocks.find(x => x.s === ex.s);
+      b.dataset.demo = ex.s; b.textContent = 'See ' + ex.s;
+      const lab = el.querySelector(`[data-ex="${b.dataset.type}"]`); if (lab) lab.textContent = (st ? st.n : '') + (ex.when === 'now' ? ' · forming now' : ' · recent breakout');
+    });
+  }).catch(() => {});
 }
