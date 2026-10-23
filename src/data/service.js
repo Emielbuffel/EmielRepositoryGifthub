@@ -8,11 +8,13 @@ let SNAP_IDX = null;
 export const snapshotReady = snapshotMeta().then(m => { SNAP_IDX = new Set(Object.keys(m.indexes)); return m; }).catch(() => null);
 const liveFeeds = () => Capacitor.isNativePlatform();
 
-export const settings = { provider: 'free', keys: {} };
+export const settings = { provider: 'free', keys: {}, v: 2 };
 
 export async function loadSettings() {
   const s = await store.get('settings', null);
   if (s) Object.assign(settings, s);
+  // version 1 started in demo mode; from version 2 real built-in data is the default
+  if (s && !s.v) { if (settings.provider === 'demo') settings.provider = 'free'; settings.v = 2; await store.set('settings', settings); }
   if (!PROVIDERS[settings.provider]) settings.provider = 'free';
   return settings;
 }

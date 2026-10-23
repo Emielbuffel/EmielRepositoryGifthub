@@ -20,9 +20,9 @@ const PRESETS = [
 ];
 const COLS = [
   ['s', 'Symbol'], ['nm', 'Name'], ['c', 'Close', 'n'], ['d1', 'Day', 'n'], ['m1', '1 mo', 'n'], ['m3', '3 mo', 'n'], ['y1', '1 yr', 'n'],
-  ['rs', 'RS', 'n'], ['vr', 'Vol ×', 'n'], ['p', 'Pattern'], ['di', 'To buy pt', 'n'], ['hi', 'Off high', 'n'], ['sig', 'Signals'], ['sp', '60 days'],
+  ['rs', 'RS', 'n'], ['g', 'Sector'], ['vr', 'Vol ×', 'n'], ['p', 'Pattern'], ['di', 'To buy pt', 'n'], ['hi', 'Off high', 'n'], ['sig', 'Signals'], ['sp', '60 days'],
 ];
-const S = { rows: [], at: null, running: false, cancel: false, sort: 'rs', asc: false, preset: 'all', q: '', minRs: 0, source: null, custom: '' };
+const S = { rows: [], at: null, running: false, cancel: false, sort: 'rs', asc: false, preset: 'all', q: '', minRs: 0, sector: '', source: null, custom: '' };
 
 export async function initScreener(el) {
   S.custom = await store.get('screen.custom', 'AAPL MSFT NVDA');
@@ -42,6 +42,7 @@ export async function initScreener(el) {
       <div class="chips" id="scPresets"></div>
       <div class="toolbar">
         <input class="input" id="scQ" placeholder="Filter by ticker or name" style="max-width:260px">
+        <select class="input" id="scSec" style="width:auto;padding:7px 10px;font-size:14px" aria-label="Sector"><option value="">All sectors</option></select>
         <label class="chk">Min RS <input class="input" type="number" id="scRs" min="0" max="99" step="10" value="0" style="width:80px"></label>
         <span class="muted small" id="scCount"></span>
       </div>
@@ -54,6 +55,7 @@ export async function initScreener(el) {
   $('#scCustom').oninput = () => { S.custom = $('#scCustom').value; store.set('screen.custom', S.custom); note(); };
   $('#scQ').oninput = () => { S.q = $('#scQ').value.trim().toUpperCase(); table(); };
   $('#scRs').oninput = () => { S.minRs = +$('#scRs').value || 0; table(); };
+  $('#scSec').onchange = () => { S.sector = $('#scSec').value; table(); };
   on(type => { if (type === 'provider') reset(); if (type === 'view' && App.view === 'screener') { sources(); if (!S.rows.length && (isDemo() || provider().id === 'free') && !S.running) run(); } });
   await reset();
   if (App.view === 'screener' && (isDemo() || provider().id === 'free') && !S.rows.length) run();
@@ -67,8 +69,8 @@ async function reset() {
   sources(); tiles(); presets(); table();
 }
 
-let BUILTIN = [];
-snapshotMeta().then(m => { BUILTIN = m.stocks.map(x => x.s); }).catch(() => {});
+let BUILTIN = [], SECTOR = {};
+snapshotMeta().then(m => { BUILTIN = m.stocks.map(x => x.s); m.stocks.forEach(x => { if (x.g) SECTOR[x.s] = x.g; }); }).catch(() => {});
 function list(src) {
   if (src === 'builtin') return BUILTIN.slice();
   if (src === 'demo') return DEMO.map(d => d.sym);
@@ -110,7 +112,7 @@ async function run() {
     try {
       const d = await daily(sym);
       const r = screenRow(sym, d.name || App.names[sym] || '', d.bars, PAT.scan(d.bars), bench && bench.bars.map(b => ({ time: b.time, close: b.close })));
-      if (r) { r.cu = d.currency; rows.push(r); }
+      if (r) { r.cu = d.currency; r.g = SECTOR[sym] || ''; rows.push(r); }
       else errors.push(sym + ' (too little history)');
     } catch (e) {
       errors.push(sym + ': ' + e.message);
@@ -153,7 +155,10 @@ function spark(a, up) {
 }
 function table() {
   const f = PRESETS.find(p => p[0] === S.preset)[2];
-  let R = S.rows.filter(f).filter(r => (r.rs || 0) >= S.minRs).filter(r => !S.q || r.s.includes(S.q) || (r.nm || '').toUpperCase().includes(S.q));
+  const secs = [...new Set(S.rows.map(r => r.g || SECTOR[r.s]).filter(Boolean))].sort();
+  const sel = $('#scSec'); if (sel && sel.options.length !== secs.length + 1) render(sel, html`<option value="">All sectors</option>${secs.map(x => html`<option ${x === S.sector ? raw('selected') : ''}>${x}</option>`)}`);
+  S.rows.forEach(r => { if (!r.g && SECTOR[r.s]) r.g = SECTOR[r.s]; });
+  let R = S.rows.filter(f).filter(r => (r.rs || 0) >= S.minRs).filter(r => !S.sector || r.g === S.sector).filter(r => !S.q || r.s.includes(S.q) || (r.nm || '').toUpperCase().includes(S.q));
   const k = S.sort, dir = S.asc ? 1 : -1;
   R = R.sort((a, b) => { const x = val(a, k), y = val(b, k); if (x == null) return 1; if (y == null) return -1; return (typeof x === 'string' ? x.localeCompare(y) : x - y) * dir; });
   $('#scCount').textContent = `${R.length} of ${S.rows.length}`;
@@ -161,6 +166,7 @@ function table() {
     switch (c) {
       case 's': return html`<td class="sticky"><b>${r.s.replace('.DEMO', '')}</b></td>`;
       case 'nm': return html`<td class="name">${r.nm}</td>`;
+      case 'g': return html`<td class="name small">${r.g || ''}</td>`;
       case 'c': return html`<td class="n">${money(r.c, r.cu)}</td>`;
       case 'rs': return html`<td class="n ${r.rs >= 80 ? 't-ok' : r.rs < 40 ? 't-mute' : ''}">${r.rs ?? '—'}${r.rsh ? raw(' <span title="RS line at a new high" class="t-ok">★</span>') : ''}</td>`;
       case 'vr': return html`<td class="n ${r.vr >= 2 ? 't-warn' : ''}">${r.vr != null ? r.vr.toFixed(1) : '—'}</td>`;

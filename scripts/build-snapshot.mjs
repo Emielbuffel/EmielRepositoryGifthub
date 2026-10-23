@@ -57,6 +57,12 @@ try { directory = read(path.join(SRC, 'settings', 'directory.json')).items.map(r
 try { read(path.join(SRC, 'settings', 'universe.json')).items.forEach(r => { if (r[5]) sectors[r[0]] = r[5]; }); } catch (e) { /* optional */ }
 stocks.forEach(s => { if (sectors[s.s]) s.g = sectors[s.s]; });
 
+// RS rank 1-99 within the built-in universe (12-month strength, latest quarter double-weighted)
+const rsRaw = s => { const c = shards[shardOf(s.s)][s.s].map(r => r[4]), n = c.length - 1, q = k => n - 63 * k >= 0 ? c[n - 63 * (k - 1)] / c[n - 63 * k] - 1 : null;
+  return [q(1), q(2), q(3), q(4)].every(x => x != null) ? 0.4 * q(1) + 0.2 * q(2) + 0.2 * q(3) + 0.2 * q(4) : null; };
+const ranked = stocks.map(s => [s, rsRaw(s)]).filter(x => x[1] != null).sort((a, b) => a[1] - b[1]);
+ranked.forEach(([s], i) => { s.r = Math.max(1, Math.min(99, Math.round(1 + 98 * i / (ranked.length - 1)))); });
+
 // a real stock for every pattern type (current base preferred, sound before faulty), for the Learn tab
 const toBars = a => a.map(r => ({ time: r[0], open: r[1], high: r[2], low: r[3], close: r[4], volume: r[5] }));
 const examples = {};

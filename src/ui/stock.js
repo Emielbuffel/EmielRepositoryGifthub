@@ -3,7 +3,7 @@
 import PAT from '../core/pat.js';
 import { baseCard, signal, pc, fD, fDs, f2, lineVal, cupPivot } from '../core/analysis.js';
 import { daily, benchmarkFor, indexSeries, compareOptions, defaultBenchmark, earnings, isIndexSym, provider, isDemo, isDemoSym, DataError } from '../data/service.js';
-import { splitSym } from '../data/providers.js';
+import { splitSym, snapshotMeta } from '../data/providers.js';
 import { stockNews, lastSeen, markSeen, newsSettings } from '../data/news.js';
 import { enrich, epsPoints, nextReport, canslimCA, adGrade } from '../core/earnings.js';
 import { analyseIndex, STATUS, EXPOSURE } from '../core/market.js';
@@ -26,7 +26,7 @@ export async function initStock(el) {
   render(el, html`
     <div class="stock-head">
       <div class="stock-id">
-        <div class="sym"><b id="sSym">—</b><span id="sName"></span></div>
+        <div class="sym"><b id="sSym">—</b><span id="sName"></span><span id="sTags" class="row" style="gap:6px"></span></div>
         <div class="px"><span class="p" id="sPx">—</span><span class="ch" id="sCh"></span></div>
         <div class="status"><span class="dot" id="sDot"></span><span id="sStatus">Loading…</span></div>
       </div>
@@ -106,6 +106,7 @@ async function load(sym, force = false) {
     const src = isDemoSym(sym) ? 'Demo data · fictional ' + (isIndexSym(sym) ? 'index' : 'company') : provider().short;
     const dt = fD(d.bars[n].time);
     if (d.stale) status(`Showing saved prices through ${dt}: ${d.error ? d.error.message : 'refresh failed'}`, 'warn');
+    else if ((Date.now() / 1000 - d.bars[n].time) / 86400 > 5 && !isDemoSym(sym)) status(`Prices end on ${dt}: ${Math.floor((Date.now() / 1000 - d.bars[n].time) / 86400)} days old. ${d.builtIn ? 'Built-in data; live updates run in the iPhone, iPad and Mac app.' : 'Tap Refresh.'}`, 'warn');
     else if (d.builtIn) status(`Built-in data through ${dt}. Live updates run in the iPhone, iPad and Mac app.`, 'ok');
     else status(`${provider().id === 'free' ? 'Live · free public feeds' : src} · daily data through ${dt}${d.cached && !isDemoSym(sym) ? ' · updated ' + ago(d.fetchedAt) : ''}`, isDemoSym(sym) ? 'demo' : 'ok');
     loadCompare(sym, seq);
@@ -164,8 +165,22 @@ function head() {
   $('#sPx').textContent = fp(p);
   const e = $('#sCh'); e.textContent = (ch >= 0 ? '+' : '−') + money(Math.abs(ch), V.data.currency).replace(/^[^\d]*/, '') + ' (' + pc(ch / d[n - 1].close, 2) + ')';
   e.className = 'ch ' + (ch >= 0 ? 'up' : 'down');
+  tags();
   const w = App.watch.includes(V.sym);
   render($('#sWatch'), html`${raw(w ? ICON.starFill : ICON.star)}<span>${w ? 'In watchlist' : 'Watch'}</span>`);
+}
+
+/* RS rank (1-99 within the built-in universe, from the latest scan when there is one) and sector */
+async function tags() {
+  const el = $('#sTags'), sym = V.sym; el.innerHTML = '';
+  if (isDemoSym(sym) || isIndexSym(sym)) return;
+  let rs = null, n = 0, sector = '';
+  const scan = await store.get('screen.' + provider().id, null);
+  const row = scan && scan.rows.find(r => r.s === sym);
+  if (row && row.rs != null) { rs = row.rs; n = scan.rows.length; }
+  try { const m = await snapshotMeta(); const st = m.stocks.find(x => x.s === sym); if (st) { sector = st.g || ''; if (rs == null && st.r) { rs = st.r; n = m.stocks.length; } } } catch (e) { /* no built-in data */ }
+  if (sym !== V.sym) return;
+  render(el, html`${rs != null ? html`<span class="tag ${rs >= 80 ? 't-ok' : rs >= 50 ? 't-blue' : 't-mute'}" title="12-month price strength, latest quarter double-weighted, ranked 1–99 among ${n} stocks. An approximation of IBD's idea, not IBD's rating.">RS ${rs}</span>` : ''}${sector ? html`<span class="tag t-mute">${sector}</span>` : ''}`);
 }
 
 function chips() {
