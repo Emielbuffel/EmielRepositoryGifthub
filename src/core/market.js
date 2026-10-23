@@ -1,5 +1,5 @@
-// Market direction (the "M" in CAN SLIM): distribution days, follow-through days and the market status.
-// An approximation of IBD's published method, not IBD's own call.
+// Market direction: distribution days, follow-through days and the market status, using widely published
+// rules of thumb.
 import { sma, ema } from './indicators.js';
 
 export const STATUS = {
@@ -9,9 +9,9 @@ export const STATUS = {
 };
 
 export const EXPOSURE = {
-  up: "IBD's guideline in a confirmed uptrend: 80–100% invested. Buy proper breakouts from sound bases on strong volume.",
-  press: "IBD's guideline when an uptrend is under pressure: 40–60% invested. Be selective, take some profits and tighten stops.",
-  corr: "IBD's guideline in a correction: 0–20% invested. Protect capital and wait for a follow-through day (day 4+ of a rally, a 1.2%+ gain on higher volume).",
+  up: "Rule-of-thumb exposure in a confirmed uptrend: 80–100% invested. Buy proper breakouts from sound bases on strong volume.",
+  press: "Rule-of-thumb exposure when an uptrend is under pressure: 40–60% invested. Be selective, take some profits and tighten stops.",
+  corr: "Rule-of-thumb exposure in a correction: 0–20% invested. Protect capital and wait for a follow-through day (day 4+ of a rally, a 1.2%+ gain on higher volume).",
 };
 
 /** b = ascending daily bars {time,open,high,low,close,volume}. Returns null with fewer than 80 bars. */

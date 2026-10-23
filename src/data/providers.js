@@ -100,7 +100,7 @@ export const INDEXES = {
   GSPTSE: { name: 'S&P/TSX Composite', fmp: '^GSPTSE', eod: 'GSPTSE.INDX', etf: 'EWC' },
   AXJO: { name: 'S&P/ASX 200', fmp: '^AXJO', eod: 'AXJO.INDX', etf: 'EWA' },
 };
-// US sector and industry ETFs (a stand-in for IBD's industry groups)
+// US sector and industry ETFs (a stand-in for industry groups)
 export const SECTORS = {
   XLK: 'Technology', SMH: 'Semiconductors', IGV: 'Software', XLC: 'Communication', XLY: 'Consumer discretionary', XLP: 'Consumer staples',
   XLV: 'Health care', XBI: 'Biotech', XLF: 'Financials', XLI: 'Industrials', ITA: 'Aerospace & defence', XLE: 'Energy', XLB: 'Materials', XLU: 'Utilities', XLRE: 'Real estate',

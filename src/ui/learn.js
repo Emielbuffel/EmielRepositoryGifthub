@@ -1,4 +1,4 @@
-// The Learn tab: every base pattern with a diagram, its rules and a live example, plus the O'Neil method.
+// The Learn tab: every base pattern with a diagram, its rules and a live example, plus the growth-investing rules behind them.
 import { openStock } from '../app.js';
 import { snapshotMeta } from '../data/providers.js';
 import { isDemo } from '../data/service.js';
@@ -42,9 +42,9 @@ export function initLearn(el) {
     <section class="card">
       <h2>How this app reads a chart</h2>
       <div class="prose">
-        <p>William O'Neil studied the biggest stock winners and found that most broke out of a few recurring <b>bases</b>: periods of sideways consolidation after an advance. The app's detector finds these bases in the daily prices, marks the <b>buy point</b> (the pivot, +10¢), and checks the rules O'Neil wrote down: length, depth, shape, volume, the prior uptrend and the base stage.</p>
+        <p>Studies of the biggest stock winners (best known from William O'Neil's book <i>How to Make Money in Stocks</i>) found that most broke out of a few recurring <b>bases</b>: periods of sideways consolidation after an advance. The app's detector finds these bases in the daily prices, marks the <b>buy point</b> (the pivot, +10¢), and checks the rules O'Neil wrote down: length, depth, shape, volume, the prior uptrend and the base stage.</p>
         <p>On the chart, <b>every pattern has its own colour</b>. Solid lines are sound bases; dashed lines are failed breakouts or alternative readings. The strip under the chart lists every pattern found, newest first. Tap one to jump to it.</p>
-        <p><b>EPS line:</b> the 4-quarter (trailing 12-month) earnings per share as a smooth line on the left axis, with a dot at each report: green when EPS rose 25%+ from a year earlier, orange when it rose less, red when it fell. Price running ahead of a flat EPS line is a warning; price and EPS rising together is what O'Neil looked for.</p>
+        <p><b>EPS line:</b> the 4-quarter (trailing 12-month) earnings per share as a smooth line on the left axis, with a dot at each report: green when EPS rose 25%+ from a year earlier, orange when it rose less, red when it fell. Price running ahead of a flat EPS line is a warning; price and EPS rising together is the healthy picture.</p>
         <p><b>Compare:</b> plot the stock against its home index (S&amp;P 500 or Nasdaq for US stocks, Nikkei 225 for Tokyo, DAX or Euro Stoxx 50 for Germany…), a world index or a US sector ETF. The lines start at the same point at the left edge of the chart, so you see who outperformed over the period on screen. The RS line can be measured against any of these indexes.</p>
       </div>
     </section>
@@ -84,15 +84,15 @@ export function initLearn(el) {
     </div>
 
     <section class="card">
-      <h2>CAN SLIM</h2>
+      <h2>Growth checklist</h2>
       <div class="letters">
-        ${[['C', 'Current earnings', 'Latest quarterly EPS up 25%+ vs the same quarter a year ago; sales up 20–25%+, ideally accelerating.'],
-    ['A', 'Annual earnings', 'EPS up 25%+ a year for three years; return on equity of 17%+.'],
-    ['N', 'New', 'A new product, management or industry trend, and a new price high out of a proper base.'],
-    ['S', 'Supply and demand', 'Volume swells on up days (accumulation). The app uses the 50-day up/down volume ratio.'],
-    ['L', 'Leader or laggard', 'Buy leaders: relative strength 80+ and an RS line near new highs.'],
-    ['I', 'Institutional sponsorship', 'A rising number of quality funds owning the stock. Not scored in the app.'],
-    ['M', 'Market direction', 'Three of four stocks follow the market. Buy in confirmed uptrends; see the Market tab.']].map(([k, t, d]) => html`<div class="letter"><b>${k}</b><div><h3 style="font-size:15px">${t}</h3><p class="muted small" style="margin:2px 0 0">${d}</p></div></div>`)}
+        ${[['1', 'Quarterly earnings growth', 'Latest quarterly EPS up 25%+ vs the same quarter a year ago; sales growing too, ideally faster each quarter.'],
+    ['2', 'Multi-year earnings growth', 'EPS up about 25% a year over three years, with a healthy return on equity.'],
+    ['3', 'Something new, near new highs', 'A new product, management or industry trend, and a price near new highs out of a proper base.'],
+    ['4', 'Demand', 'Volume swells on up days (accumulation). The app uses the 50-day up/down volume ratio.'],
+    ['5', 'Leadership', 'Strong relative strength (rank 80+) and an RS line near new highs.'],
+    ['6', 'Ownership', 'A rising number of quality funds owning the stock. Not scored in the app.'],
+    ['7', 'Market trend', 'Most stocks follow the market. Buy in confirmed uptrends; see the Market tab.']].map(([k, t, d]) => html`<div class="letter"><b>${k}</b><div><h3 style="font-size:15px">${t}</h3><p class="muted small" style="margin:2px 0 0">${d}</p></div></div>`)}
       </div>
     </section>
 
@@ -100,10 +100,10 @@ export function initLearn(el) {
       <h2>Good to know</h2>
       <div class="prose small">
         <ul>
-          <li><b>RS rating</b> in the screener ranks 12-month price strength (latest quarter double-weighted) 1–99 <i>within the stocks you scanned</i>. It approximates IBD's idea; it is not IBD's proprietary rating.</li>
+          <li><b>Strength rank</b> in the screener ranks 12-month price strength (latest quarter double-weighted) 1–99 <i>within the stocks you scanned</i>. It is the app's own measure.</li>
           <li><b>RS line</b> = the stock divided by its benchmark (S&amp;P 500 for US stocks, the home index where your data plan has it).</li>
           <li><b>Distribution day</b> = an index falls 0.2%+ on higher volume. <b>Follow-through day</b> = a 1.2%+ gain on higher volume on day 4+ of a rally attempt.</li>
-          <li>All analysis uses end-of-day data. These are rules of thumb from O'Neil's <i>How to Make Money in Stocks</i>, not guarantees. The app does not give personal investment advice.</li>
+          <li>All analysis uses end-of-day data. These are widely published rules of thumb, not guarantees. The app does not give personal investment advice.</li>
         </ul>
       </div>
     </section>`);

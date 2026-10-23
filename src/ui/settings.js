@@ -44,9 +44,9 @@ export async function initSettings(el) {
     <section class="card">
       <h2>About</h2>
       <div class="prose small">
-        <p><b>Base Pattern Desk ${VERSION}</b>: O'Neil-style base patterns, market direction, a screener and a portfolio risk review.</p>
-        <p><b>Not investment advice.</b> The app applies published rules of thumb (William O'Neil, <i>How to Make Money in Stocks</i>) to end-of-day prices for education and research. Signals can be wrong; past patterns don't guarantee future results. Make your own decisions, or talk to a licensed adviser.</p>
-        <p>The app is not affiliated with Investor's Business Daily, William O'Neil + Co. or any data provider. CAN SLIM is a registered trademark of Investor's Business Daily, used here only to describe the method.</p>
+        <p><b>Base Pattern Desk ${VERSION}</b>: base patterns, market direction, a screener and a portfolio risk review.</p>
+        <p><b>Not investment advice.</b> The app applies widely published rules of thumb from classic chart analysis to end-of-day prices for education and research. Signals can be wrong; past patterns don't guarantee future results. Make your own decisions, or talk to a licensed adviser.</p>
+        <p>The app is independent and not affiliated with any publisher, research service or data provider. Names of third-party products belong to their owners.</p>
         <p>Charts by <a href="https://www.tradingview.com/" target="_blank" rel="noopener">TradingView</a> Lightweight Charts™ (Apache License 2.0).</p>
       </div>
     </section>`);

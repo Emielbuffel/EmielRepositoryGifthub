@@ -4,9 +4,13 @@ import { screenRow, rankRS, pc, fDs } from '../core/analysis.js';
 import { daily, benchmarkFor, provider, isDemo, settings } from '../data/service.js';
 import { DEMO, snapshotMeta } from '../data/providers.js';
 import * as store from '../data/store.js';
-import { App, on, openStock } from '../app.js';
+import { App, on, openStock, emit } from '../app.js';
 import { $, $$, html, raw, render, money, ICON, toast, ago } from './dom.js';
 import { patColor } from './chart.js';
+import { setupScore } from '../core/score.js';
+import { enrich } from '../core/earnings.js';
+import { checkBars } from '../data/alerts.js';
+import { factor } from '../data/fx.js';
 
 export const US_LARGE = ['AAPL', 'MSFT', 'NVDA', 'AMZN', 'GOOGL', 'META', 'AVGO', 'TSLA', 'JPM', 'LLY', 'V', 'UNH', 'XOM', 'MA', 'COST', 'HD', 'PG', 'JNJ', 'NFLX', 'WMT', 'ABBV', 'CRM', 'ORCL', 'AMD', 'BAC', 'KO', 'MRK', 'CVX', 'PEP', 'ADBE', 'TMO', 'LIN', 'CSCO', 'ACN', 'MCD', 'ABT', 'WFC', 'DIS', 'INTU', 'TXN', 'QCOM', 'IBM', 'AMAT', 'GE', 'CAT', 'NOW', 'ISRG', 'UBER', 'PANW', 'BKNG'];
 const ST = { near: ['Near buy point', 'ok'], forming: ['Base forming', 'warn'], buyzone: ['Buy zone', 'ok'], extended: ['Extended', 'warn'], below: ['Below buy point', 'warn'], stop: ['Stop hit', 'bad'], faulty: ['Faulty base', 'bad'] };
@@ -19,10 +23,10 @@ const PRESETS = [
   ['sell', 'Sell signals', r => r.sell.length > 0],
 ];
 const COLS = [
-  ['s', 'Symbol'], ['nm', 'Name'], ['c', 'Close', 'n'], ['d1', 'Day', 'n'], ['m1', '1 mo', 'n'], ['m3', '3 mo', 'n'], ['y1', '1 yr', 'n'],
-  ['rs', 'RS', 'n'], ['g', 'Sector'], ['vr', 'Vol ×', 'n'], ['p', 'Pattern'], ['di', 'To buy pt', 'n'], ['hi', 'Off high', 'n'], ['sig', 'Signals'], ['sp', '60 days'],
+  ['s', 'Symbol'], ['nm', 'Name'], ['sc', 'Setup', 'n'], ['c', 'Close', 'n'], ['d1', 'Day', 'n'], ['m1', '1 mo', 'n'], ['m3', '3 mo', 'n'], ['y1', '1 yr', 'n'],
+  ['rs', 'Strength', 'n'], ['g', 'Sector'], ['vr', 'Vol ×', 'n'], ['p', 'Pattern'], ['di', 'To buy pt', 'n'], ['hi', 'Off high', 'n'], ['sig', 'Signals'], ['sp', '60 days'],
 ];
-const S = { rows: [], at: null, running: false, cancel: false, sort: 'rs', asc: false, preset: 'all', q: '', minRs: 0, sector: '', source: null, custom: '' };
+const S = { rows: [], at: null, running: false, cancel: false, sort: 'sc', asc: false, ccy: '', fx: {}, preset: 'all', q: '', minRs: 0, sector: '', source: null, custom: '' };
 
 export async function initScreener(el) {
   S.custom = await store.get('screen.custom', 'AAPL MSFT NVDA');
@@ -43,11 +47,12 @@ export async function initScreener(el) {
       <div class="toolbar">
         <input class="input" id="scQ" placeholder="Filter by ticker or name" style="max-width:260px">
         <select class="input" id="scSec" style="width:auto;padding:7px 10px;font-size:14px" aria-label="Sector"><option value="">All sectors</option></select>
-        <label class="chk">Min RS <input class="input" type="number" id="scRs" min="0" max="99" step="10" value="0" style="width:80px"></label>
+        <select class="input" id="scCcy" style="width:auto;padding:7px 10px;font-size:14px" aria-label="Show prices in"><option value="">Local currency</option><option>EUR</option><option>USD</option></select>
+        <label class="chk">Min strength <input class="input" type="number" id="scRs" min="0" max="99" step="10" value="0" style="width:80px"></label>
         <span class="muted small" id="scCount"></span>
       </div>
       <div class="tbl-wrap"><table class="tbl" id="scTable"></table></div>
-      <p class="muted tiny" style="margin:0">RS = 1–99 rank of 12-month price strength (latest quarter double-weighted) within this scan only. An approximation, not IBD's rating. Tap a row to open its chart. ▲ buy-side and ▼ sell-side signals follow O'Neil's rules; they are not advice.</p>
+      <p class="muted tiny" style="margin:0">Setup = 0–100 score combining the base (30), strength (25), trend (15), demand (10), earnings (10, when known) and the market (10); hover or long-press for the breakdown. Strength = 1–99 rank of 12-month price strength (latest quarter double-weighted) within this scan only. The app's own measure. Tap a row to open its chart. ▲ buy-side and ▼ sell-side signals follow classic chart rules; they are not advice.</p>
     </section>`);
   $('#scRun').onclick = run;
   $('#scStop').onclick = () => { S.cancel = true; };
@@ -56,21 +61,32 @@ export async function initScreener(el) {
   $('#scQ').oninput = () => { S.q = $('#scQ').value.trim().toUpperCase(); table(); };
   $('#scRs').oninput = () => { S.minRs = +$('#scRs').value || 0; table(); };
   $('#scSec').onchange = () => { S.sector = $('#scSec').value; table(); };
-  on(type => { if (type === 'provider') reset(); if (type === 'view' && App.view === 'screener') { sources(); if (!S.rows.length && (isDemo() || provider().id === 'free') && !S.running) run(); } });
+  $('#scCcy').onchange = async () => { S.ccy = $('#scCcy').value; await loadFx(); table(); };
+  on((type, data) => { if (type === 'sector') { S.sector = data || ''; S.preset = 'all'; presets(); table(); } if (type === 'market' && S.rows.length) { score(); table(); } if (type === 'provider') reset(); if (type === 'view' && App.view === 'screener') { sources(); if (!S.rows.length && (isDemo() || provider().id === 'free') && !S.running) run(); } });
   await reset();
   if (App.view === 'screener' && (isDemo() || provider().id === 'free') && !S.rows.length) run();
 }
 
 async function reset() {
   const saved = await store.get('screen.' + provider().id, null);
-  S.rows = saved ? saved.rows : []; S.at = saved ? saved.at : null;
+  S.rows = saved ? saved.rows : []; S.at = saved ? saved.at : null; score();
   await snapshotMeta().catch(() => null); if (!BUILTIN.length) { try { BUILTIN = (await snapshotMeta()).stocks.map(x => x.s); } catch (e) { /* none */ } }
   S.source = await store.get('screen.src.' + provider().id, isDemo() ? 'demo' : provider().id === 'free' ? 'builtin' : 'watch');
   sources(); tiles(); presets(); table();
 }
 
-let BUILTIN = [], SECTOR = {};
-snapshotMeta().then(m => { BUILTIN = m.stocks.map(x => x.s); m.stocks.forEach(x => { if (x.g) SECTOR[x.s] = x.g; }); }).catch(() => {});
+let BUILTIN = [], SECTOR = {}, EPSYOY = {};
+snapshotMeta().then(m => {
+  BUILTIN = m.stocks.map(x => x.s); m.stocks.forEach(x => { if (x.g) SECTOR[x.s] = x.g; });
+  Object.entries(m.earnings).forEach(([s, e]) => { const q = enrich(e.q.map(x => ({ time: Date.parse(x.t) / 1000, eps: x.eps, est: x.est }))).pop(); if (q && q.yoy != null) EPSYOY[s] = q.yoy; });
+}).catch(() => {});
+/** Setup score for every row (needs strength ranks, so run after rankRS). */
+function score() { S.rows.forEach(r => { const s = setupScore(r, EPSYOY[r.s] ?? null, App.mkt); r.sc = s.score; r.scParts = s.parts; }); }
+async function loadFx() {
+  if (!S.ccy) return;
+  const curs = [...new Set(S.rows.map(r => r.cu).filter(Boolean))];
+  for (const c of curs) if (!S.fx[c + S.ccy]) S.fx[c + S.ccy] = await factor(c, S.ccy);
+}
 function list(src) {
   if (src === 'builtin') return BUILTIN.slice();
   if (src === 'demo') return DEMO.map(d => d.sym);
@@ -114,6 +130,7 @@ async function run() {
       const r = screenRow(sym, d.name || App.names[sym] || '', d.bars, PAT.scan(d.bars), bench && bench.bars.map(b => ({ time: b.time, close: b.close })));
       if (r) { r.cu = d.currency; r.g = SECTOR[sym] || ''; rows.push(r); }
       else errors.push(sym + ' (too little history)');
+      checkBars(sym, d.bars, d.name);
     } catch (e) {
       errors.push(sym + ': ' + e.message);
       if (e.kind === 'auth' || e.kind === 'limit') { S.cancel = true; toast(e.message, 6000); }
@@ -121,7 +138,8 @@ async function run() {
     if (i % 4 === 3) await new Promise(r => setTimeout(r, 0)); // keep the UI responsive
   }
   rankRS(rows);
-  S.rows = rows; S.at = Date.now(); S.running = false;
+  S.rows = rows; S.at = Date.now(); S.running = false; score(); await loadFx();
+  setTimeout(() => emit('scan'), 0);
   await store.set('screen.' + provider().id, { rows, at: S.at });
   $('#scProg').hidden = true; $('#scRun').disabled = false;
   if (errors.length) toast(`${rows.length} scanned; ${errors.length} skipped (${errors.slice(0, 2).join('; ')}${errors.length > 2 ? '…' : ''})`, 6000);
@@ -167,7 +185,8 @@ function table() {
       case 's': return html`<td class="sticky"><b>${r.s.replace('.DEMO', '')}</b></td>`;
       case 'nm': return html`<td class="name">${r.nm}</td>`;
       case 'g': return html`<td class="name small">${r.g || ''}</td>`;
-      case 'c': return html`<td class="n">${money(r.c, r.cu)}</td>`;
+      case 'c': { const f = S.ccy && S.fx[r.cu + S.ccy]; return html`<td class="n" title="${f && !f.live ? 'Reference rate of ' + f.date : ''}">${f ? (f.live ? '' : '≈') + money(r.c * f.v, S.ccy) : money(r.c, r.cu)}</td>`; }
+      case 'sc': return html`<td class="n" title="${(r.scParts || []).map(p => `${p[0]} ${p[1]}/${p[2]} (${p[3]})`).join(' · ')}"><span class="score ${r.sc >= 70 ? 't-ok' : r.sc >= 45 ? 't-warn' : 't-mute'}">${r.sc ?? '—'}</span></td>`;
       case 'rs': return html`<td class="n ${r.rs >= 80 ? 't-ok' : r.rs < 40 ? 't-mute' : ''}">${r.rs ?? '—'}${r.rsh ? raw(' <span title="RS line at a new high" class="t-ok">★</span>') : ''}</td>`;
       case 'vr': return html`<td class="n ${r.vr >= 2 ? 't-warn' : ''}">${r.vr != null ? r.vr.toFixed(1) : '—'}</td>`;
       case 'p': return r.p ? html`<td><span class="st t-${ST[r.p.st][1]}">${ST[r.p.st][0]}</span> <span class="small" style="color:${patColor(r.p.t)}">${r.p.n}</span></td>` : html`<td class="muted">—</td>`;

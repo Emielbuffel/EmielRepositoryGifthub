@@ -1,12 +1,15 @@
-// The Market tab: the "M" in CAN SLIM. Index charts with distribution days (D) and follow-through days (FTD).
+// The Market tab: market direction. Index charts with distribution days (D) and follow-through days (FTD).
 import { createChart, CandlestickSeries, LineSeries, HistogramSeries, createSeriesMarkers, LineStyle } from 'lightweight-charts';
 import { analyseIndex, combine, STATUS, EXPOSURE } from '../core/market.js';
 import { marketSeries, provider, isDemo } from '../data/service.js';
-import { App, on, emit, openStock } from '../app.js';
+import { App, on, emit, openStock, go } from '../app.js';
+import { rankSectors } from '../core/sectors.js';
+import * as store from '../data/store.js';
+import { snapshotMeta } from '../data/providers.js';
 import PAT from '../core/pat.js';
 import { marketNews } from '../data/news.js';
 import { patColor, patternsToShow, PAT_LABEL } from './chart.js';
-import { $, html, raw, render, tok, ICON } from './dom.js';
+import { $, $$, html, raw, render, tok, ICON } from './dom.js';
 import { pc, fD, fDs, fmtVol } from '../core/analysis.js';
 
 const M = { rows: null, charts: [], loading: false, loadedFor: null };
@@ -16,6 +19,7 @@ export function initMarket(el) {
     <section class="card" id="mSum"><div class="empty"><span class="spinner"></span><span>Loading the market…</span></div></section>
     <section class="card"><div class="card-head"><h2>Index scorecard</h2><button class="btn sm" id="mRefresh">${raw(ICON.refresh)}Refresh</button></div><div id="mTable"></div></section>
     <div class="grid2" id="mGrid"></div>
+    <section class="card" id="mSec"></section>
     <div class="grid2"><section class="card" id="mDD"></section><section class="card" id="mNews"></section></div>
     <details class="card"><summary class="section-title" style="cursor:pointer">How the market status is worked out</summary>
       <div class="prose small">
@@ -26,16 +30,16 @@ export function initMarket(el) {
           <li><b>Follow-through day (FTD):</b> in a correction, on day 4 or later of a rally attempt, the index gains 1.2% or more on higher volume. That confirms a new uptrend.</li>
           <li><b>US status</b> takes the weaker of the Nasdaq and the S&amp;P 500 readings.</li>
           <li>When your data plan has no index data, US-listed ETFs stand in (QQQ, SPY, DIA, FEZ). Their volume is a proxy for exchange volume.</li>
-          <li>This approximates IBD's published method; it is not IBD's own call. The exposure ranges are IBD's published guideline, not advice.</li>
+          <li>These are widely published rules of thumb, applied automatically. The exposure ranges are a rule of thumb, not advice.</li>
         </ul>
       </div>
     </details>`);
   $('#mRefresh').onclick = () => load(true);
-  on(type => { if (type === 'theme' && M.rows && App.view === 'market') charts(); if (type === 'provider') { M.loadedFor = null; if (App.view === 'market') load(); else preload(); } if (type === 'view' && App.view === 'market') { load(); M.charts.forEach(c => c.redraw && c.redraw()); } });
+  on(type => { if (type === 'scan') sectors(); if (type === 'theme' && M.rows && App.view === 'market') charts(); if (type === 'provider') { M.loadedFor = null; if (App.view === 'market') load(); else preload(); } if (type === 'view' && App.view === 'market') { load(); M.charts.forEach(c => c.redraw && c.redraw()); } });
   preload();
 }
 
-/** Loads the market quietly so the CAN SLIM "M" is known on the Chart tab too. */
+/** Loads the market quietly so the market item of the checklist is known on the Chart tab too. */
 export function preload() { load(false, true); }
 
 async function load(force = false, quiet = false) {
@@ -62,7 +66,7 @@ function draw() {
   const us = App.mkt, eu = M.rows.find(r => r.region === 'EU' && r.R);
   const line = r => r.R ? `${r.name}: ${STATUS[r.R.state][0].toLowerCase()} since ${fDs(r.R.b[r.R.since].time)}, ${r.R.hasVol ? r.R.dd.length + ' distribution day' + (r.R.dd.length === 1 ? '' : 's') : 'no volume data'}${r.R.state === 'corr' && r.R.rallyDay ? ', rally attempt day ' + r.R.rallyDay : ''}.` : `${r.name}: ${r.error ? r.error.message : 'no data'}`;
   render(el, html`
-    <div class="card-head"><h2>Market direction · the M in CAN SLIM</h2>${isDemo() ? html`<span class="tag" style="color:var(--purple)">Demo data</span>` : ''}</div>
+    <div class="card-head"><h2>Market direction</h2>${isDemo() ? html`<span class="tag" style="color:var(--purple)">Demo data</span>` : ''}</div>
     <div class="mkt-status">
       ${us ? html`<div class="mkt-row"><span class="pill lg t-${STATUS[us.us][1]}">${STATUS[us.us][0]}</span><div><h3>United States</h3><div class="muted small">${M.rows.filter(r => r.region === 'US' && r.k !== 'DJI').map(line).join(' ')}</div></div></div>` : html`<p class="muted">No US index data.</p>`}
       ${eu ? html`<div class="mkt-row"><span class="pill lg t-${STATUS[eu.R.state][1]}">${STATUS[eu.R.state][0]}</span><div><h3>Europe</h3><div class="muted small">${line(eu)}</div></div></div>` : ''}
@@ -72,7 +76,28 @@ function draw() {
     ${M.rows.map(r => { const R = r.R; if (!R) return html`<tr><td>${r.name}</td><td colspan="8" class="muted">${r.error ? r.error.message : 'No data'}</td></tr>`; const n = R.n, vs = a => a[n] ? pc(R.c[n] / a[n] - 1) : '—', cl = x => x >= 0 ? 'up' : 'down';
       return html`<tr><td>${r.name}</td><td class="n">${R.c[n].toLocaleString('en-US', { maximumFractionDigits: 2 })}</td><td class="n ${cl(R.day)}">${pc(R.day, 2)}</td><td class="n ${cl(R.c[n] - (R.s50[n] || 0))}">${vs(R.s50)}</td><td class="n ${cl(R.c[n] - (R.s200[n] || 0))}">${vs(R.s200)}</td><td class="n">${pc(R.off)}</td><td class="n ${R.dd.length >= 5 ? 't-bad' : R.dd.length >= 3 ? 't-warn' : ''}">${R.hasVol ? R.dd.length : 'n/a'}</td><td>${R.lastFtd != null ? fDs(R.b[R.lastFtd].time) : '—'}</td><td><span class="pill t-${STATUS[R.state][1]}">${STATUS[R.state][0]}</span></td></tr>`; })}
   </tbody></table></div><p class="muted tiny" style="margin:0">Daily data through ${fD(Math.max(...M.rows.filter(r => r.R).map(r => r.R.b[r.R.n].time)))}.</p>`);
-  charts(); ddTable(); news();
+  charts(); ddTable(); news(); sectors();
+}
+
+/* which sectors lead: from the latest screener scan */
+async function sectors() {
+  const el = $('#mSec'); if (!el) return;
+  const scan = await store.get('screen.' + provider().id, null);
+  let rows = scan ? scan.rows : [];
+  if (rows.length && rows.some(r => !r.g)) { try { const m = await snapshotMeta(); const g = {}; m.stocks.forEach(x => { g[x.s] = x.g; }); rows = rows.map(r => ({ ...r, g: r.g || g[r.s] })); } catch (e) { /* no sectors */ } }
+  const list = rankSectors(rows);
+  if (!list.length) {
+    render(el, html`<h2>Leading sectors</h2><p class="muted small" style="margin:0">Run a scan on the Screener tab (all built-in stocks) to rank the sectors by the strength of their stocks.</p><div><button class="btn sm" id="secGo">Open the screener</button></div>`);
+    $('#secGo').onclick = () => go('screener'); return;
+  }
+  const mx = Math.max(...list.map(x => x.score));
+  render(el, html`<div class="card-head"><h2>Leading sectors</h2><span class="muted tiny">${rows.length} stocks · scan ${new Date(scan.at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</span></div>
+    <div class="tbl-wrap"><table class="tbl"><thead><tr><th class="n">#</th><th>Sector</th><th>Score</th><th class="n">Median strength</th><th class="n">Above 50-day</th><th class="n">Near high</th><th class="n">3 mo</th><th class="n">Setups</th><th>Leaders</th></tr></thead><tbody>
+      ${list.map(x => html`<tr class="click" data-g="${x.g}"><td class="n">${x.rank}</td><td><b>${x.g}</b> <span class="muted tiny">${x.n}</span></td><td><span class="score-bar" style="width:90px"><i style="width:${(x.score / mx * 100).toFixed(0)}%;background:${x.rank <= 3 ? 'var(--ok)' : x.rank > list.length - 3 ? 'var(--bad)' : 'var(--blue)'}"></i></span></td>
+        <td class="n">${x.rs != null ? Math.round(x.rs) : '—'}</td><td class="n">${Math.round(x.above50 * 100)}%</td><td class="n">${Math.round(x.nearHigh * 100)}%</td><td class="n ${x.m3 >= 0 ? 'up' : 'down'}">${pc(x.m3)}</td><td class="n">${x.setups}</td><td class="small">${x.leaders.join(', ')}</td></tr>`)}
+    </tbody></table></div>
+    <p class="muted tiny" style="margin:0">Score = half the median strength rank, plus the share of stocks above their 50-day line and within 15% of their high. Leading groups tend to hold the next leaders. Tap a sector to see its stocks in the screener.</p>`);
+  $$('tr[data-g]', el).forEach(tr => { tr.onclick = () => { go('screener'); setTimeout(() => emit('sector', tr.dataset.g), 50); }; });
 }
 
 /* every active distribution day, with when it drops out of the count */

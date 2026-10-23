@@ -17,7 +17,7 @@
       <div class="brand"><img src="./icon.svg" alt="" width="28" height="28"><span>Base Pattern Desk</span></div>
       <nav class="side-nav" id="sideNav"></nav>
       <div class="side-watch">
-        <div class="side-label">Watchlist</div>
+        <div class="side-label row"><select id="sideList" class="side-select" aria-label="Watchlist"></select><button class="link small" id="sideEdit">Edit</button></div>
         <div id="sideWatch" class="side-watch-list"></div>
       </div>
       <div class="side-foot" id="sideFoot"></div>
@@ -27,6 +27,7 @@
         <h1 id="pageTitle" class="page-title">Chart</h1>
         <div class="top-actions">
           <button class="icon-btn" id="searchBtn" aria-label="Search stocks" title="Search (/)"></button>
+          <button class="icon-btn badge-wrap" id="alertBtn" aria-label="Alerts" title="Alerts"></button>
           <button class="icon-btn" id="settingsBtn" aria-label="Settings" title="Settings"></button>
         </div>
       </header>

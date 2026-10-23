@@ -1,4 +1,4 @@
-// The Portfolio tab: holdings you enter by hand, analysed on the device: value, P/L, O'Neil sell rules,
+// The Portfolio tab: holdings you enter by hand, analysed on the device: value, P/L, classic sell rules,
 // volatility, betas (incl. downside beta), risk contribution, correlations and a stress replay.
 import PAT from '../core/pat.js';
 import { baseState, pc, fD, fDs } from '../core/analysis.js';
@@ -9,6 +9,10 @@ import { currencyOf } from '../data/providers.js';
 import * as store from '../data/store.js';
 import { App, on, openStock } from '../app.js';
 import { $, $$, html, raw, render, money, big, ICON, toast, sheet } from './dom.js';
+import { parseHoldings, resolveTickers } from '../core/importer.js';
+import { snapshotMeta } from '../data/providers.js';
+import { factor } from '../data/fx.js';
+import { addAlert, checkBars, allAlerts } from '../data/alerts.js';
 
 const DEMO_HOLD = [{ sym: 'ACME.DEMO', shares: 40, cost: 90 }, { sym: 'IRIS.DEMO', shares: 60, cost: 70 }, { sym: 'LUMA.DEMO', shares: 100, cost: 45 }, { sym: 'FLUX.DEMO', shares: 150, cost: 30 }, { sym: 'JADE.DEMO', shares: 50, cost: 88 }];
 const P = { base: 'USD', seq: 0 };
@@ -19,13 +23,20 @@ export async function initPortfolio(el) {
   render(el, html`
     <section class="card" id="pTop"></section>
     <section class="card">
-      <div class="card-head"><h2>Holdings</h2><div class="toolbar"><select class="input" id="pBase" style="width:auto;padding:6px 10px;font-size:14px" aria-label="Portfolio currency">${['USD', 'EUR', 'GBP', 'CHF', 'JPY', 'CAD', 'AUD'].map(c => html`<option ${c === P.base ? raw('selected') : ''}>${c}</option>`)}</select><button class="btn sm primary" id="pAdd">${raw(ICON.plus)}Add</button></div></div>
+      <div class="card-head"><h2>Holdings</h2><div class="toolbar"><select class="input" id="pBase" style="width:auto;padding:6px 10px;font-size:14px" aria-label="Portfolio currency">${['USD', 'EUR', 'GBP', 'CHF', 'JPY', 'CAD', 'AUD'].map(c => html`<option ${c === P.base ? raw('selected') : ''}>${c}</option>`)}</select><button class="btn sm" id="pImp">${raw(ICON.upload)}Import</button><button class="btn sm" id="pStops">${raw(ICON.bell)}Stop alerts</button><button class="btn sm primary" id="pAdd">${raw(ICON.plus)}Add</button></div></div>
       <div id="pHold"></div>
     </section>
     <div class="grid2"><section class="card" id="pFlags"></section><section class="card" id="pRisk"></section></div>
     <div class="grid2"><section class="card" id="pCorr"></section><section class="card" id="pStress"></section></div>
     <p class="disclaimer">Educational analysis, not personal investment advice. Values use end-of-day prices and, for other currencies, end-of-day exchange rates. Holdings stay on this device.</p>`);
   $('#pAdd').onclick = () => editHolding();
+  $('#pImp').onclick = importSheet;
+  $('#pStops').onclick = async () => {
+    const withCost = App.holdings.filter(h => h.cost);
+    if (!withCost.length) { toast('Add your average cost to holdings first: stops are set 8% below the cost.'); return; }
+    for (const h of withCost) await addAlert({ sym: h.sym, type: 'stop', level: +(h.cost * 0.92).toFixed(4), name: '' });
+    toast(`Stop alerts set 8% below cost for ${withCost.length} holding${withCost.length > 1 ? 's' : ''}.`);
+  };
   $('#pBase').onchange = () => { P.base = $('#pBase').value; store.set('portfolio.base', P.base); analyse(); };
   on(type => { if (type === 'provider') loadHoldings().then(analyse); if (type === 'view' && App.view === 'portfolio' && !P.done) analyse(); });
   await loadHoldings();
@@ -42,7 +53,7 @@ function editHolding(h) {
       <div class="grid2"><label class="field"><span>Shares</span><input class="input" name="shares" type="number" inputmode="decimal" step="any" min="0" required value="${h ? h.shares : ''}"></label>
       <label class="field"><span>Average cost per share (listing currency, optional)</span><input class="input" name="cost" type="number" inputmode="decimal" step="any" min="0" value="${h && h.cost ? h.cost : ''}"></label></div>
       <div class="toolbar"><button class="btn primary" type="submit">Save</button>${h ? html`<button class="btn danger" type="button" id="hDel">Remove</button>` : ''}</div>
-      <p class="muted tiny" style="margin:0">London prices are in pence (GBp). The cost is used for O'Neil's 7–8% loss-cutting rule.</p>
+      <p class="muted tiny" style="margin:0">London prices are in pence (GBp). The cost is used for the 7–8% loss-cutting rule.</p>
     </form>`);
   const f = sh.querySelector('#hf');
   f.onsubmit = e => {
@@ -58,34 +69,70 @@ function editHolding(h) {
   setTimeout(() => (h ? f.shares : f.sym).focus(), 50);
 }
 
+/* import holdings from a broker export (CSV) or pasted statement text */
+function importSheet() {
+  const sh = sheet('Import holdings', html`
+    <div class="card" style="gap:10px">
+      <p class="small" style="margin:0">Export your positions from your broker as CSV (for example DEGIRO: Portfolio → Export → CSV) and choose the file, or paste the table. Columns are recognised in English, Dutch, French and German.</p>
+      <input type="file" id="imFile" accept=".csv,.txt,text/csv,text/plain">
+      <textarea class="input" id="imText" rows="4" placeholder="Or paste: Product;Symbol/ISIN;Amount;Closing;Value in EUR" spellcheck="false"></textarea>
+      <div class="toolbar"><button class="btn" id="imRead">Read</button><span class="small" id="imMsg"></span></div>
+    </div>
+    <div id="imRows"></div>`);
+  let parsed = [];
+  const show = async text => {
+    const m = $('#imMsg', sh);
+    try {
+      let dir = []; try { const meta = await snapshotMeta(); dir = [...meta.stocks.map(x => [x.s, x.n, '']), ...meta.directory]; } catch (e) { /* no directory */ }
+      parsed = resolveTickers(parseHoldings(text), dir);
+      m.className = 'small t-ok'; m.textContent = `${parsed.length} positions found, ${parsed.filter(r => r.matched).length} matched to a ticker.`;
+      render($('#imRows', sh), html`<div class="results">${parsed.map((r, i) => html`<div class="row" style="padding:8px 14px;border-top:.5px solid var(--sep)"><span class="small" style="min-width:0"><b>${r.name || r.sym || r.isin}</b><br><span class="muted tiny">${r.isin || ''} · ${r.qty} shares${r.price ? ' · ' + r.price + ' ' + (r.cur || '') : ''}</span></span>
+        <input class="input" data-tk="${i}" value="${r.ticker}" placeholder="Ticker" style="width:120px;padding:6px 8px;font-size:14px" autocapitalize="characters"></div>`)}</div>
+        <div class="toolbar"><button class="btn primary" id="imAdd">Add to portfolio</button><button class="btn" id="imReplace">Replace portfolio</button></div>
+        <p class="muted tiny" style="margin:0">Check the tickers (Yahoo-style, e.g. ASML.AS, 7203.T). Rows without a ticker are skipped. Statements rarely include your purchase price; add it per holding afterwards for stop alerts.</p>`);
+      const apply = replace => {
+        $$('[data-tk]', sh).forEach(inp => { parsed[+inp.dataset.tk].ticker = inp.value.toUpperCase().trim(); });
+        const add = parsed.filter(r => r.ticker).map(r => ({ sym: r.ticker, shares: r.qty, cost: r.cost || null }));
+        const base = replace ? [] : App.holdings.filter(h => !add.some(a => a.sym === h.sym));
+        App.holdings = [...base, ...add]; sh.close(); saveHoldings(); toast(`${add.length} holdings imported.`);
+      };
+      $('#imAdd', sh).onclick = () => apply(false); $('#imReplace', sh).onclick = () => apply(true);
+    } catch (e) { m.className = 'small t-bad'; m.textContent = e.message; $('#imRows', sh).innerHTML = ''; }
+  };
+  $('#imFile', sh).onchange = async e => { const f = e.target.files[0]; if (f) show(await f.text()); };
+  $('#imRead', sh).onclick = () => { const t = $('#imText', sh).value; if (t.trim()) show(t); };
+}
+
 async function analyse() {
   const seq = ++P.seq;
   const top = $('#pTop');
   if (!App.holdings.length) {
-    render(top, html`<div class="empty">${raw(ICON.portfolio)}<p><b>No holdings yet.</b><br>Add your positions to see their value, O'Neil sell signals, risk and hidden correlations. Everything stays on this device.</p><button class="btn primary" id="pFirst">${raw(ICON.plus)}Add a holding</button></div>`);
+    render(top, html`<div class="empty">${raw(ICON.portfolio)}<p><b>No holdings yet.</b><br>Add your positions to see their value, sell signals, risk and hidden correlations. Everything stays on this device.</p><button class="btn primary" id="pFirst">${raw(ICON.plus)}Add a holding</button></div>`);
     $('#pFirst').onclick = () => editHolding();
     ['#pHold', '#pFlags', '#pRisk', '#pCorr', '#pStress'].forEach(id => { $(id).innerHTML = ''; });
     return;
   }
   render(top, html`<div class="empty"><span class="spinner"></span><span>Analysing ${App.holdings.length} holdings…</span></div>`);
-  const rows = [], errs = [];
+  const rows = [], errs = []; let refRate = null;
   for (const h of App.holdings) {
     try {
       const d = await daily(h.sym);
       const cur = d.currency || currencyOf(h.sym);
-      const fx = await fxWeekly(cur, P.base).catch(() => undefined);
+      let fx = await fxWeekly(cur, P.base).catch(() => undefined);
+      if (fx === undefined) { const f = await factor(cur, P.base); if (f) { fx = f.v; if (!f.live) refRate = f.date; } }
       const fxNow = fx == null ? 1 : typeof fx === 'number' ? fx : [...fx.values()].pop();
       if (fx === undefined) errs.push(`${h.sym}: no ${cur}→${P.base} rate, shown unconverted`);
+      checkBars(h.sym, d.bars, d.name);
       const b = d.bars, n = b.length - 1, c = b[n].close;
       const R = PAT.scan(b), B = baseState(R, b), s50 = sma(b.map(x => x.close), 50)[n], s200 = sma(b.map(x => x.close), 200)[n];
       const sig = [];
-      if (h.cost && c <= h.cost * 0.92) sig.push(['bad', `${pc(c / h.cost - 1, 0)} vs your cost: O'Neil cuts losses at 7–8%`]);
+      if (h.cost && c <= h.cost * 0.92) sig.push(['bad', `${pc(c / h.cost - 1, 0)} vs your cost: the rule is to cut losses at 7–8%`]);
       if (s200 && c < s200) sig.push(['bad', 'Below the 200-day line']);
       else if (s50 && c < s50) sig.push(['warn', 'Below the 50-day line']);
       if (B.st === 'STOP HIT') sig.push(['bad', '8% under the breakout buy point']);
       if (R.last && R.last.failed && n - R.last.failed <= 10) sig.push(['bad', 'Failed breakout']);
       if (s50 && c / s50 - 1 > 0.25) sig.push(['warn', `${pc(c / s50 - 1, 0)} above the 50-day: consider taking some profit`]);
-      if (h.cost && c >= h.cost * 1.2) sig.push(['good', `Up ${pc(c / h.cost - 1, 0)}: O'Neil takes most profits at +20–25%`]);
+      if (h.cost && c >= h.cost * 1.2) sig.push(['good', `Up ${pc(c / h.cost - 1, 0)}: the rule of thumb takes most profits at +20–25%`]);
       if (['NEAR BUY POINT', 'IN BUY ZONE'].includes(B.st)) sig.push(['good', (B.p ? B.p.name + ': ' : '') + B.st.toLowerCase()]);
       rows.push({ ...h, d, cur, fx: fx || null, fxNow: fxNow || 1, c, ch: c / b[n - 1].close - 1, value: h.shares * c * (fxNow || 1), costV: h.cost ? h.shares * h.cost * (fxNow || 1) : null, B, sig, s200: s200 ? c / s200 - 1 : null });
     } catch (e) { errs.push(`${h.sym}: ${e.message}`); if (e instanceof DataError && e.kind === 'auth') break; }
@@ -96,6 +143,7 @@ async function analyse() {
   if (seq !== P.seq) return;
   const A = rows.length ? analysePortfolio(rows.map(r => ({ sym: r.sym, name: r.d.name, value: r.value, bars: r.d.bars, fx: r.fx })), bench) : null;
   P.done = true;
+  if (refRate) errs.push(`Some values use reference exchange rates of ${refRate} (live rates load in the app)`);
   draw(rows, A, bench, errs);
 }
 

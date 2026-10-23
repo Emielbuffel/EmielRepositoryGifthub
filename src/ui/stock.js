@@ -1,14 +1,18 @@
 // The Chart tab: one stock with its chart (EPS line, index comparisons, every detected pattern), the base card,
-// signal, earnings, CAN SLIM, news, flags, key numbers, base history and the user's drawings.
+// signal, earnings, growth checklist, news, flags, key numbers, base history and the user's drawings.
 import PAT from '../core/pat.js';
-import { baseCard, signal, pc, fD, fDs, f2, lineVal, cupPivot } from '../core/analysis.js';
+import { baseCard, signal, pc, fD, fDs, f2, lineVal, cupPivot, screenRow, baseState } from '../core/analysis.js';
+import { setupScore } from '../core/score.js';
+import { listMenu } from './lists.js';
+import { alertSheet } from './alertsui.js';
+import { checkBars, activeFor, onAlerts, describe as describeAlert } from '../data/alerts.js';
 import { daily, benchmarkFor, indexSeries, compareOptions, defaultBenchmark, earnings, isIndexSym, provider, isDemo, isDemoSym, DataError } from '../data/service.js';
 import { splitSym, snapshotMeta } from '../data/providers.js';
 import { stockNews, lastSeen, markSeen, newsSettings } from '../data/news.js';
 import { enrich, epsPoints, nextReport, canslimCA, adGrade } from '../core/earnings.js';
 import { analyseIndex, STATUS, EXPOSURE } from '../core/market.js';
 import * as store from '../data/store.js';
-import { App, on, openStock, saveWatch, rememberName, rememberQuote, go } from '../app.js';
+import { App, on, openStock, saveWatch, rememberName, rememberQuote, go, useList } from '../app.js';
 import { StockChart, patternsToShow, outcome, PAT_LABEL, patColor, CMP_COLORS } from './chart.js';
 import { tok } from './dom.js';
 import { $, $$, html, raw, render, esc, money, ICON, toast, ago } from './dom.js';
@@ -32,10 +36,11 @@ export async function initStock(el) {
       </div>
       <div class="toolbar">
         <button class="btn" id="sWatch"></button>
+        <button class="btn" id="sAlert" aria-label="Set an alert"></button>
         <button class="btn" id="sRefresh" aria-label="Refresh prices">${raw(ICON.refresh)}<span>Refresh</span></button>
       </div>
     </div>
-    <div class="chips" id="sChips" aria-label="Watchlist"></div>
+    <div class="row" style="gap:8px;justify-content:flex-start"><select class="input list-pick" id="sList" aria-label="Watchlist"></select><div class="chips" id="sChips" aria-label="Watchlist" style="flex:1;min-width:0"></div></div>
     <section class="card chart-card">
       <div class="chart-tools">
         <div class="seg" role="group" aria-label="Time frame"><button data-tf="D">Daily</button><button data-tf="W">Weekly</button></div>
@@ -69,15 +74,16 @@ export async function initStock(el) {
       <section class="card" id="cNums"></section>
       <section class="card" id="cDraw"></section>
     </div>
-    <p class="disclaimer">Educational analysis using William O'Neil's published rules of thumb. Not investment advice. End-of-day data; check prices with your broker before acting.</p>
+    <p class="disclaimer">Educational analysis using widely published rules of thumb. Not investment advice. End-of-day data; check prices with your broker before acting.</p>
   `);
   V.chart = new StockChart($('#sChart'), $('#sLegend'));
   V.chart.panes = { ...prefs.panes }; V.chart.style = prefs.style; V.chart.build();
   V.chart.clickCb = onChartClick;
   wireTools();
+  onAlerts(() => { if (V.data) head(); });
   on((type) => {
     if (type === 'stock') load(App.sym);
-    if (type === 'watch' || type === 'quote') chips();
+    if (type === 'watch' || type === 'quote') { chips(); if (type === 'watch' && V.data) head(); }
     if (type === 'market' && V.R) cards();
     if (type === 'provider') load(App.sym);
   });
@@ -109,6 +115,7 @@ async function load(sym, force = false) {
     else if ((Date.now() / 1000 - d.bars[n].time) / 86400 > 5 && !isDemoSym(sym)) status(`Prices end on ${dt}: ${Math.floor((Date.now() / 1000 - d.bars[n].time) / 86400)} days old. ${d.builtIn ? 'Built-in data; live updates run in the iPhone, iPad and Mac app.' : 'Tap Refresh.'}`, 'warn');
     else if (d.builtIn) status(`Built-in data through ${dt}. Live updates run in the iPhone, iPad and Mac app.`, 'ok');
     else status(`${provider().id === 'free' ? 'Live · free public feeds' : src} · daily data through ${dt}${d.cached && !isDemoSym(sym) ? ' · updated ' + ago(d.fetchedAt) : ''}`, isDemoSym(sym) ? 'demo' : 'ok');
+    checkBars(sym, d.bars, d.name).then(h => { if (h.length) { toast(describeAlert(h[0], d.name), 6000); head(); } });
     loadCompare(sym, seq);
     if (!V.mkt) loadEarnings(sym, seq); else earnCard();
     loadNews(sym, seq);
@@ -166,8 +173,9 @@ function head() {
   const e = $('#sCh'); e.textContent = (ch >= 0 ? '+' : '−') + money(Math.abs(ch), V.data.currency).replace(/^[^\d]*/, '') + ' (' + pc(ch / d[n - 1].close, 2) + ')';
   e.className = 'ch ' + (ch >= 0 ? 'up' : 'down');
   tags();
-  const w = App.watch.includes(V.sym);
-  render($('#sWatch'), html`${raw(w ? ICON.starFill : ICON.star)}<span>${w ? 'In watchlist' : 'Watch'}</span>`);
+  const inLists = App.lists.filter(l => l.syms.includes(V.sym));
+  render($('#sWatch'), html`${raw(inLists.length ? ICON.starFill : ICON.star)}<span>${inLists.length ? (inLists.length === 1 ? inLists[0].name : inLists.length + ' lists') : 'Add to list'}</span>`);
+  activeFor(V.sym).then(a => { if (V.sym) render($('#sAlert'), html`${raw(ICON.bell)}<span>${a.length ? a.length + ' alert' + (a.length > 1 ? 's' : '') : 'Alert'}</span>`); });
 }
 
 /* RS rank (1-99 within the built-in universe, from the latest scan when there is one) and sector */
@@ -180,11 +188,16 @@ async function tags() {
   if (row && row.rs != null) { rs = row.rs; n = scan.rows.length; }
   try { const m = await snapshotMeta(); const st = m.stocks.find(x => x.s === sym); if (st) { sector = st.g || ''; if (rs == null && st.r) { rs = st.r; n = m.stocks.length; } } } catch (e) { /* no built-in data */ }
   if (sym !== V.sym) return;
-  render(el, html`${rs != null ? html`<span class="tag ${rs >= 80 ? 't-ok' : rs >= 50 ? 't-blue' : 't-mute'}" title="12-month price strength, latest quarter double-weighted, ranked 1–99 among ${n} stocks. An approximation of IBD's idea, not IBD's rating.">RS ${rs}</span>` : ''}${sector ? html`<span class="tag t-mute">${sector}</span>` : ''}`);
+  // setup score: base, strength, trend, demand, earnings and market in one number
+  const sr = screenRow(sym, '', V.data.bars, V.R, V.bench ? V.bench.bars : null);
+  let sc = null;
+  if (sr) { sr.rs = rs; const q = enrich(V.earn || []).pop(); sc = setupScore(sr, q ? q.yoy : null, App.mkt); V.score = sc; }
+  render(el, html`${sc ? html`<span class="tag ${sc.score >= 70 ? 't-ok' : sc.score >= 45 ? 't-warn' : 't-mute'}" title="${sc.parts.map(p => `${p[0]} ${p[1]}/${p[2]} (${p[3]})`).join(' · ')}">Setup ${sc.score}</span>` : ''}${rs != null ? html`<span class="tag ${rs >= 80 ? 't-ok' : rs >= 50 ? 't-blue' : 't-mute'}" title="12-month price strength, latest quarter double-weighted, ranked 1–99 among ${n} stocks. The app's own measure.">RS ${rs}</span>` : ''}${sector ? html`<span class="tag t-mute">${sector}</span>` : ''}`);
 }
 
 function chips() {
   const el = $('#sChips'); if (!el) return;
+  const ls = $('#sList'); render(ls, html`${App.lists.map(l => html`<option value="${l.id}" ${l.id === App.listId ? raw('selected') : ''}>${l.name}</option>`)}`); ls.onchange = () => useList(ls.value);
   render(el, html`${App.watch.map(s => { const q = App.last[s]; return html`<button class="chip${s === App.sym ? ' on' : ''}" data-s="${s}">${s.replace('.DEMO', '')}${q ? html`<span class="c ${q.ch >= 0 ? 'up' : 'down'}">${pc(q.ch, 1)}</span>` : ''}</button>`; })}`);
   $$('.chip', el).forEach(b => { b.onclick = () => openStock(b.dataset.s); });
 }
@@ -208,7 +221,7 @@ const savePrefs = () => store.set('chartPrefs', prefs);
 function patStrip() {
   const d = V.data.bars, list = patternsToShow(V.R, d, 'all');
   const el = $('#sPats');
-  if (!list.length) { render(el, html`<span class="muted small">No base patterns found in this history. ${V.R.cur.length ? '' : "That itself is information: O'Neil only buys from proper bases."}</span>`); return; }
+  if (!list.length) { render(el, html`<span class="muted small">No base patterns found in this history. ${V.R.cur.length ? '' : "That itself is information: the method only buys from proper bases."}</span>`); return; }
   // newest first; the current base leads
   const sorted = [...list].sort((a, b) => (a.kind === 'cur' ? -1 : 0) - (b.kind === 'cur' ? -1 : 0) || (b.p.bo ?? b.p.e ?? 0) - (a.p.bo ?? a.p.e ?? 0));
   render(el, html`${sorted.map(({ p, kind }, i) => {
@@ -237,18 +250,19 @@ function cards() {
   const nx = nextReport(V.earn), n = d.length - 1;
   if (nx) {
     const days = Math.round((nx.time - d[n].time) / 86400);
-    if (days >= 0 && days <= 21) S.flags.unshift(['warn', `Earnings in ${days} day${days === 1 ? '' : 's'} (${fD(nx.time)}). O'Neil avoids new buys right before a report; a gap can wipe out a breakout.`]);
+    if (days >= 0 && days <= 21) S.flags.unshift(['warn', `Earnings in ${days} day${days === 1 ? '' : 's'} (${fD(nx.time)}). Buying right before a report is risky; a gap can wipe out a breakout.`]);
   }
   const lastQ = enrich(V.earn || []).pop();
   if (lastQ && d[n].time - lastQ.time < 6 * 86400) S.flags.unshift([lastQ.yoy >= 0.25 ? 'bull' : lastQ.yoy < 0 ? 'bear' : 'info', `Results just in: EPS ${f2(lastQ.eps)}${lastQ.yoy != null ? ' (' + pc(lastQ.yoy, 0) + ' y/y)' : ''}${lastQ.surprise != null ? ', ' + pc(lastQ.surprise, 0) + ' vs estimate' : ''}.`]);
   if (S.flags.length > 1) S.flags = S.flags.filter(f => f[1] !== 'Nothing new today.');
   const ad = adGrade(d);
   let dv = 0; for (let i = Math.max(0, n - 49); i <= n; i++) dv += d[i].close * d[i].volume; dv /= Math.min(50, n + 1);
-  S.nums.splice(7, 0, ['A/D grade, 13 weeks (approx.)', ad ? ad.grade + ' · ratio ' + ad.ratio.toFixed(2) : '—'], ['Avg daily value traded (50d)', bigNum(dv, V.data.currency)]);
+  S.nums.splice(7, 0, ['Accumulation grade, 13 weeks', ad ? ad.grade + ' · ratio ' + ad.ratio.toFixed(2) : '—'], ['Avg daily value traded (50d)', bigNum(dv, V.data.currency)]);
   if (nx) S.nums.push(['Next earnings', fD(nx.time)]);
+  if (V.score) S.nums.unshift(['Setup score', V.score.score + ' / 100 · ' + V.score.parts.map(p => p[0] + ' ' + p[1] + '/' + p[2]).join(', ')]);
   if (V.mkt) mktCard(); else $('#cMkt').hidden = true;
   render($('#cBase'), html`
-    <div class="card-head"><h2>Base pattern · O'Neil rules</h2>${B.p ? html`<span class="tag" style="color:${patColor(B.p.type)}">${PAT_LABEL[B.p.type] || ''}</span>` : ''}</div>
+    <div class="card-head"><h2>Base pattern</h2>${B.p ? html`<span class="tag" style="color:${patColor(B.p.type)}">${PAT_LABEL[B.p.type] || ''}</span>` : ''}</div>
     <div class="row" style="justify-content:flex-start;flex-wrap:wrap"><span class="pill lg ${tone(B.tone)}">${B.st}</span><h3>${C.title}</h3></div>
     ${C.facts.length ? html`<div class="facts">${C.facts.map(([k, v]) => html`<div class="fact"><div class="k">${k}</div><div class="v">${v}</div></div>`)}</div>` : ''}
     ${C.plan.length ? html`<ol class="plan">${C.plan.map(x => html`<li>${raw(x)}</li>`)}</ol>` : ''}
@@ -259,12 +273,12 @@ function cards() {
     <div class="card-head"><h2>Signal</h2><span class="muted tiny">Recalculated on every price update</span></div>
     <div class="row" style="justify-content:flex-start;align-items:flex-start"><span class="pill lg t-${sigTone}">${S.sig}</span><span class="small">${S.why}</span></div>
     <ol class="checks">${S.steps.map(([t, ok, note]) => html`<li><span class="mark ${ok ? 'y' : 'n'}">${ok ? '✓' : ''}</span><span>${t}</span><span class="muted tiny num">${note || ''}</span></li>`)}</ol>
-    <p class="muted tiny" style="margin:0">A checklist of O'Neil's rules, not advice.</p>`);
+    <p class="muted tiny" style="margin:0">A checklist of classic rules, not advice.</p>`);
   const lab = { bull: ['Bullish', 't-ok'], bear: ['Bearish', 't-bad'], warn: ['Caution', 't-warn'], info: ['Watch', 't-mute'] };
   render($('#cFlags'), html`<h2>Flags right now</h2><ul class="flags">${S.flags.map(([l, t]) => html`<li><span class="tag ${lab[l][1]}">${lab[l][0]}</span><span>${t}</span></li>`)}</ul>`);
   render($('#cNums'), html`<h2>Key numbers</h2><div class="kv">${S.nums.map(([a, b]) => html`<div><span>${a}</span><span class="num">${b}</span></div>`)}</div>
     ${V.bench ? html`<p class="muted tiny" style="margin:0">RS line vs ${V.bench.name}.</p>` : ''}`);
-  histCard(); renderCanslim(); earnCard(); drawList();
+  histCard(); renderCanslim(); earnCard(); drawList(); tags();
 }
 
 const bigNum = (x, cur) => { const s = money(0, cur).replace(/[\d.,]+.*$/, ''); const a = Math.abs(x); return s + (a >= 1e9 ? (a / 1e9).toFixed(2) + 'B' : a >= 1e6 ? (a / 1e6).toFixed(1) + 'M' : (a / 1e3).toFixed(0) + 'K') + (cur === 'GBp' ? ' (pence)' : ''); };
@@ -281,7 +295,7 @@ function mktCard() {
   $('#mkGo').onclick = () => go('market');
 }
 
-/* ---------- earnings (MarketSurge-style datagraph) ---------- */
+/* ---------- earnings  ---------- */
 function earnCard() {
   const el = $('#cEarn'); if (!el || !V.data) return;
   if (V.mkt) { render(el, html`<h2>Earnings</h2><p class="muted small" style="margin:0">Indexes have no earnings line here. Use Compare to set this index against others.</p>`); return; }
@@ -342,17 +356,17 @@ function histCard() {
   });
 }
 
-/* ---------- CAN SLIM ---------- */
+/* ---------- growth checklist ---------- */
 function renderCanslim() {
   const el = $('#cCanslim'); if (!el || !V.sig) return;
   const cs = V.sig.canslim, ca = V.earn ? canslimCA(V.earn) : null;
   const na = V.mkt ? ['na', 'Not used for an index.'] : ['na', V.earnErr || (provider().earnings || isDemoSym(V.sym) ? 'Loading earnings…' : 'Needs earnings from a data provider.')];
-  const L = [['C', 'Quarter EPS', ca ? ca.C : na], ['A', 'Annual EPS', ca ? ca.A : na], ['N', 'New high', cs.N], ['S', 'Demand', cs.S], ['L', 'Leader', cs.L], ['I', 'Funds', ['na', 'Not scored: needs fund-ownership data.']], ['M', 'Market', cs.M]];
+  const L = [['EPS', 'Quarter growth', ca ? ca.C : na], ['EPS', '3-year growth', ca ? ca.A : na], ['High', 'Near new high', cs.N], ['Vol', 'Demand', cs.S], ['RS', 'Leadership', cs.L], ['Funds', 'Ownership', ['na', 'Not scored: needs fund-ownership data.']], ['Mkt', 'Market trend', cs.M]];
   render(el, html`
-    <div class="card-head"><h2>CAN SLIM checklist</h2><span class="muted tiny">Tap a letter for details</span></div>
-    <div class="canslim">${L.map(([k, nm, [st, why]]) => html`<div class="cs ${st}" title="${why}" tabindex="0" data-why="${k}: ${why}"><b>${k}</b><span>${nm}</span></div>`)}</div>
-    <p class="small" style="margin:0" id="csWhy">${L.filter(x => x[2][0] !== 'na').length}/7 letters scored. ${L.filter(x => x[2][0] === 'pass').map(x => x[0]).join(' ') || 'None'} pass.</p>
-    <p class="muted tiny" style="margin:0">Green = meets O'Neil's threshold, orange = close, red = fails. A checklist, not a rating.</p>`);
+    <div class="card-head"><h2>Growth checklist</h2><span class="muted tiny">Tap an item for details</span></div>
+    <div class="canslim">${L.map(([k, nm, [st, why]]) => html`<div class="cs ${st}" title="${why}" tabindex="0" data-why="${nm}: ${why}"><b>${k}</b><span>${nm}</span></div>`)}</div>
+    <p class="small" style="margin:0" id="csWhy">${L.filter(x => x[2][0] === 'pass').length} of ${L.filter(x => x[2][0] !== 'na').length} scored items pass.</p>
+    <p class="muted tiny" style="margin:0">Green = meets the classic threshold, orange = close, red = fails. A checklist, not a rating.</p>`);
   $$('.cs', el).forEach(x => { const show = () => { $('#csWhy').textContent = x.dataset.why; }; x.onclick = show; x.onfocus = show; });
 }
 
@@ -458,9 +472,13 @@ function wireTools() {
   document.addEventListener('keydown', e => { if (e.key === 'Escape' && V.tool) setTool(null); });
   $('#sFit').onclick = () => V.chart.fit();
   $('#sRefresh').onclick = () => { if (App.sym) load(App.sym, true); };
-  $('#sWatch').onclick = () => {
-    const l = App.watch.slice(), i = l.indexOf(V.sym);
-    if (i >= 0) l.splice(i, 1); else l.push(V.sym);
-    saveWatch(l); head(); toast(i >= 0 ? `Removed ${V.sym} from your watchlist.` : `Added ${V.sym} to your watchlist.`);
+  $('#sWatch').onclick = () => { if (V.sym) listMenu(V.sym); };
+  $('#sAlert').onclick = () => {
+    if (!V.data) return;
+    const d = V.data.bars, B = baseState(V.R, d), p = B.p && B.p.pivot ? B.p : null;
+    const hold = (App.holdings || []).find(h => h.sym === V.sym && h.cost);
+    alertSheet({ sym: V.sym, name: V.data.name, close: d[d.length - 1].close, cur: V.data.currency,
+      pivot: p && !B.bo ? +p.pivot.toFixed(2) : null, baseName: p ? p.name : '',
+      stop: hold ? +(hold.cost * 0.92).toFixed(2) : p ? +(p.pivot * 0.92).toFixed(2) : null, stopFrom: hold ? 'your cost' : 'the buy point' });
   };
 }

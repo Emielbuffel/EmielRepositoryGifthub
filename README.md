@@ -1,6 +1,6 @@
 # Base Pattern Desk
 
-O'Neil-style stock charting for **iPhone, iPad and Mac**. The app finds William O'Neil's base patterns automatically and draws each one in its own colour, with the buy point, the volume checks and the sell rules. It also shows the market direction (distribution and follow-through days), runs a screener on the device, and reviews the risk of your portfolio.
+Base-pattern stock charting for **iPhone, iPad and Mac**. The app finds classic chart bases (cups, flat bases, double bottoms and more) automatically and draws each one in its own colour, with the buy point, the volume checks and the sell rules. It also shows the market direction (distribution and follow-through days), runs a screener on the device, and reviews the risk of your portfolio.
 
 This is a standalone rebuild of the "Base Pattern Desk" claude.ai artifact. That version only worked inside claude.ai: it relied on the page database, the FMP connector and Claude's scheduled tasks. This version runs entirely on the device and can be published on the App Store.
 
@@ -10,11 +10,18 @@ This is a standalone rebuild of the "Base Pattern Desk" claude.ai artifact. That
 
 | Tab | What it does |
 |---|---|
-| **Chart** | **EPS line** (4-quarter or quarterly, smooth, a dot per report coloured by y/y growth). **Compare** with the home index (S&P 500, Nasdaq, Nikkei 225, DAX, Euro Stoxx 50, FTSE 100, KOSPI…), MSCI World or a US sector ETF, rebased to the left edge; the RS line can use any of these indexes. Earnings table with surprises and the next report date, CAN SLIM, A/D grade, liquidity, and **news** from free sources, refreshed every time you open a stock. Daily/weekly candles, 10/21/50/200-day lines, RS line, volume, RSI and MACD. Every detected base is drawn in its own colour, both the current base and every past one (with its outcome). A strip under the chart lists them all; tap one to jump to it. Also: base card with buy point and plan, signal + 11-point checklist, CAN SLIM, flags, key numbers, base history, and your own drawings (trend line, level, zone, your own cup, note). |
-| **Market** | Nasdaq, S&P 500, Dow and Euro Stoxx 50 with distribution days (D), follow-through days (FTD), a day-by-day status ribbon, base patterns on the indexes, a list of every distribution day in the count, market headlines and IBD's exposure guideline. "Analyse & draw" opens an index in the full chart, where you can draw and see all its patterns. |
-| **Screener** | Scans your watchlist, portfolio, a US large-cap list or your own list: breakouts, stocks near a buy point, volume surges, sell signals, an RS rank, sortable columns and sparklines. |
-| **Portfolio** | Enter your holdings. You get value, gain/loss, O'Neil sell signals (7–8% stop, 50/200-day breaks, failed breakouts), volatility, beta and downside beta, risk contribution, a correlation heatmap and a stress replay. |
-| **Learn** | All eight bases with diagrams, rules and a live example of each, plus buy/sell rules and CAN SLIM. |
+| **Chart** | **EPS line** (4-quarter or quarterly, smooth, a dot per report coloured by y/y growth). **Compare** with the home index (S&P 500, Nasdaq, Nikkei 225, DAX, Euro Stoxx 50, FTSE 100, KOSPI…), MSCI World or a US sector ETF, rebased to the left edge; the RS line can use any of these indexes. Earnings table with surprises and the next report date, growth checklist, accumulation grade, liquidity, and **news** from free sources, refreshed every time you open a stock. Daily/weekly candles, 10/21/50/200-day lines, RS line, volume, RSI and MACD. Every detected base is drawn in its own colour, both the current base and every past one (with its outcome). A strip under the chart lists them all; tap one to jump to it. Also: base card with buy point and plan, signal + 11-point checklist, growth checklist, setup score (0–100), flags, key numbers, base history, and your own drawings (trend line, level, zone, your own cup, note). |
+| **Market** | Nasdaq, S&P 500, Dow and Euro Stoxx 50 with distribution days (D), follow-through days (FTD), a day-by-day status ribbon, base patterns on the indexes, a list of every distribution day in the count, market headlines, a rule-of-thumb exposure guide and a **sector ranking** from the latest scan. "Analyse & draw" opens an index in the full chart, where you can draw and see all its patterns. |
+| **Screener** | Scans all 382 built-in stocks, a watchlist, your portfolio or your own list: breakouts, stocks near a buy point, volume surges, sell signals, a strength rank, a **setup score**, a sector filter, prices in local currency, EUR or USD, sortable columns and sparklines. |
+| **Portfolio** | Enter your holdings or **import a broker CSV** (DEGIRO and most brokers; English, Dutch, French and German headers). You get value, gain/loss, sell signals (7–8% stop, 50/200-day breaks, failed breakouts), volatility, beta and downside beta, risk contribution, a correlation heatmap and a stress replay. |
+| **Learn** | All eight bases with diagrams, rules and a live example of each, plus buy/sell rules and a growth checklist. |
+
+**Across the app:**
+- **Alerts:** breakout above the buy point (with a volume check), stop (8% under your cost or the buy point), or any price level. Alerts are checked whenever prices load (opening a stock, a scan, the portfolio, or *Check now* in the bell menu); in the iPhone/Mac app a triggered alert also sends a local notification. iOS does not let apps check prices on a timer in the background, so there is no server-side alerting.
+- **Watchlists:** several named lists; add a stock to any list from the star button; rename, delete and drag to reorder (Edit in the sidebar).
+- **Setup score (0–100):** base 30, strength 25, trend 15, demand 10, earnings 10, market 10; parts without data are left out and the rest is rescaled.
+- **Sector ranking:** median strength, share above the 50-day line and near highs per sector, from the latest scan; tap a sector to filter the screener.
+- **One currency:** screener and portfolio values in EUR or USD, with live rates in the app and dated reference rates (marked ≈) otherwise.
 
 **Patterns detected:** cup with handle, cup without handle, double bottom, flat base, ascending base, high tight flag, three weeks tight, and descending (faulty) base. Faulty bases are drawn and labelled "(faulty)" rather than hidden.
 

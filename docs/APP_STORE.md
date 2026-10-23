@@ -37,23 +37,23 @@ A native Mac Catalyst build (Xcode → target → *General* → *Supported Desti
 | Price | Your choice (free, or paid up front). Don't add in-app purchases without updating the app. |
 | **App Privacy ("nutrition label")** | **Data Not Collected.** The app has no analytics, no account and no tracking. Prices are fetched from the provider the user picks, with the user's own key. News feeds are requested directly from the device, with only the ticker or company name. |
 | Encryption (export compliance) | Uses only standard HTTPS. `ITSAppUsesNonExemptEncryption = NO` is already in Info.plist. |
-| Content rights | The app shows data that users fetch with their own provider accounts. It bundles no third-party market data; the demo data is synthetic. |
+| Content rights | **Must be fixed before a paid release.** The built-in snapshot and the free Yahoo/Stooq feeds are not licensed for commercial redistribution. Replace them with a provider plan that allows display in a public app (see section 7), or ship with only bring-your-own-key providers and the synthetic demo data. |
 | Sign-in required? | No |
 
 ### Review notes (paste into "Notes for the reviewer")
 
-> Base Pattern Desk is an educational charting tool. It does not trade, hold money, connect to brokerages or give personal advice. On first launch it runs in **Demo mode** with fictional companies and synthetic prices, so every feature can be tested without an account or network access: Chart, Market, Screener, Portfolio and Learn. Real market data is optional. Users enter their own API key from a market-data provider (Financial Modeling Prep, Twelve Data or EODHD) in Settings. The key stays on the device. The Learn tab's "See an example" buttons open demo stocks that show each chart pattern.
+> Base Pattern Desk is an educational charting tool. It does not trade, hold money, connect to brokerages or give personal advice. On first launch it shows end-of-day prices for about 380 stocks, so every feature can be tested without an account: Chart, Market, Screener, Portfolio, Learn, alerts and watchlists. Fictional demo data is also available in Settings. Users enter their own API key from a market-data provider (Financial Modeling Prep, Twelve Data or EODHD) in Settings. The key stays on the device. The Learn tab's "See an example" buttons open stocks that show each chart pattern. Notifications are local only: they report price alerts the user set and are sent when the app checks prices.
 
 ## 4. Store listing text
 
 **Name (30):** Base Pattern Desk
-**Subtitle (30):** O'Neil chart patterns & signals
+**Subtitle (30):** Chart bases, alerts & screener
 
 **Promotional text (170):**
-Spot cups with handles, flat bases and double bottoms automatically, with buy points, volume checks and O'Neil's sell rules. Try it free in demo mode.
+Spot cups with handles, flat bases and double bottoms automatically, with buy points, volume checks, sell rules and alerts. A setup score and sector ranking show where the strength is.
 
 **Description:**
-Base Pattern Desk finds the chart bases William O'Neil described in How to Make Money in Stocks, and explains them.
+Base Pattern Desk finds classic chart bases automatically, scores each setup and explains the rules behind it.
 
 PATTERNS, DRAWN FOR YOU
 • Eight bases: cup with handle, cup without handle, double bottom, flat base, ascending base, high tight flag, three weeks tight and descending base
@@ -72,28 +72,34 @@ NEWS, ALWAYS FRESH
 • Paywalled sites filtered out; add your own RSS feeds
 
 A CHECKLIST, NOT A GUESS
-• Signal with an 11-point O'Neil checklist
-• CAN SLIM overview, RS line, up/down volume, base stage
+• Signal with an 11-point checklist
+• Growth checklist, setup score (0–100), RS line, up/down volume, base stage
 • Flags for breakouts, failed breakouts, 50/200-day crosses and volume surges
 • Draw your own trend lines, levels, zones and cups; the app watches them
 
 MARKET DIRECTION
 • Distribution days and follow-through days on the major indexes
-• Confirmed uptrend / under pressure / correction, with IBD's exposure guideline
+• Confirmed uptrend / under pressure / correction, with a rule-of-thumb exposure guide and a sector ranking
 
 SCREENER
-• Scan your watchlist, portfolio or your own list for breakouts, buy points and volume surges
+• Scan hundreds of US, European and Asian stocks, or your own lists, for breakouts, buy points and volume surges
+• Setup score (0–100), sector filter, values in local currency, EUR or USD
+
+ALERTS & WATCHLISTS
+• Breakout, stop and price alerts with a notification when they trigger
+• Several watchlists, drag to reorder
 
 PORTFOLIO RISK
+• Import your broker CSV, set stop alerts for every position
 • Sell signals for your holdings, volatility, downside beta, risk contribution, hidden correlations and a stress replay
 
 PRIVATE BY DESIGN
 • No account, no tracking, no ads. Your lists and holdings stay on your device.
-• Demo mode works offline. For real prices, connect your own key from Financial Modeling Prep, Twelve Data or EODHD.
+• Prices from your chosen data provider; fictional demo data works offline.
 
-Base Pattern Desk is an educational tool that applies published rules of thumb to end-of-day prices. It is not investment advice. CAN SLIM is a registered trademark of Investor's Business Daily; this app is not affiliated with IBD or William O'Neil + Co.
+Base Pattern Desk is an educational tool that applies published rules of thumb to end-of-day prices. It is not investment advice. This app is independent and not affiliated with any publisher, broker or data vendor.
 
-**Keywords (100):** stock,chart,pattern,oneil,canslim,cup,handle,breakout,base,screener,technical,analysis,investing
+**Keywords (100):** stock,chart,pattern,cup,handle,breakout,base,screener,technical,analysis,investing,alerts,growth
 
 ## 5. Screenshots
 
@@ -112,3 +118,10 @@ Apple requires screenshots that show the real app. These come from the actual bu
 4. **News feeds (also guideline 5.2.2).** The app reads public RSS feeds on the user's device and shows only headline, source and a link to the original article, like an RSS reader. It doesn't copy article text or host anything. Some feed owners say their feeds are for personal, non-commercial use: Google News did in older terms, and Yahoo has been removing feeds. The safest sources are SEC EDGAR (public government data) and the news APIs in the user's own FMP/EODHD plan. Every source has its own switch in Settings. If you charge for the app and want to be careful, switch Google News and Yahoo off by default (`newsSettings()` in `src/data/news.js`), or ask those services for permission. Set `SEC_CONTACT` in `src/data/news.js` to your support e-mail.
 5. **Guideline 4.2: minimum functionality.** The app runs fully offline in demo mode, bundles all its code (no remote website) and has native-style navigation. That's well beyond "a repackaged website".
 6. **Not verified here:** the build was produced on Linux. Xcode compiling, signing and running on devices still needs to be done on a Mac. The live provider APIs couldn't be called from the build machine (network policy), so the parsers are tested against the documented response formats. Test each provider with a real key before you submit.
+
+## 7. Trademarks, copyright and data licences
+
+- **Don't use other companies' trademarks** in the name, subtitle, keywords or screenshots. Apple's guideline 2.3.7 forbids trademarked terms and competitor names in metadata. CAN SLIM® is a registered trademark of Investor's Business Daily (IBD); "IBD", "MarketSurge", "MarketSmith", "RS Rating", "Composite Rating" and "SMR Rating" are also theirs. The app therefore uses its own terms: *Strength rank*, *Setup score*, *Growth checklist*, *Accumulation grade*.
+- **Ideas and methods are free to use; wording and design are not.** Copyright protects the way something is expressed (text, code, screen layouts, logos), not the underlying method. Rules like "buy point = handle high", "7–8% stop" or "count distribution days" are published methods. Write all explanations in your own words (the app does) and keep your own visual design.
+- **Crediting a book is fine.** Learn names *How to Make Money in Stocks* once as a source, in a neutral way. Don't suggest any endorsement.
+- **Market data:** see "Content rights" above. Exchanges and data vendors license display separately; get written terms that cover a public paid app before release.

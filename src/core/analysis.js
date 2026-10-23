@@ -28,7 +28,7 @@ export function baseState(R, d) {
   if (desc) return { st: 'FAULTY BASE', tone: 'bad', p: desc, alts: [] };
   if (R.sinceHigh < 25 && R.extended != null && R.extended > 0)
     return { st: 'NO BASE YET', tone: 'mute', p: null, alts: [], msg: `At or near new highs and ${pc(R.extended)} above the 50-day line. No base has formed since the last breakout. Wait for a 5-week+ consolidation.` };
-  return { st: 'NO BASE', tone: 'mute', p: null, alts: [], msg: "No sound O'Neil base right now. The stock is not near a buy point." };
+  return { st: 'NO BASE', tone: 'mute', p: null, alts: [], msg: "No sound base right now. The stock is not near a buy point." };
 }
 
 /** Facts, plan and notes for the base card. */
@@ -47,17 +47,17 @@ export function baseCard(R, d, bench, fp) {
       out.plan.push(`Buy only on a close above <b>${fp(p.pivot)}</b> with volume of at least <b>${fmtVol(need)}</b> shares (40% above the 50-day average).`);
       out.plan.push(`Buy zone: ${fp(p.pivot)} to ${fp(p.pivot * 1.05)}. Above that the stock is extended; don't chase it.`);
     } else {
-      out.plan.push(`Breakout-day volume was ${p.volRatio ? pc(p.volRatio - 1, 0) : '—'} vs average ${p.volRatio >= 1.4 ? '(confirmed)' : "(below the +40% O'Neil wants)"}.`);
+      out.plan.push(`Breakout-day volume was ${p.volRatio ? pc(p.volRatio - 1, 0) : '—'} vs average ${p.volRatio >= 1.4 ? '(confirmed)' : "(below the +40% a confirmed breakout needs)"}.`);
       out.plan.push(B.dist > 0.05 ? `Now ${pc(B.dist)} above the buy point: past the 5% buy zone. Don't add here; wait for a pullback or a new base.`
         : B.dist >= 0 ? `Inside the buy zone (${fp(p.pivot)}–${fp(p.pivot * 1.05)}).`
           : `Back under the buy point. A close below ${fp(p.pivot * 0.98)} would count as a failed breakout.`);
     }
     out.plan.push(`Stop: sell if it falls 7–8% below your purchase price (≈ ${fp(p.pivot * 0.92)} if bought at the buy point).`);
-    out.plan.push(`Profits: take most at +20–25% (${fp(p.pivot * 1.2)}–${fp(p.pivot * 1.25)}). If it gains 20% within 3 weeks of the breakout, O'Neil holds for at least 8 weeks.`);
+    out.plan.push(`Profits: take most at +20–25% (${fp(p.pivot * 1.2)}–${fp(p.pivot * 1.25)}). A stock that gains 20% within 3 weeks of the breakout is often held for at least 8 weeks.`);
   }
-  if (p.faulty) out.plan.unshift("<b>Faulty base</b> by O'Neil's rules (see the red notes). Breakouts from faulty bases fail more often: smaller position, tighter stop.");
+  if (p.faulty) out.plan.unshift("<b>Faulty base</b> by the classic rules (see the red notes). Breakouts from faulty bases fail more often: smaller position, tighter stop.");
   (p.notes || []).forEach(x => out.notes.push(x));
-  if (p.stage >= 3) out.notes.push(['warn', `Stage ${p.stage} base: late-stage bases fail more often (O'Neil prefers stage 1–2)`]);
+  if (p.stage >= 3) out.notes.push(['warn', `Stage ${p.stage} base: late-stage bases fail more often (stage 1–2 work best)`]);
   if (bench && bench.length) {
     const rsHi = rsNewHigh(calc(d, false, bench).rs, 252);
     out.notes.push(rsHi ? ['good', 'RS line at a 52-week high (leadership)'] : ['warn', 'RS line is not at a new high']);
@@ -103,14 +103,14 @@ export function signal(R, d, bench, fp, mkt, drawings = []) {
 
   let sig, why;
   if (k.s200[n] != null && c < k.s200[n]) { sig = 'SELL'; why = 'Closed below the 200-day line: the long uptrend is broken.'; }
-  else if (bo && c < bo.pivot * 0.92) { sig = 'SELL'; why = "More than 8% below the breakout buy point: O'Neil's loss-cutting rule says sell."; }
+  else if (bo && c < bo.pivot * 0.92) { sig = 'SELL'; why = "More than 8% below the breakout buy point: the 7–8% loss-cutting rule says sell."; }
   else if (bo && B.dist >= 0 && B.dist <= 0.05 && bo.volRatio >= 1.4 && c > k.s50[n]) { sig = 'BUY'; why = `In the buy zone of a volume-confirmed ${bo.name.toLowerCase()} breakout. Stop about ${fp(bo.pivot * 0.92)}.`; }
   else if (bo && B.dist > 0.05) { sig = 'HOLD'; why = "Extended beyond the 5% buy zone. Hold if you own it; don't chase it."; }
-  else if (bo && B.dist >= 0) { sig = 'HOLD'; why = "Broke out, but volume was below the +40% O'Neil wants. Wait for confirmation."; }
+  else if (bo && B.dist >= 0) { sig = 'HOLD'; why = "Broke out, but volume was below the +40% a confirmed breakout needs. Wait for confirmation."; }
   else if (inBase) { sig = 'WATCH'; why = `${(Math.abs(B.dist) * 100).toFixed(1)}% ${B.dist < 0 ? 'below' : 'above'} the ${B.p.name.toLowerCase()} buy point (${fp(B.p.pivot)}). Buy only on a volume breakout.`; }
   else if (c < k.s50[n] && !s50up && !macdUp) { sig = 'SELL'; why = 'Below a falling 50-day line with weak momentum. Trim or tighten stops.'; }
   else { sig = 'HOLD'; why = B.msg || 'No buy setup right now.'; }
-  if (sig === 'BUY' && mkt && mkt.us === 'corr') { sig = 'WATCH'; why = "The setup is valid, but the market is in a correction. O'Neil: three out of four stocks follow the market, so wait for a follow-through day."; }
+  if (sig === 'BUY' && mkt && mkt.us === 'corr') { sig = 'WATCH'; why = "The setup is valid, but the market is in a correction. Most stocks follow the market, so wait for a follow-through day."; }
 
   // flags
   const F = [], add = (l, t) => F.push([l, t]);
@@ -126,7 +126,7 @@ export function signal(R, d, bench, fp, mkt, drawings = []) {
   if (B.bo && n - B.p.bo <= 2) add(B.p.volRatio >= 1.4 ? 'bull' : 'warn', `Broke out of a ${B.p.name.toLowerCase()} ${ago(n - B.p.bo)} on volume ${pc(B.p.volRatio - 1, 0)} vs average.`);
   if (B.p && B.p.pivot && !B.bo && B.dist >= -0.03) add('info', `Within ${(Math.abs(B.dist) * 100).toFixed(1)}% of the buy point ${fp(B.p.pivot)}.`);
   if (R.last && R.last.failed && n - R.last.failed <= 10) add('bear', `Failed breakout: closed back under the ${fp(R.last.pivot)} buy point ${ago(n - R.last.failed)}.`);
-  if (rsHi) add('bull', c >= hi52 * 0.995 ? 'RS line at a new high together with price.' : "RS line at a new high before price: a bullish O'Neil tell.");
+  if (rsHi) add('bull', c >= hi52 * 0.995 ? 'RS line at a new high together with price.' : "RS line at a new high before price: a classic sign of leadership.");
   let x = cross(k.s50, k.s200, 15); if (x) add(x[0] === 'up' ? 'bull' : 'bear', `${x[0] === 'up' ? 'Golden' : 'Death'} cross (50-day ${x[0] === 'up' ? 'above' : 'below'} 200-day) ${ago(x[1])}.`);
   x = cross(k.c, k.s50, 5); if (x) add(x[0] === 'up' ? 'bull' : 'bear', `Price crossed ${x[0] === 'up' ? 'above' : 'below'} the 50-day line ${ago(x[1])}${volR >= 1.4 && x[1] === 0 ? ' on heavy volume' : ''}.`);
   x = cross(k.macd.m, k.macd.sg, 5); if (x) add(x[0] === 'up' ? 'bull' : 'bear', `Daily MACD crossed ${x[0] === 'up' ? 'above' : 'below'} its signal ${ago(x[1])}.`);
@@ -140,7 +140,7 @@ export function signal(R, d, bench, fp, mkt, drawings = []) {
   for (const dr of drawings) {
     if (dr.type === 'cup' && dr.pts && dr.pts.length >= 3) {
       const piv = cupPivot(dr);
-      if (c > piv && pcl <= piv) add('bull', `Closed above your cup's buy point (${f2(piv)}). Check volume: O'Neil wants 40%+ above average.`);
+      if (c > piv && pcl <= piv) add('bull', `Closed above your cup's buy point (${f2(piv)}). Check volume: a confirmed breakout needs 40%+ above average.`);
       else if (c < piv && c >= piv * 0.95) add('info', `Within 5% below your cup's buy point (${f2(piv)}).`);
       else if (c > piv && c <= piv * 1.05) add('info', `In the buy zone of your cup (${f2(piv)}–${f2(piv * 1.05)}).`);
       continue;
@@ -173,7 +173,7 @@ export function signal(R, d, bench, fp, mkt, drawings = []) {
     ['Data through', fD(d[n].time)],
   ];
 
-  // the CAN SLIM letters that can be judged from prices alone
+  // growth-checklist items that can be judged from prices alone
   const nState = ['NEAR BUY POINT', 'IN BUY ZONE'].includes(B.st) || c >= hi52 * 0.99 ? 'pass' : ['FAULTY BASE', 'STOP HIT'].includes(B.st) ? 'fail' : c >= hi52 * 0.85 ? 'mid' : 'fail';
   const canslim = {
     N: [nState, (B.p ? B.p.name + ': ' : '') + B.st.toLowerCase() + '. ' + pc(c / hi52 - 1) + ' vs the 52-week high.'],
@@ -238,7 +238,7 @@ export function screenRow(sym, name, bars, R, bench) {
   };
 }
 
-/** Rank RS scores 1–99 within the scanned set (an approximation, never IBD's own rating). */
+/** Rank RS scores 1–99 within the scanned set (the app's own strength rank). */
 export function rankRS(rows) {
   const xs = rows.filter(r => r.rsRaw != null).sort((a, b) => a.rsRaw - b.rsRaw);
   xs.forEach((r, i) => { r.rs = xs.length > 1 ? Math.max(1, Math.min(99, Math.round(1 + 98 * i / (xs.length - 1)))) : 50; });

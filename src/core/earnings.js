@@ -1,5 +1,5 @@
 // Earnings maths: trailing EPS, year-over-year growth, the smooth EPS line for the chart,
-// CAN SLIM C and A from quarterly results, and an approximate accumulation/distribution grade.
+// the earnings items of the growth checklist, and an accumulation grade.
 // Input rows: ascending [{time (report date, epoch s), eps, est?, rev?, revEst?, period?}]; future rows have eps == null.
 
 /** Reported quarters only (eps known), ascending. */
@@ -25,7 +25,7 @@ export function enrich(rows) {
 }
 
 /**
- * Points of the EPS line at each report date. mode 'ttm' (4-quarter EPS, like MarketSurge's EPS line) or 'q'.
+ * Points of the EPS line at each report date. mode 'ttm' (4-quarter EPS) or 'q'.
  */
 export function epsPoints(rows, mode = 'ttm') {
   return enrich(rows).map(r => ({ time: r.time, value: mode === 'ttm' ? r.ttm : r.eps, yoy: r.yoy, eps: r.eps, period: r.period }))
@@ -61,7 +61,7 @@ export function smoothLine(points, times) {
   return out;
 }
 
-/** CAN SLIM C (latest quarter) and A (3-year growth of 4-quarter EPS) as [state, text]. */
+/** Checklist items: latest-quarter EPS growth and 3-year growth of 4-quarter EPS, as [state, text]. */
 export function canslimCA(rows) {
   const q = enrich(rows), n = q.length - 1;
   let C = ['na', 'Needs quarterly earnings.'], A = ['na', 'Needs about four years of quarterly earnings.'];
@@ -69,15 +69,15 @@ export function canslimCA(rows) {
     const r = q[n], prev = q[n - 1];
     const accel = r.yoy != null && prev.yoy != null && r.yoy > prev.yoy;
     C = [r.yoy == null ? 'na' : r.yoy >= 0.25 ? 'pass' : r.yoy >= 0 ? 'mid' : 'fail',
-      `Latest quarter EPS ${pct(r.yoy)} vs a year ago${r.revYoy != null ? `, sales ${pct(r.revYoy)}` : ''}${r.yoy != null && prev.yoy != null ? (accel ? ', accelerating' : ', slowing') : ''}. O'Neil wants +25% or more.`];
+      `Latest quarter EPS ${pct(r.yoy)} vs a year ago${r.revYoy != null ? `, sales ${pct(r.revYoy)}` : ''}${r.yoy != null && prev.yoy != null ? (accel ? ', accelerating' : ', slowing') : ''}. The classic threshold is +25% or more.`];
   }
   if (n >= 15) {
     const a = q[n].ttm, b = q[n - 12].ttm;
     const cagr = a > 0 && b > 0 ? Math.pow(a / b, 1 / 3) - 1 : null;
-    A = [cagr == null ? 'na' : cagr >= 0.25 ? 'pass' : cagr >= 0.1 ? 'mid' : 'fail', `4-quarter EPS grew ${cagr == null ? 'n/a' : pct(cagr) + ' a year'} over 3 years. O'Neil wants 25%+ a year.`];
+    A = [cagr == null ? 'na' : cagr >= 0.25 ? 'pass' : cagr >= 0.1 ? 'mid' : 'fail', `4-quarter EPS grew ${cagr == null ? 'n/a' : pct(cagr) + ' a year'} over 3 years. The classic threshold is 25%+ a year.`];
   } else if (n >= 7) {
     const a = q[n].ttm, b = q[n - 4].ttm, g = growth(a, b);
-    A = [g == null ? 'na' : g >= 0.25 ? 'pass' : g >= 0.1 ? 'mid' : 'fail', `4-quarter EPS ${pct(g)} vs a year ago (only ${n + 1} quarters loaded; O'Neil looks at 3 years).`];
+    A = [g == null ? 'na' : g >= 0.25 ? 'pass' : g >= 0.1 ? 'mid' : 'fail', `4-quarter EPS ${pct(g)} vs a year ago (only ${n + 1} quarters loaded; ideally 3 years).`];
   }
   return { C, A };
 }
@@ -85,7 +85,7 @@ const pct = x => x == null || !isFinite(x) ? 'n/a' : (x >= 0 ? '+' : '−') + Ma
 
 /**
  * Approximate accumulation/distribution grade (A–E) over the last 13 weeks: up-day volume weighted by the
- * size of the move vs down-day volume. Inspired by IBD's A/D idea; not IBD's proprietary rating.
+ * size of the move vs down-day volume. The app's own measure.
  */
 export function adGrade(bars) {
   const n = bars.length - 1; if (n < 66) return null;

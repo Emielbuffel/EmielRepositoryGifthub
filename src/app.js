@@ -17,7 +17,9 @@ export const App = {
   view: 'chart',
   sym: null,
   names: {},
-  watch: [],        // watchlist for the current provider
+  watch: [],        // symbols of the active list
+  lists: [],        // [{id, name, syms}]
+  listId: null,
   mkt: null,        // combined market status {us, usLabel}
   mktRes: null,     // per-index analyses
   last: {},         // last close/change per symbol (for the watchlist)
@@ -25,17 +27,38 @@ export const App = {
 };
 
 export const watchKey = () => isDemo() ? 'watch.demo' : 'watch.real';
+const listsKey = () => isDemo() ? 'lists.demo' : 'lists.real';
 
 export async function loadState() {
   App.names = await store.get('names', {});
-  App.watch = await store.get(watchKey(), isDemo() ? DEMO_WATCH : REAL_WATCH);
+  // several named watchlists; the old single watchlist becomes the first one
+  App.lists = await store.get(listsKey(), null);
+  if (!App.lists || !App.lists.length) {
+    const old = await store.get(watchKey(), isDemo() ? DEMO_WATCH : REAL_WATCH);
+    App.lists = [{ id: 'w1', name: 'Watchlist', syms: old }];
+    if (!isDemo()) App.lists.push({ id: 'w2', name: 'Europe & Asia', syms: ['ASML.AS', 'RHM.DE', 'SAP.DE', 'SAAB-B.ST', '7203.T', '005930.KS', '0700.HK'] });
+    await store.set(listsKey(), App.lists);
+  }
+  App.listId = await store.get(listsKey() + '.active', App.lists[0].id);
+  if (!App.lists.some(l => l.id === App.listId)) App.listId = App.lists[0].id;
+  App.watch = App.lists.find(l => l.id === App.listId).syms;
   App.sym = await store.get(isDemo() ? 'lastSym.demo' : 'lastSym.real', App.watch[0] || (isDemo() ? 'ACME.DEMO' : 'NVDA'));
   App.last = await store.get('lastQuotes', {});
 }
 
-export async function saveWatch(list) {
-  App.watch = list; await store.set(watchKey(), list); emit('watch');
+/** Replaces the symbols of the active list (or of list `id`). */
+export async function saveWatch(syms, id = App.listId) {
+  const l = App.lists.find(x => x.id === id); if (!l) return;
+  l.syms = syms; if (id === App.listId) App.watch = syms;
+  await store.set(listsKey(), App.lists); emit('watch');
 }
+export async function saveLists(lists, activeId = App.listId) {
+  App.lists = lists.length ? lists : [{ id: 'w1', name: 'Watchlist', syms: [] }];
+  App.listId = App.lists.some(l => l.id === activeId) ? activeId : App.lists[0].id;
+  App.watch = App.lists.find(l => l.id === App.listId).syms;
+  await store.set(listsKey(), App.lists); await store.set(listsKey() + '.active', App.listId); emit('watch');
+}
+export const useList = id => saveLists(App.lists, id);
 export async function rememberName(sym, name) {
   if (!name || App.names[sym] === name) return;
   App.names[sym] = name; await store.set('names', App.names);
