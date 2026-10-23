@@ -1,0 +1,150 @@
+// The Portfolio tab: holdings you enter by hand, analysed on the device: value, P/L, O'Neil sell rules,
+// volatility, betas (incl. downside beta), risk contribution, correlations and a stress replay.
+import PAT from '../core/pat.js';
+import { baseState, pc, fD, fDs } from '../core/analysis.js';
+import { sma } from '../core/indicators.js';
+import { analysePortfolio } from '../core/portfolio.js';
+import { daily, fxWeekly, isDemo, provider, DataError } from '../data/service.js';
+import { currencyOf } from '../data/providers.js';
+import * as store from '../data/store.js';
+import { App, on, openStock } from '../app.js';
+import { $, $$, html, raw, render, money, big, ICON, toast, sheet } from './dom.js';
+
+const DEMO_HOLD = [{ sym: 'ACME.DEMO', shares: 40, cost: 90 }, { sym: 'IRIS.DEMO', shares: 60, cost: 70 }, { sym: 'LUMA.DEMO', shares: 100, cost: 45 }, { sym: 'FLUX.DEMO', shares: 150, cost: 30 }, { sym: 'JADE.DEMO', shares: 50, cost: 88 }];
+const P = { base: 'USD', seq: 0 };
+const hkey = () => isDemo() ? 'holdings.demo' : 'holdings.real';
+
+export async function initPortfolio(el) {
+  P.base = await store.get('portfolio.base', 'USD');
+  render(el, html`
+    <section class="card" id="pTop"></section>
+    <section class="card">
+      <div class="card-head"><h2>Holdings</h2><div class="toolbar"><select class="input" id="pBase" style="width:auto;padding:6px 10px;font-size:14px" aria-label="Portfolio currency">${['USD', 'EUR', 'GBP', 'CHF', 'JPY', 'CAD', 'AUD'].map(c => html`<option ${c === P.base ? raw('selected') : ''}>${c}</option>`)}</select><button class="btn sm primary" id="pAdd">${raw(ICON.plus)}Add</button></div></div>
+      <div id="pHold"></div>
+    </section>
+    <div class="grid2"><section class="card" id="pFlags"></section><section class="card" id="pRisk"></section></div>
+    <div class="grid2"><section class="card" id="pCorr"></section><section class="card" id="pStress"></section></div>
+    <p class="disclaimer">Educational analysis, not personal investment advice. Values use end-of-day prices and, for other currencies, end-of-day exchange rates. Holdings stay on this device.</p>`);
+  $('#pAdd').onclick = () => editHolding();
+  $('#pBase').onchange = () => { P.base = $('#pBase').value; store.set('portfolio.base', P.base); analyse(); };
+  on(type => { if (type === 'provider') loadHoldings().then(analyse); if (type === 'view' && App.view === 'portfolio' && !P.done) analyse(); });
+  await loadHoldings();
+  if (App.view === 'portfolio') analyse();
+}
+
+async function loadHoldings() { App.holdings = await store.get(hkey(), isDemo() ? DEMO_HOLD : []); P.done = false; }
+async function saveHoldings() { await store.set(hkey(), App.holdings); P.done = false; analyse(); }
+
+function editHolding(h) {
+  const sh = sheet(h ? 'Edit ' + h.sym : 'Add a holding', html`
+    <form class="card" id="hf" style="gap:12px">
+      <label class="field"><span>Ticker</span><input class="input" name="sym" required autocapitalize="characters" autocomplete="off" spellcheck="false" placeholder="AAPL, ASML.AS, 7203.T" value="${h ? h.sym : ''}" ${h ? raw('readonly') : ''}></label>
+      <div class="grid2"><label class="field"><span>Shares</span><input class="input" name="shares" type="number" inputmode="decimal" step="any" min="0" required value="${h ? h.shares : ''}"></label>
+      <label class="field"><span>Average cost per share (listing currency, optional)</span><input class="input" name="cost" type="number" inputmode="decimal" step="any" min="0" value="${h && h.cost ? h.cost : ''}"></label></div>
+      <div class="toolbar"><button class="btn primary" type="submit">Save</button>${h ? html`<button class="btn danger" type="button" id="hDel">Remove</button>` : ''}</div>
+      <p class="muted tiny" style="margin:0">London prices are in pence (GBp). The cost is used for O'Neil's 7–8% loss-cutting rule.</p>
+    </form>`);
+  const f = sh.querySelector('#hf');
+  f.onsubmit = e => {
+    e.preventDefault();
+    const sym = f.sym.value.toUpperCase().trim().replace(/[^A-Z0-9.\-]/g, ''), shares = +f.shares.value, cost = +f.cost.value || null;
+    if (!sym || !(shares > 0)) return;
+    const list = App.holdings.filter(x => x.sym !== sym); const i = App.holdings.findIndex(x => x.sym === sym);
+    list.splice(i >= 0 ? i : list.length, 0, { sym, shares, cost });
+    App.holdings = list; sh.close(); saveHoldings();
+  };
+  const del = sh.querySelector('#hDel');
+  if (del) del.onclick = () => { App.holdings = App.holdings.filter(x => x.sym !== h.sym); sh.close(); saveHoldings(); };
+  setTimeout(() => (h ? f.shares : f.sym).focus(), 50);
+}
+
+async function analyse() {
+  const seq = ++P.seq;
+  const top = $('#pTop');
+  if (!App.holdings.length) {
+    render(top, html`<div class="empty">${raw(ICON.portfolio)}<p><b>No holdings yet.</b><br>Add your positions to see their value, O'Neil sell signals, risk and hidden correlations. Everything stays on this device.</p><button class="btn primary" id="pFirst">${raw(ICON.plus)}Add a holding</button></div>`);
+    $('#pFirst').onclick = () => editHolding();
+    ['#pHold', '#pFlags', '#pRisk', '#pCorr', '#pStress'].forEach(id => { $(id).innerHTML = ''; });
+    return;
+  }
+  render(top, html`<div class="empty"><span class="spinner"></span><span>Analysing ${App.holdings.length} holdings…</span></div>`);
+  const rows = [], errs = [];
+  for (const h of App.holdings) {
+    try {
+      const d = await daily(h.sym);
+      const cur = d.currency || currencyOf(h.sym);
+      const fx = await fxWeekly(cur, P.base).catch(() => undefined);
+      const fxNow = fx == null ? 1 : typeof fx === 'number' ? fx : [...fx.values()].pop();
+      if (fx === undefined) errs.push(`${h.sym}: no ${cur}→${P.base} rate, shown unconverted`);
+      const b = d.bars, n = b.length - 1, c = b[n].close;
+      const R = PAT.scan(b), B = baseState(R, b), s50 = sma(b.map(x => x.close), 50)[n], s200 = sma(b.map(x => x.close), 200)[n];
+      const sig = [];
+      if (h.cost && c <= h.cost * 0.92) sig.push(['bad', `${pc(c / h.cost - 1, 0)} vs your cost: O'Neil cuts losses at 7–8%`]);
+      if (s200 && c < s200) sig.push(['bad', 'Below the 200-day line']);
+      else if (s50 && c < s50) sig.push(['warn', 'Below the 50-day line']);
+      if (B.st === 'STOP HIT') sig.push(['bad', '8% under the breakout buy point']);
+      if (R.last && R.last.failed && n - R.last.failed <= 10) sig.push(['bad', 'Failed breakout']);
+      if (s50 && c / s50 - 1 > 0.25) sig.push(['warn', `${pc(c / s50 - 1, 0)} above the 50-day: consider taking some profit`]);
+      if (h.cost && c >= h.cost * 1.2) sig.push(['good', `Up ${pc(c / h.cost - 1, 0)}: O'Neil takes most profits at +20–25%`]);
+      if (['NEAR BUY POINT', 'IN BUY ZONE'].includes(B.st)) sig.push(['good', (B.p ? B.p.name + ': ' : '') + B.st.toLowerCase()]);
+      rows.push({ ...h, d, cur, fx: fx || null, fxNow: fxNow || 1, c, ch: c / b[n - 1].close - 1, value: h.shares * c * (fxNow || 1), costV: h.cost ? h.shares * h.cost * (fxNow || 1) : null, B, sig, s200: s200 ? c / s200 - 1 : null });
+    } catch (e) { errs.push(`${h.sym}: ${e.message}`); if (e instanceof DataError && e.kind === 'auth') break; }
+    if (seq !== P.seq) return;
+  }
+  let bench = null;
+  try { const bs = isDemo() ? 'DEMO-500' : 'SPY'; const bd = await daily(bs); bench = { name: isDemo() ? 'Demo 500' : 'S&P 500 (SPY)', bars: bd.bars, fx: await fxWeekly('USD', P.base).catch(() => null) }; } catch (e) { /* no betas */ }
+  if (seq !== P.seq) return;
+  const A = rows.length ? analysePortfolio(rows.map(r => ({ sym: r.sym, name: r.d.name, value: r.value, bars: r.d.bars, fx: r.fx })), bench) : null;
+  P.done = true;
+  draw(rows, A, bench, errs);
+}
+
+function draw(rows, A, bench, errs) {
+  const total = rows.reduce((s, r) => s + r.value, 0), costT = rows.reduce((s, r) => s + (r.costV || 0), 0), costed = rows.filter(r => r.costV);
+  const pl = costed.length ? costed.reduce((s, r) => s + r.value - r.costV, 0) : null;
+  const day = total ? rows.reduce((s, r) => s + r.value * r.ch / (1 + r.ch), 0) : 0;
+  const kp = (k, v, s, cls = '') => html`<div class="kpi"><span class="k">${k}</span><span class="v ${cls}">${v}</span><span class="s">${s || ''}</span></div>`;
+  const bad = A && !A.error;
+  render($('#pTop'), html`
+    <div class="card-head"><h2>Overview</h2><span class="muted tiny">${bad ? `${A.weeks} weeks of weekly returns in ${P.base}, ${fDs(A.from)} – ${fDs(A.to)}` : ''}</span></div>
+    <div class="kpis">
+      ${kp('Value', big(total, P.base), rows.length + ' positions')}
+      ${kp('Today', (day >= 0 ? '+' : '') + big(day, P.base), pc(total ? day / (total - day) : 0, 2), day >= 0 ? 'up' : 'down')}
+      ${pl != null ? kp('Gain / loss', (pl >= 0 ? '+' : '') + big(pl, P.base), pc(costT ? pl / (costed.reduce((s, r) => s + r.costV, 0)) : null) + ' on cost', pl >= 0 ? 'up' : 'down') : ''}
+      ${bad ? kp('Volatility', (A.vol * 100).toFixed(0) + '%', 'a year (annualised)') : ''}
+      ${bad && A.beta != null ? kp('Beta', A.beta.toFixed(2), 'vs ' + (bench ? bench.name : '')) : ''}
+      ${bad && A.downBeta != null ? kp('Downside beta', A.downBeta.toFixed(2), 'in falling weeks', A.downBeta > 1.3 ? 't-warn' : '') : ''}
+      ${bad ? kp('Max drawdown', pc(A.mdd, 0), 'worst fall from a peak', 't-bad') : ''}
+      ${bad ? kp('Effective positions', A.effN.toFixed(1), 'how diversified the weights are') : ''}
+    </div>
+    ${errs.length ? html`<p class="small t-warn" style="margin:0">${errs.join(' · ')}</p>` : ''}
+    ${A && A.error ? html`<p class="small t-warn" style="margin:0">${A.error}</p>` : ''}`);
+  const per = new Map((bad ? A.per : []).map(x => [x.sym, x]));
+  render($('#pHold'), html`<div class="tbl-wrap"><table class="tbl"><thead><tr><th class="sticky">Position</th><th class="n">Shares</th><th class="n">Price</th><th class="n">Day</th><th class="n">Value ${P.base}</th><th class="n">Weight</th><th class="n">vs cost</th><th class="n">vs 200-day</th><th class="n">Down β</th><th>Base</th><th>Signals</th><th></th></tr></thead><tbody>
+    ${rows.map(r => { const x = per.get(r.sym); return html`<tr class="click" data-s="${r.sym}"><td class="sticky"><b>${r.sym.replace('.DEMO', '')}</b><div class="muted tiny" style="max-width:160px;overflow:hidden;text-overflow:ellipsis">${r.d.name || ''}</div></td>
+      <td class="n">${r.shares}</td><td class="n">${money(r.c, r.cur)}</td><td class="n ${r.ch >= 0 ? 'up' : 'down'}">${pc(r.ch, 1)}</td><td class="n">${big(r.value, P.base)}</td><td class="n">${pc(total ? r.value / total : 0, 1).replace('+', '')}</td>
+      <td class="n ${r.cost ? (r.c >= r.cost ? 'up' : 'down') : ''}">${r.cost ? pc(r.c / r.cost - 1, 0) : '—'}</td><td class="n ${r.s200 >= 0 ? 'up' : 'down'}">${pc(r.s200, 0)}</td>
+      <td class="n ${x && x.downBeta > 1.5 ? 't-warn' : ''}">${x && x.downBeta != null ? x.downBeta.toFixed(2) : '—'}</td>
+      <td class="small">${r.B.st.toLowerCase()}</td>
+      <td class="small" style="white-space:normal;min-width:200px">${r.sig.length ? r.sig.map(([k, t]) => html`<div class="${k === 'bad' ? 't-bad' : k === 'warn' ? 't-warn' : 't-ok'}">${k === 'good' ? '▲' : '▼'} ${t}</div>`) : html`<span class="muted">—</span>`}</td>
+      <td><button class="btn sm" data-edit="${r.sym}" aria-label="Edit ${r.sym}">Edit</button></td></tr>`; })}
+  </tbody></table></div><p class="muted tiny" style="margin:0">Tap a row for its chart and base patterns. Down β = how much the position moved per 1% fall of the benchmark, measured only in weeks the benchmark fell.</p>`);
+  $$('#pHold tr.click').forEach(tr => { tr.onclick = e => { if (e.target.closest('[data-edit]')) return; openStock(tr.dataset.s); }; });
+  $$('#pHold [data-edit]').forEach(b => { b.onclick = () => editHolding(App.holdings.find(h => h.sym === b.dataset.edit)); });
+  if (!bad) { ['#pFlags', '#pRisk', '#pCorr', '#pStress'].forEach(id => { $(id).innerHTML = ''; }); return; }
+  render($('#pFlags'), html`<h2>Weak points</h2>${A.flags.length ? html`<ul class="notes">${A.flags.map(([k, t]) => html`<li class="${k}">${t.replace(/\.DEMO/g, '')}</li>`)}</ul>` : html`<ul class="notes"><li class="good">No concentration or crash-sensitivity warnings at these weights.</li></ul>`}
+    ${rows.some(r => r.sig.some(s => s[0] === 'bad')) ? html`<ul class="notes">${rows.filter(r => r.sig.some(s => s[0] === 'bad')).map(r => html`<li class="bad">${r.sym.replace('.DEMO', '')}: ${r.sig.filter(s => s[0] === 'bad').map(s => s[1]).join('; ')}</li>`)}</ul>` : ''}`);
+  const mx = Math.max(...A.per.map(x => Math.max(x.weight, x.rc)));
+  render($('#pRisk'), html`<h2>Where the risk comes from</h2><div class="bars">${[...A.per].sort((a, b) => b.rc - a.rc).map(x => html`<div class="brow"><span class="lbl">${x.sym.replace('.DEMO', '')}</span><div style="display:grid;gap:3px"><div class="btrack"><i style="width:${(x.weight / mx * 100).toFixed(1)}%;opacity:.45"></i></div><div class="btrack"><i class="${x.rc > x.weight * 1.4 ? 'hot' : ''}" style="width:${(Math.max(0, x.rc) / mx * 100).toFixed(1)}%"></i></div></div><span class="val">${(x.rc * 100).toFixed(0)}%</span></div>`)}</div>
+    <p class="muted tiny" style="margin:0">Top bar: weight. Bottom bar: share of the portfolio's volatility. Orange = a position adds much more risk than its weight.</p>`);
+  const heat = c => { if (c == null) return 'transparent'; const a = Math.min(1, Math.abs(c)); return c >= 0 ? `rgba(224,53,43,${(a * 0.85).toFixed(2)})` : `rgba(47,111,235,${(a * 0.85).toFixed(2)})`; };
+  const short = s => s.replace('.DEMO', '').slice(0, 6);
+  render($('#pCorr'), html`<h2>Hidden correlations</h2><div class="tbl-wrap"><table class="heat"><thead><tr><th></th>${A.per.map(x => html`<th>${short(x.sym)}</th>`)}</tr></thead><tbody>
+    ${A.per.map((x, i) => html`<tr><th style="text-align:right">${short(x.sym)}</th>${A.corr[i].map((c, j) => html`<td style="background:${i === j ? 'var(--fill)' : heat(c)};color:${Math.abs(c) > 0.6 && i !== j ? '#fff' : 'inherit'}">${i === j ? '' : c == null ? '' : c.toFixed(2)}</td>`)}</tr>`)}</tbody></table></div>
+    <p class="muted tiny" style="margin:0">Weekly return correlations in ${P.base}. Red = move together; blue = move opposite. Average ${A.avgCorr != null ? A.avgCorr.toFixed(2) : '—'}. Markets that close at different times (Asia vs US) look less correlated than they are.</p>`);
+  render($('#pStress'), html`<h2>Stress test · replaying a real sell-off</h2>${A.stress ? html`
+    <p class="small" style="margin:0">The benchmark's worst fall in the window, ${fDs(A.stress.from)} – ${fDs(A.stress.to)}: <b class="t-bad">${pc(A.stress.bench, 1)}</b>. Your current weights would have returned <b class="${A.stress.port < A.stress.bench ? 't-bad' : 't-ok'}">${pc(A.stress.port, 1)}</b>.</p>
+    <div class="bars">${A.per.map((x, i) => html`<div class="brow"><span class="lbl">${x.sym.replace('.DEMO', '')}</span><div class="btrack"><i style="width:${Math.min(100, Math.abs(A.stress.per[i]) * 200).toFixed(1)}%;background:${A.stress.per[i] < 0 ? 'var(--down)' : 'var(--up)'}"></i></div><span class="val ${A.stress.per[i] < 0 ? 'down' : 'up'}">${pc(A.stress.per[i], 0)}</span></div>`)}</div>`
+    : html`<p class="muted small" style="margin:0">The benchmark had no fall of more than 5% in the window, so there is nothing to replay.</p>`}
+    <p class="muted tiny" style="margin:0">Past sell-offs don't predict future ones; this shows how the current mix behaved when the market last fell.</p>`);
+}

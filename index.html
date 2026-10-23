@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="color-scheme" content="light dark">
+  <meta name="theme-color" content="#F2F2F7" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' https://financialmodelingprep.com https://api.twelvedata.com https://eodhd.com; frame-src 'none'; object-src 'none'">
+  <title>Base Pattern Desk</title>
+  <link rel="icon" href="./icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="./src/styles.css">
+</head>
+<body>
+  <div id="app" class="app">
+    <aside class="sidebar" aria-label="Sections">
+      <div class="brand"><img src="./icon.svg" alt="" width="28" height="28"><span>Base Pattern Desk</span></div>
+      <nav class="side-nav" id="sideNav"></nav>
+      <div class="side-watch">
+        <div class="side-label">Watchlist</div>
+        <div id="sideWatch" class="side-watch-list"></div>
+      </div>
+      <div class="side-foot" id="sideFoot"></div>
+    </aside>
+    <div class="main">
+      <header class="topbar">
+        <h1 id="pageTitle" class="page-title">Chart</h1>
+        <div class="top-actions">
+          <button class="icon-btn" id="searchBtn" aria-label="Search stocks" title="Search (/)"></button>
+          <button class="icon-btn" id="settingsBtn" aria-label="Settings" title="Settings"></button>
+        </div>
+      </header>
+      <div id="banner" class="banner" hidden></div>
+      <main id="views">
+        <section id="view-chart" class="view" aria-label="Chart"></section>
+        <section id="view-market" class="view" aria-label="Market" hidden></section>
+        <section id="view-screener" class="view" aria-label="Screener" hidden></section>
+        <section id="view-portfolio" class="view" aria-label="Portfolio" hidden></section>
+        <section id="view-learn" class="view" aria-label="Learn" hidden></section>
+        <section id="view-settings" class="view" aria-label="Settings" hidden></section>
+      </main>
+    </div>
+    <nav class="tabbar" id="tabBar" aria-label="Sections"></nav>
+  </div>
+  <div id="sheet" class="sheet-backdrop" hidden><div class="sheet" role="dialog" aria-modal="true" aria-labelledby="sheetTitle"></div></div>
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+  <script type="module" src="./src/main.js"></script>
+</body>
+</html>

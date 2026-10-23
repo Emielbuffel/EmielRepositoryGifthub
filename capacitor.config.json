@@ -1,0 +1,14 @@
+{
+  "appId": "com.basepatterndesk.app",
+  "appName": "Base Pattern Desk",
+  "webDir": "dist",
+  "ios": {
+    "contentInset": "never",
+    "backgroundColor": "#F2F2F7",
+    "scrollEnabled": true,
+    "limitsNavigationsToAppBoundDomains": false
+  },
+  "plugins": {
+    "CapacitorHttp": { "enabled": false }
+  }
+}
