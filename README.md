@@ -1,10 +1,37 @@
 # Base Pattern Desk
 
-Base-pattern stock charting for **iPhone, iPad and Mac**. The app finds classic chart bases (cups, flat bases, double bottoms and more) automatically and draws each one in its own colour, with the buy point, the volume checks and the sell rules. It also shows the market direction (distribution and follow-through days), runs a screener on the device, and reviews the risk of your portfolio.
+A **personal desktop app** (Mac and Windows) for base-pattern stock charting. It finds classic chart bases (cups, flat bases, double bottoms and more) automatically and draws each one in its own colour, with the buy point, the volume checks and the sell rules. It also shows the market direction (distribution and follow-through days), screens about 2,000 stocks worldwide plus every US-listed company, and reviews the risk of your portfolio.
 
-This is a standalone rebuild of the "Base Pattern Desk" claude.ai artifact. That version only worked inside claude.ai: it relied on the page database, the FMP connector and Claude's scheduled tasks. This version runs entirely on the device and can be published on the App Store.
+This is a standalone rebuild of the "Base Pattern Desk" claude.ai artifact, which needed the claude.ai page database and Claude's nightly scheduled tasks for its data. The desktop app gets its data itself from free public feeds, so it works on its own. It is meant for **personal use only**: the free feeds (Yahoo Finance, Stooq) and the bundled price snapshot are not licensed for a commercial app.
 
 > Educational tool. Not investment advice.
+
+## Install on your computer
+
+**Mac:** download `Base-Pattern-Desk-mac-AppleSilicon.zip` (M1/M2/M3/M4 Macs) or `Base-Pattern-Desk-mac-Intel.zip` (older Macs; Apple menu → About This Mac shows which you have). Double-click the zip and drag **Base Pattern Desk** to your Applications folder.
+The app is not notarized by Apple (that needs a paid developer account), so the first time macOS blocks it:
+1. Open it once (macOS shows a warning, click Done/Cancel).
+2. Go to **System Settings → Privacy & Security**, scroll down and click **Open Anyway** next to "Base Pattern Desk", then confirm.
+If macOS says the app "is damaged", open Terminal and run `xattr -cr "/Applications/Base Pattern Desk.app"`, then open it again.
+
+**Windows:** unzip `Base-Pattern-Desk-1.0.0-win-x64.zip` anywhere and run `Base Pattern Desk.exe` (Windows SmartScreen: More info → Run anyway).
+
+**Build it yourself** (any computer with Node.js 20+): `npm install`, then `npm run desktop` to run it, or `npm run dist:mac` / `npm run dist:win` to make the zip files in `release/`.
+
+Your watchlists, holdings, alerts and the price cache are stored in the app's own folder on your computer (`~/Library/Application Support/Base Pattern Desk` on a Mac).
+
+## Where the data comes from (desktop app)
+
+| What | Source | How far back |
+|---|---|---|
+| Daily prices, any ticker worldwide | Yahoo Finance chart feed (Stooq as a fallback); a built-in snapshot works offline | The chart loads the **whole history** (decades for older companies); scans use 2 years |
+| US earnings (EPS, sales) | **SEC EDGAR** company facts: GAAP diluted EPS from every 10-Q/10-K, adjusted for stock splits (split dates from the chart feed), Q4 = full year minus Q1–Q3 | XBRL filings start in **2009–2011** |
+| Adjusted EPS + report dates | Built-in for 36 stocks (18 with ~5 years); used when it covers more quarters, or when you pick "Adjusted EPS only" in the EPS menu | 2021+ |
+| Non-US earnings | Yahoo fundamentals feed | Usually only the last 4–6 quarters |
+| Stock universe | The original desk's universe (S&P 500, Nasdaq-100, STOXX Europe 600, Japan, Hong Kong, Korea large caps) + its search directory = 1,978 stocks; plus the SEC list of all Nasdaq/NYSE companies (~5,000) | |
+| News | Yahoo Finance, Nasdaq.com, Google News, SEC filings (RSS) | |
+
+SEC EDGAR asks automated tools to identify themselves: add your e-mail in **Settings → Market data** (it is only sent to sec.gov). The desktop app checks alerts every 30 minutes while it is open and shows a system notification when one triggers.
 
 ## What's in the app
 
@@ -44,9 +71,12 @@ npm install
 npm run dev        # browser preview at http://localhost:5173 (demo mode works fully)
 npm test           # detector, analysis, market, portfolio and provider tests
 npm run build      # production web build in dist/
+npm run desktop    # build and open the desktop app (Electron)
 ```
 
-## Build for iPhone, iPad and Mac (needs a Mac with Xcode 26+)
+## Optional: iPhone/iPad build (needs a Mac with Xcode 26+)
+
+The Capacitor iOS project is kept for running the app on your own iPhone or iPad from Xcode (a free Apple ID can install it on your own device for 7 days at a time). It is not set up for the App Store any more.
 
 ```bash
 npm install
@@ -55,15 +85,16 @@ npx cap sync ios
 npx cap open ios   # opens Xcode
 ```
 
-In Xcode: choose your Team under *Signing & Capabilities*, then *Product → Archive → Distribute App*. For the Mac App Store, the iPad app can run on Apple-silicon Macs ("Designed for iPad"); see [docs/APP_STORE.md](docs/APP_STORE.md).
+In Xcode: choose your Team under *Signing & Capabilities* and press Run with your device connected. [docs/APP_STORE.md](docs/APP_STORE.md) keeps the earlier App Store notes for reference.
 
 ## Project layout
 
 ```
 src/core/       detector (pat.js), indicators, analysis, market status, portfolio maths — pure, tested
-src/data/       demo data, providers (FMP, Twelve Data, EODHD), cache/storage, data service
+src/data/       providers (free feeds, FMP, Twelve Data, EODHD), SEC EDGAR, network layer, cache, data service
 src/ui/         chart component and the six screens
-ios/            Capacitor 8 Xcode project (Swift Package Manager)
+desktop/        Electron main process (app:// origin, CORS-free requests) and preload
+ios/            Capacitor 8 Xcode project (optional)
 resources/      icon and splash sources
 docs/           App Store checklist, privacy policy, detector notes, store screenshots
 test/           node:test suites

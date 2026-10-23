@@ -9,7 +9,10 @@
     "build": "vite build",
     "preview": "vite preview",
     "test": "node --test test/*.test.js",
-    "ios": "npm run build && npx cap sync ios && npx cap open ios"
+    "ios": "npm run build && npx cap sync ios && npx cap open ios",
+    "desktop": "vite build && electron .",
+    "dist:mac": "vite build && electron-builder --mac zip --arm64 --x64",
+    "dist:win": "vite build && electron-builder --win zip --x64"
   },
   "dependencies": {
     "@capacitor/core": "8.5.3",
@@ -20,6 +23,39 @@
   },
   "devDependencies": {
     "@capacitor/cli": "8.5.3",
+    "electron": "^44.5.1",
+    "electron-builder": "^26.17.0",
     "vite": "8.3.5"
+  },
+  "main": "desktop/main.cjs",
+  "author": "Base Pattern Desk",
+  "build": {
+    "appId": "app.basepatterndesk.desktop",
+    "productName": "Base Pattern Desk",
+    "files": [
+      "dist/**/*",
+      "desktop/**/*",
+      "package.json"
+    ],
+    "directories": {
+      "output": "release",
+      "buildResources": "resources"
+    },
+    "asar": true,
+    "mac": {
+      "category": "public.app-category.finance",
+      "icon": "resources/icon-1024.png",
+      "identity": null,
+      "target": [
+        "zip"
+      ]
+    },
+    "win": {
+      "icon": "resources/icon-1024.png",
+      "target": [
+        "zip"
+      ]
+    },
+    "artifactName": "Base-Pattern-Desk-${version}-${os}-${arch}.${ext}"
   }
 }

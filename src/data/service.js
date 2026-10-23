@@ -1,14 +1,17 @@
 // Loads prices through the chosen provider with an on-device cache and incremental updates.
 import { PROVIDERS, MARKET, INDEXES, SECTORS, indexesFor, DataError, splitSym, currencyOf } from './providers.js';
 import * as store from './store.js';
-import { Capacitor } from '@capacitor/core';
-import { snapshotMeta } from './providers.js';
+import { isApp } from './net.js';
+import { snapshotMeta, yahooEps, yahooSplits } from './providers.js';
+import { secEarnings } from './sec.js';
 
 let SNAP_IDX = null;
 export const snapshotReady = snapshotMeta().then(m => { SNAP_IDX = new Set(Object.keys(m.indexes)); return m; }).catch(() => null);
-const liveFeeds = () => Capacitor.isNativePlatform();
+const liveFeeds = () => isApp();
 
-export const settings = { provider: 'free', keys: {}, v: 2 };
+export const settings = { provider: 'free', keys: {}, v: 2, secEmail: '', epsBasis: 'long' };
+/** User-Agent for SEC EDGAR, which asks automated tools to give a contact e-mail. */
+export const secAgent = () => 'BasePatternDesk/1.0 personal research' + (settings.secEmail ? ' ' + settings.secEmail : '');
 
 export async function loadSettings() {
   const s = await store.get('settings', null);
@@ -30,25 +33,27 @@ const YEARS = 4.3;
 /** Daily bars for a symbol: {sym, name, currency, exchange, bars, fetchedAt, cached, stale?}. */
 export const isDemoSym = sym => /\.DEMO$|^DEMO-/.test(sym);
 
-export async function daily(sym, { force = false } = {}) {
+/** long: the whole available history (used by the chart; the desktop app fetches it from the free feed). */
+export async function daily(sym, { force = false, long = false, years = YEARS } = {}) {
   const P = isDemoSym(sym) ? PROVIDERS.demo : provider();
   if (P.needsKey && !key()) throw new DataError(`Add your ${P.name} API key in Settings, or switch to demo data.`, 'auth');
-  const ck = P.id + ':' + sym;
+  long = long && P.id === 'free' && liveFeeds();
+  const ck = P.id + (long ? ':L:' : ':') + sym;
   const cached = await store.cacheGet(ck);
   if (cached && !force && Date.now() - cached.fetchedAt < FRESH_MS) return { ...cached, cached: true };
   try {
     let bars, meta = {};
-    const fromFull = Date.now() / 1000 - YEARS * 365.25 * 86400;
+    const fromFull = long ? 0 : Date.now() / 1000 - years * 365.25 * 86400;
     if (cached && cached.bars.length > 200 && P.id !== 'demo') {
       const r = await P.daily(sym, key(), cached.bars[cached.bars.length - 1].time - 14 * 86400);
       const m = new Map(cached.bars.map(b => [b.time, b])); r.bars.forEach(b => m.set(b.time, b));
       bars = [...m.values()].sort((a, b) => a.time - b.time).filter(b => b.time >= fromFull); meta = r;
     } else {
-      const r = await P.daily(sym, key(), P.id === 'fmp' ? fromFull : null);
+      const r = await P.daily(sym, key(), P.id === 'fmp' ? fromFull : null, { long });
       bars = r.bars.filter(b => b.time >= fromFull); meta = r;
     }
     if (bars.length < 60) throw new DataError(`Only ${bars.length} days of history for ${sym}: the detector needs at least 60.`, 'notfound');
-    const doc = { sym, name: meta.name || (cached && cached.name) || '', currency: meta.currency || currencyOf(sym), exchange: meta.exchange || '', bars, fetchedAt: Date.now(), live: meta.live, builtIn: P.id === 'free' && meta.live === false };
+    const doc = { sym, name: meta.name || (cached && cached.name) || '', currency: meta.currency || currencyOf(sym), exchange: meta.exchange || '', bars, splits: meta.splits || (cached && cached.splits) || [], fetchedAt: Date.now(), live: meta.live, builtIn: P.id === 'free' && meta.live === false };
     if (P.id !== 'demo' && meta.live !== false) await store.cacheSet(ck, doc); // built-in data is already on the device
     return doc;
   } catch (e) {
@@ -122,12 +127,48 @@ export async function earnings(sym) {
   if (!P.earnings) return null;
   if (P.needsKey && !key()) return null;
   if (P.id === 'demo') return P.earnings(sym);
+  if (P.id === 'free') return freeEarnings(sym, P);
   const ck = 'earn:' + P.id + ':' + sym, c = await store.cacheGet(ck);
   if (c && Date.now() - c.fetchedAt < 12 * 3600e3) return c.rows;
   try {
     const rows = (await P.earnings(sym, key())).filter(r => isFinite(r.time)).sort((a, b) => a.time - b.time);
     await store.cacheSet(ck, { rows, fetchedAt: Date.now() }); return rows;
   } catch (e) { if (c) return c.rows; throw e; }
+}
+
+/** Stock splits for a ticker: from the chart's full history when loaded, else the free feed (cached 30 days). */
+async function splitsFor(sym) {
+  const d = await store.cacheGet('free:L:' + sym); if (d && d.splits) return d.splits;
+  const ck = 'splits:' + sym, c = await store.cacheGet(ck);
+  if (c && Date.now() - c.at < 30 * 864e5) return c.splits;
+  const splits = await yahooSplits(sym); await store.cacheSet(ck, { splits, at: Date.now() }); return splits;
+}
+
+/**
+ * Earnings with the free data: the built-in (adjusted) history, or — in the desktop app — the longest history
+ * available: SEC EDGAR filings for US companies (GAAP diluted EPS back to ~2009), the free fundamentals feed elsewhere.
+ * settings.epsBasis: 'long' (default) or 'adjusted' (built-in analyst basis only).
+ */
+async function freeEarnings(sym, P) {
+  const ck = 'earn:free:' + settings.epsBasis + ':' + sym, c = await store.cacheGet(ck);
+  if (c && Date.now() - c.fetchedAt < 12 * 3600e3) return c.rows;
+  let built = [], err = null;
+  try { built = (await P.earnings(sym)).map(r => ({ ...r, src: 'adjusted' })); } catch (e) { err = e; }
+  let long = null;
+  if (liveFeeds() && settings.epsBasis !== 'adjusted' && !sym.startsWith('^')) {
+    try { long = !splitSym(sym).sfx ? await secEarnings(sym, secAgent(), await splitsFor(sym).catch(() => [])) : await yahooEps(sym); }
+    catch (e) { err = err || e; }
+  }
+  const reported = built.filter(r => r.eps != null);
+  let rows = reported.length ? built : [];
+  if (long && long.length > reported.length) {
+    const lastT = long[long.length - 1].time;
+    rows = [...long, ...built.filter(r => r.eps == null && r.time > lastT)]; // keep the next report date
+  }
+  rows = rows.filter(r => isFinite(r.time)).sort((a, b) => a.time - b.time);
+  if (!rows.length) { if (c) return c.rows; throw err || new DataError('No earnings data for ' + sym + '.', 'notfound'); }
+  await store.cacheSet(ck, { rows, fetchedAt: Date.now() });
+  return rows;
 }
 
 /** FX as a Map(weekKey -> base units per 1 unit of `cur`), a fixed number, or null when cur is the base. */

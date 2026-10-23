@@ -143,7 +143,7 @@ async function analyse() {
   if (seq !== P.seq) return;
   const A = rows.length ? analysePortfolio(rows.map(r => ({ sym: r.sym, name: r.d.name, value: r.value, bars: r.d.bars, fx: r.fx })), bench) : null;
   P.done = true;
-  if (refRate) errs.push(`Some values use reference exchange rates of ${refRate} (live rates load in the app)`);
+  if (refRate) errs.push(`Some values use reference exchange rates of ${refRate} (live rates load in the desktop app)`);
   draw(rows, A, bench, errs);
 }
 

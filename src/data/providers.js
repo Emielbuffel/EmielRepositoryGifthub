@@ -1,25 +1,19 @@
 // Market data providers. The user brings their own API key (stored on the device only).
 // Tickers inside the app use Yahoo-style suffixes (AAPL, ASML.AS, 7203.T, 005930.KS); each provider maps them.
 // Endpoints follow each provider's public documentation; check them if a provider changes its API.
-import { Capacitor, CapacitorHttp } from '@capacitor/core';
+import { httpGet, isApp } from './net.js';
 import { demoBars, demoEarnings, demoNews, DEMO, DEMO_INDEXES, DEMO_BENCH } from './demo.js';
 
 export class DataError extends Error {
   constructor(message, kind = 'error') { super(message); this.kind = kind; } // kind: auth | plan | limit | notfound | network | error
 }
 
-/* ---------- HTTP: native requests on iOS/macOS (no CORS), fetch in a browser ---------- */
+/* ---------- HTTP: direct requests in the desktop and native apps (no CORS), fetch in a browser ---------- */
 async function getJSON(url) {
   let status, data;
   try {
-    if (Capacitor.isNativePlatform()) {
-      const r = await CapacitorHttp.get({ url, responseType: 'json', connectTimeout: 15000, readTimeout: 30000 });
-      status = r.status; data = r.data;
-      if (typeof data === 'string') { try { data = JSON.parse(data); } catch (e) { /* plain-text error */ } }
-    } else {
-      const r = await fetch(url); status = r.status; const t = await r.text();
-      try { data = JSON.parse(t); } catch (e) { data = t; }
-    }
+    const r = await httpGet(url); status = r.status;
+    try { data = JSON.parse(r.text); } catch (e) { data = r.text; }
   } catch (e) { throw new DataError('Could not reach the data provider. Check your internet connection.', 'network'); }
   if (status === 401 || status === 403) throw new DataError(errText(data) || 'The provider refused the request: check your API key or plan.', status === 401 ? 'auth' : 'plan');
   if (status === 429) throw new DataError('The provider\'s rate limit was reached. Wait a minute and try again.', 'limit');
@@ -232,11 +226,17 @@ const EOD = {
 
 /* ---------- built-in data + free live updates (no key) ---------- */
 // The app ships with daily prices for ~380 stocks and the main indexes (public/data, built by
-// scripts/build-snapshot.mjs). On iPhone, iPad and Mac it tops them up, and loads any other ticker,
+// scripts/build-snapshot.mjs). The desktop app (and the iPhone/Mac app) tops them up, and loads any other ticker,
 // from free public chart feeds (Yahoo Finance, Stooq as a fallback). Browsers block those feeds (CORS),
 // so a web preview shows the built-in data only.
 let metaP = null; const shardP = new Map();
 const base = () => (typeof document !== 'undefined' ? new URL('./data/', document.baseURI).href : './data/');
+let uniP = null;
+/** Every stock the app knows worldwide: {items: [[sym, name, region, sector, isin]], nv: [syms with secondary-venue built-in prices]}. */
+export function universe() {
+  if (!uniP) uniP = fetch(base() + 'universe.json').then(r => { if (!r.ok) throw new Error('no universe'); return r.json(); }).catch(e => { uniP = null; return { items: [], nv: [] }; });
+  return uniP;
+}
 export function snapshotMeta() {
   if (!metaP) metaP = fetch(base() + 'meta.json').then(r => { if (!r.ok) throw new Error('no data'); return r.json(); }).catch(e => { metaP = null; throw e; });
   return metaP;
@@ -254,46 +254,67 @@ async function snapBars(sym) {
 // index ids used by the app -> Yahoo symbols
 const YH_INDEX = { GSPC: '^GSPC', IXIC: '^IXIC', NDX: '^NDX', DJI: '^DJI', RUT: '^RUT', SOX: '^SOX', WORLD: 'URTH', STOXX50E: '^STOXX50E', GDAXI: '^GDAXI', FCHI: '^FCHI', AEX: '^AEX', FTSEMIB: 'FTSEMIB.MI', IBEX: '^IBEX', BFX: '^BFX', FTSE: '^FTSE', SSMI: '^SSMI', OMXS30: '^OMX', OMXC25: '^OMXC25', OMXH25: '^OMXH25', OBX: 'OBX.OL', N225: '^N225', KS11: '^KS11', KQ11: '^KQ11', HSI: '^HSI', SSEC: '000001.SS', GSPTSE: '^GSPTSE', AXJO: '^AXJO' };
 const yahooSym = sym => sym.startsWith('^') ? YH_INDEX[sym.slice(1)] || sym : sym;
-async function yahoo(sym, fromT) {
+async function yahoo(sym, fromT, { max = false } = {}) {
   const now = Math.floor(Date.now() / 1000), from = fromT || now - Math.round(4.3 * 365.25 * 86400);
-  const d = await getJSON(`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(yahooSym(sym))}?period1=${from}&period2=${now + 86400}&interval=1d&includePrePost=false`);
+  const span = max && !fromT ? 'range=max' : `period1=${from}&period2=${now + 86400}`;
+  const d = await getJSON(`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(yahooSym(sym))}?${span}&interval=1d&includePrePost=false&events=split`);
   const r = d && d.chart && d.chart.result && d.chart.result[0];
   if (!r || !r.timestamp) throw new DataError((d && d.chart && d.chart.error && d.chart.error.description) || 'No data for ' + sym + '.', 'notfound');
   const q = r.indicators.quote[0], off = r.meta.gmtoffset || 0;
   const bars = clean(r.timestamp.map((t, i) => ({ time: Math.floor((t + off) / 86400) * 86400, open: q.open[i], high: q.high[i], low: q.low[i], close: q.close[i], volume: q.volume[i] || 0 })));
-  return { bars, currency: r.meta.currency, name: r.meta.longName || r.meta.shortName || '', exchange: r.meta.fullExchangeName || r.meta.exchangeName || '' };
+  const splits = Object.values((r.events && r.events.splits) || {}).map(x => ({ time: x.date, ratio: x.numerator / x.denominator })).filter(x => x.ratio > 0 && x.ratio !== 1).sort((a, b) => a.time - b.time);
+  return { bars, splits, currency: r.meta.currency, name: r.meta.longName || r.meta.shortName || '', exchange: r.meta.fullExchangeName || r.meta.exchangeName || '' };
+}
+/** Quarterly diluted EPS from the free fundamentals feed (mostly the last 4–6 quarters), oldest first. */
+export async function yahooEps(sym) {
+  const now = Math.floor(Date.now() / 1000);
+  const d = await getJSON(`https://query1.finance.yahoo.com/ws/fundamentals-timeseries/v1/finance/timeseries/${encodeURIComponent(sym)}?symbol=${encodeURIComponent(sym)}&type=quarterlyDilutedEPS,quarterlyTotalRevenue&period1=493590046&period2=${now}`);
+  const res = (d && d.timeseries && d.timeseries.result) || [];
+  const series = k => ((res.find(r => r.meta && r.meta.type && r.meta.type[0] === k) || {})[k] || []).filter(Boolean);
+  const rev = new Map(series('quarterlyTotalRevenue').map(x => [x.asOfDate, x.reportedValue && x.reportedValue.raw]));
+  // the feed gives the quarter's end date, not the report date: assume results about 6 weeks later
+  return series('quarterlyDilutedEPS').filter(x => x.reportedValue && x.reportedValue.raw != null).map(x => ({
+    time: dToT(x.asOfDate) + 42 * 86400, end: x.asOfDate, eps: x.reportedValue.raw, rev: rev.get(x.asOfDate) ?? null, period: 'Qtr to ' + x.asOfDate, src: 'yahoo', tentative: true,
+  })).sort((a, b) => a.time - b.time);
+}
+/** Stock splits of a ticker from the free chart feed ({time, ratio}, ratio 10 = 10-for-1). */
+export async function yahooSplits(sym) {
+  const d = await getJSON(`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(sym)}?range=max&interval=1mo&events=split`);
+  const r = d && d.chart && d.chart.result && d.chart.result[0];
+  return Object.values((r && r.events && r.events.splits) || {}).map(x => ({ time: x.date, ratio: x.numerator / x.denominator })).filter(x => x.ratio > 0 && x.ratio !== 1).sort((a, b) => a.time - b.time);
 }
 const STOOQ = { '': 'us', L: 'uk', DE: 'de', T: 'jp', HK: 'hk' };
 async function stooq(sym) {
   const { base: b, sfx } = splitSym(sym); if (sym.startsWith('^') || !(sfx in STOOQ)) throw new DataError('Not on Stooq.', 'notfound');
   const url = `https://stooq.com/q/d/l/?s=${encodeURIComponent((b + '.' + STOOQ[sfx]).toLowerCase())}&i=d`;
   let txt;
-  if (Capacitor.isNativePlatform()) { const r = await CapacitorHttp.get({ url, responseType: 'text' }); txt = r.data; } else txt = await (await fetch(url)).text();
+  txt = (await httpGet(url)).text;
   const rows = String(txt).trim().split(/\r?\n/).slice(1).map(l => l.split(',')).filter(c => c.length >= 5);
   if (rows.length < 60) throw new DataError('No data for ' + sym + ' on Stooq.', 'notfound');
   return { bars: clean(rows.map(c => ({ time: dToT(c[0]), open: +c[1], high: +c[2], low: +c[3], close: +c[4], volume: +(c[5] || 0) }))) };
 }
 let liveDownUntil = 0; // after a failure (e.g. a browser blocking the feeds) don't retry for a while
-async function live(sym, fromT) {
+async function live(sym, fromT, opts) {
   if (Date.now() < liveDownUntil) throw new DataError('Live feeds unavailable.', 'network');
-  try { return await yahoo(sym, fromT); }
-  catch (e) { try { return await stooq(sym); } catch (e2) { if (e.kind === 'network' || !Capacitor.isNativePlatform()) liveDownUntil = Date.now() + 10 * 60e3; throw e; } }
+  try { return await yahoo(sym, fromT, opts); }
+  catch (e) { try { return await stooq(sym); } catch (e2) { if (e.kind === 'network' || !isApp()) liveDownUntil = Date.now() + 10 * 60e3; throw e; } }
 }
 
 const FREE = {
   id: 'free', name: 'Built-in data + free live updates', short: 'Built-in', needsKey: false,
-  blurb: 'Daily prices for about 380 stocks and the main indexes come with the app, so it works offline. On iPhone, iPad and Mac the app adds the latest days, and any other ticker, from free public chart feeds (Yahoo Finance, Stooq). No account or key needed.',
-  async daily(sym, key, fromT) {
+  blurb: 'Daily prices for about 380 stocks and the main indexes come with the app, so it works offline. The desktop app adds the latest days, the full price history and any other ticker, from free public chart feeds (Yahoo Finance, Stooq). No account or key needed.',
+  async daily(sym, key, fromT, { long = false } = {}) {
     const snap = await snapBars(sym);
     if (fromT) { const r = await live(sym, fromT); return { ...r, live: true }; } // incremental update of a cached series
     try {
-      const r = await live(sym, snap ? snap.bars[snap.bars.length - 1].time - 10 * 86400 : null);
+      // long = the whole history (chart view); otherwise only the days after the built-in data
+      const r = long ? await live(sym, null, { max: true }) : await live(sym, snap ? snap.bars[snap.bars.length - 1].time - 10 * 86400 : null);
       if (!snap) return { ...r, live: true };
       const m = new Map(snap.bars.map(b => [b.time, b])); r.bars.forEach(b => m.set(b.time, b));
-      return { ...snap, name: snap.name || r.name, currency: snap.currency || r.currency, bars: [...m.values()].sort((a, b) => a.time - b.time), live: true };
+      return { ...snap, name: snap.name || r.name, currency: snap.currency || r.currency, splits: r.splits, bars: [...m.values()].sort((a, b) => a.time - b.time), live: true };
     } catch (e) {
       if (snap) return { ...snap, live: false };
-      throw new DataError(`${sym} is not in the built-in data${Capacitor.isNativePlatform() ? ' and the free feeds did not answer' : '. Other tickers load in the iPhone/Mac app (browsers block the free feeds)'}.`, 'notfound');
+      throw new DataError(`${sym} is not in the built-in data${isApp() ? ' and the free feeds did not answer' : '. Other tickers load in the desktop app (browsers block the free feeds)'}.`, 'notfound');
     }
   },
   indexSym: k => '^' + k,
@@ -306,10 +327,11 @@ const FREE = {
     const Q = q.toUpperCase().trim(), m = await snapshotMeta(), have = new Set(m.stocks.map(x => x.s));
     const fold = t => String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase();
     const score = (s, n) => (s === Q || s.split('.')[0] === Q ? 100 : s.startsWith(Q) ? 40 : 0) + (fold(n).startsWith(Q) ? 60 : fold(n).includes(' ' + Q) ? 35 : fold(n).includes(Q) ? 20 : 0);
-    const rows = [...m.stocks.map(x => [x.s, x.n, '', x.x]), ...m.directory.filter(r => !have.has(r[0]))];
+    const U = await universe(), known = new Set([...have, ...m.directory.map(r => r[0])]);
+    const rows = [...m.stocks.map(x => [x.s, x.n, '', x.x]), ...m.directory.filter(r => !have.has(r[0])), ...U.items.filter(r => !known.has(r[0])).map(r => [r[0], r[1], r[4], r[2]])];
     const local = rows.map(r => [score(r[0], r[1]), r]).filter(x => x[0] > 0).sort((a, b) => b[0] - a[0] || (have.has(b[1][0]) - have.has(a[1][0]))).slice(0, 10)
-      .map(([, r]) => ({ symbol: r[0], name: r[1], exchange: have.has(r[0]) ? 'Built-in data' : (r[3] || '') + (Capacitor.isNativePlatform() ? '' : ' · loads in the app'), isin: r[2] }));
-    if (!Capacitor.isNativePlatform() || local.length >= 8) return local;
+      .map(([, r]) => ({ symbol: r[0], name: r[1], exchange: have.has(r[0]) ? 'Built-in data' : (r[3] || '') + (isApp() ? '' : ' · loads in the desktop app'), isin: r[2] }));
+    if (!isApp() || local.length >= 8) return local;
     try {
       const d = await getJSON(`https://query2.finance.yahoo.com/v1/finance/search?${new URLSearchParams({ q, quotesCount: 10, newsCount: 0 })}`);
       const extra = (d.quotes || []).filter(x => x.symbol && /EQUITY|ETF|INDEX/.test(x.quoteType || '') && !local.some(l => l.symbol === x.symbol)).map(x => ({ symbol: x.symbol, name: x.longname || x.shortname, exchange: x.exchDisp || x.exchange }));

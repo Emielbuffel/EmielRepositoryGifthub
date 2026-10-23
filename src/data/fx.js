@@ -1,6 +1,6 @@
 // Exchange rates for showing values in one currency. Live rates from the free feed in the app;
 // otherwise fixed reference rates (dated) so the preview and offline mode can still convert the main currencies.
-import { Capacitor } from '@capacitor/core';
+import { isApp } from './net.js';
 import { PROVIDERS } from './providers.js';
 import { settings, provider } from './service.js';
 import * as store from './store.js';
@@ -14,7 +14,7 @@ async function liveRate(cur) {
   if (live[cur] && Date.now() - live[cur].at < 12 * 3600e3) return live[cur].v;
   const c = await store.get('fx.' + cur, null);
   if (c && Date.now() - c.at < 12 * 3600e3) { live[cur] = c; return c.v; }
-  if (!Capacitor.isNativePlatform() && provider().id === 'free') return null; // browsers block the free feed
+  if (!isApp() && provider().id === 'free') return null; // browsers block the free feed
   try {
     const P = provider().fx ? provider() : PROVIDERS.free;
     const r = await P.fx('EUR/' + cur, settings.keys[P.id]);

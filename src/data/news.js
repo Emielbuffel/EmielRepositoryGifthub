@@ -2,14 +2,13 @@
 // Shows headline, source, time and a link to the original article; never copies article text.
 // Each source can be switched off in Settings. Feed formats change without notice, so every source
 // fails quietly on its own.
-import { Capacitor, CapacitorHttp } from '@capacitor/core';
+import { httpGet, isApp } from './net.js';
 import { PROVIDERS, splitSym } from './providers.js';
-import { settings, provider, isDemoSym, isDemo } from './service.js';
+import { settings, provider, isDemoSym, isDemo, secAgent } from './service.js';
 import * as store from './store.js';
 
 // SEC asks automated tools to identify themselves with a contact address (sec.gov "Accessing EDGAR Data").
 // Replace with your app's support e-mail before release.
-export const SEC_CONTACT = 'Base Pattern Desk app support@basepatterndesk.app';
 
 export const NEWS_SOURCES = {
   yahoo: { name: 'Yahoo Finance', about: 'Headlines per ticker from Yahoo Finance’s public RSS feed.' },
@@ -64,10 +63,10 @@ const norm = t => t.toLowerCase().replace(/\s[-–|]\s[^-–|]{2,40}$/, '').repl
 
 /* ---------- fetching ---------- */
 async function getText(url, headers = {}) {
-  if (Capacitor.isNativePlatform()) {
-    const r = await CapacitorHttp.get({ url, headers, responseType: 'text', connectTimeout: 10000, readTimeout: 15000 });
+  if (isApp()) {
+    const r = await httpGet(url, { headers, timeout: 15000 });
     if (r.status >= 400) throw new Error('HTTP ' + r.status);
-    return typeof r.data === 'string' ? r.data : JSON.stringify(r.data);
+    return r.text;
   }
   const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), 12000);
   try { const r = await fetch(url, { signal: ctl.signal }); if (!r.ok) throw new Error('HTTP ' + r.status); return await r.text(); }
@@ -85,7 +84,7 @@ function stockFeeds(sym, name) {
     out.push(['google', `https://news.google.com/rss/search?${new URLSearchParams({ q, hl: 'en-US', gl: 'US', ceid: 'US:en' })}`, it => ({ ...it, title: it.title.replace(/\s-\s[^-]+$/, ''), source: it.source || 'Google News' })]);
   }
   if (S.sec && us) out.push(['sec', `https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=${encodeURIComponent(base)}&type=&dateb=&owner=include&count=25&output=atom`,
-    it => SEC_FORMS.test(it.cat || it.title) ? { ...it, title: 'Filed ' + it.title.replace(/\s*\(.*?\)\s*/g, ' ').trim(), source: 'SEC EDGAR', srcDomain: 'sec.gov', tag: 'filing' } : null, { 'User-Agent': SEC_CONTACT }]);
+    it => SEC_FORMS.test(it.cat || it.title) ? { ...it, title: 'Filed ' + it.title.replace(/\s*\(.*?\)\s*/g, ' ').trim(), source: 'SEC EDGAR', srcDomain: 'sec.gov', tag: 'filing' } : null, { 'User-Agent': secAgent() }]);
   newsSettings().custom.forEach((u, i) => { if (/^https:\/\//.test(u)) out.push(['custom' + i, u.replace(/\{SYMBOL\}/g, encodeURIComponent(sym)).replace(/\{TICKER\}/g, encodeURIComponent(base)), it => ({ ...it, source: it.source || domainOf(it.link) })]); });
   return out;
 }
@@ -110,7 +109,7 @@ async function collect(feeds, extra = []) {
     if (pw && ns.hidePaywalled) continue;
     out.push({ ...it, domain, paywalled: pw, tag: it.tag || classify(it.title) });
   }
-  return { items: out.slice(0, 60), errors, at: Date.now(), browserBlocked: !Capacitor.isNativePlatform() && errors.length === feeds.length && feeds.length > 0 };
+  return { items: out.slice(0, 60), errors, at: Date.now(), browserBlocked: !isApp() && errors.length === feeds.length && feeds.length > 0 };
 }
 
 const mem = new Map();

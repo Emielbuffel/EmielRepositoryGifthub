@@ -1,8 +1,10 @@
 // The Screener tab: scans a list of stocks on the device for base patterns, buy points, volume and RS.
 import PAT from '../core/pat.js';
 import { screenRow, rankRS, pc, fDs } from '../core/analysis.js';
-import { daily, benchmarkFor, provider, isDemo, settings } from '../data/service.js';
-import { DEMO, snapshotMeta } from '../data/providers.js';
+import { daily, benchmarkFor, provider, isDemo, settings, secAgent } from '../data/service.js';
+import { DEMO, snapshotMeta, universe } from '../data/providers.js';
+import { isApp, pool } from '../data/net.js';
+import { secCompanies, listedCommon } from '../data/sec.js';
 import * as store from '../data/store.js';
 import { App, on, openStock, emit } from '../app.js';
 import { $, $$, html, raw, render, money, ICON, toast, ago } from './dom.js';
@@ -62,20 +64,22 @@ export async function initScreener(el) {
   $('#scRs').oninput = () => { S.minRs = +$('#scRs').value || 0; table(); };
   $('#scSec').onchange = () => { S.sector = $('#scSec').value; table(); };
   $('#scCcy').onchange = async () => { S.ccy = $('#scCcy').value; await loadFx(); table(); };
-  on((type, data) => { if (type === 'sector') { S.sector = data || ''; S.preset = 'all'; presets(); table(); } if (type === 'market' && S.rows.length) { score(); table(); } if (type === 'provider') reset(); if (type === 'view' && App.view === 'screener') { sources(); if (!S.rows.length && (isDemo() || provider().id === 'free') && !S.running) run(); } });
+  on((type, data) => { if (type === 'sector') { S.sector = data || ''; S.preset = 'all'; presets(); table(); } if (type === 'market' && S.rows.length) { score(); table(); } if (type === 'provider') reset(); if (type === 'view' && App.view === 'screener') { sources(); if (!S.rows.length && (isDemo() || (provider().id === 'free' && !isApp())) && !S.running) run(); } });
   await reset();
-  if (App.view === 'screener' && (isDemo() || provider().id === 'free') && !S.rows.length) run();
+  if (App.view === 'screener' && (isDemo() || (provider().id === 'free' && !isApp())) && !S.rows.length) run();
 }
 
 async function reset() {
   const saved = await store.get('screen.' + provider().id, null);
   S.rows = saved ? saved.rows : []; S.at = saved ? saved.at : null; score();
   await snapshotMeta().catch(() => null); if (!BUILTIN.length) { try { BUILTIN = (await snapshotMeta()).stocks.map(x => x.s); } catch (e) { /* none */ } }
-  S.source = await store.get('screen.src.' + provider().id, isDemo() ? 'demo' : provider().id === 'free' ? 'builtin' : 'watch');
+  S.source = await store.get('screen.src.' + provider().id, isDemo() ? 'demo' : provider().id === 'free' ? (isApp() ? 'world' : 'builtin') : 'watch');
   sources(); tiles(); presets(); table();
 }
 
-let BUILTIN = [], SECTOR = {}, EPSYOY = {};
+let BUILTIN = [], SECTOR = {}, EPSYOY = {}, UNI = [], NV = new Set(), USALL = [], NAME = {};
+const REGIONS = ['US', 'Europe', 'Japan', 'Hong Kong', 'China', 'Korea'];
+universe().then(u => { UNI = u.items; NV = new Set(u.nv || []); u.items.forEach(r => { if (r[3] && !SECTOR[r[0]]) SECTOR[r[0]] = r[3]; if (r[1]) NAME[r[0]] = r[1]; }); if (App.view === 'screener') sources(); });
 snapshotMeta().then(m => {
   BUILTIN = m.stocks.map(x => x.s); m.stocks.forEach(x => { if (x.g) SECTOR[x.s] = x.g; });
   Object.entries(m.earnings).forEach(([s, e]) => { const q = enrich(e.q.map(x => ({ time: Date.parse(x.t) / 1000, eps: x.eps, est: x.est }))).pop(); if (q && q.yoy != null) EPSYOY[s] = q.yoy; });
@@ -89,6 +93,9 @@ async function loadFx() {
 }
 function list(src) {
   if (src === 'builtin') return BUILTIN.slice();
+  if (src === 'world') return UNI.map(r => r[0]);
+  if (src.startsWith('r:')) return UNI.filter(r => r[2] === src.slice(2)).map(r => r[0]);
+  if (src === 'usall') return USALL.slice();
   if (src === 'demo') return DEMO.map(d => d.sym);
   if (src === 'watch') return App.watch.slice();
   if (src === 'portfolio') return (App.holdings || []).map(h => h.sym);
@@ -98,7 +105,14 @@ function list(src) {
 }
 function sources() {
   const opts = [['watch', `Your watchlist (${App.watch.length})`], ['portfolio', `Your portfolio (${(App.holdings || []).length})`]];
-  if (isDemo()) opts.unshift(['demo', `Demo stocks (${DEMO.length}, fictional)`]); else { if (BUILTIN.length && provider().id === 'free') opts.unshift(['builtin', `All built-in stocks (${BUILTIN.length}: US, Europe, Asia)`]); opts.push(['us50', 'US large caps (50)']); }
+  if (isDemo()) opts.unshift(['demo', `Demo stocks (${DEMO.length}, fictional)`]);
+  else if (isApp() && UNI.length) {
+    // desktop app: the whole universe with live prices
+    const by = r => UNI.filter(x => x[2] === r).length;
+    opts.unshift(['world', `All stocks worldwide (${UNI.length})`], ...REGIONS.filter(by).map(r => ['r:' + r, `${r} (${by(r)})`]),
+      ['usall', USALL.length ? `All US-listed companies (${USALL.length}, SEC list)` : 'All US-listed companies (SEC list, ~5,000)']);
+    if (BUILTIN.length) opts.push(['builtin', `Built-in stocks only (${BUILTIN.length}, fastest)`]);
+  } else { if (BUILTIN.length && provider().id === 'free') opts.unshift(['builtin', `All built-in stocks (${BUILTIN.length}: US, Europe, Asia)`]); opts.push(['us50', 'US large caps (50)']); }
   opts.push(['custom', 'Your own list…']);
   if (!opts.some(o => o[0] === S.source)) S.source = opts[0][0];
   render($('#scSrc'), html`${opts.map(([k, l]) => html`<option value="${k}" ${k === S.source ? raw('selected') : ''}>${l}</option>`)}`);
@@ -108,13 +122,17 @@ function sources() {
 function note() {
   const n = list(S.source).length, P = provider();
   const per = P.id === 'twelvedata' ? 7.6 : P.id === 'demo' ? 0 : 0.3;
-  $('#scNote').textContent = P.id === 'demo' ? 'Runs on the demo stocks instantly.' : P.id === 'free' ? `${n} stocks · uses the built-in data (and fresh prices from the free feeds in the app). A full scan takes about ${Math.max(1, Math.round(n / 25))} s.` :
+  $('#scNote').textContent = P.id === 'demo' ? 'Runs on the demo stocks instantly.' : P.id === 'free' && isApp() ? `${n} stocks · live prices from the free feed (2 years per stock, cached for 3 hours). First scan about ${Math.max(1, Math.round(n / 12 / 60))} min, repeats are much faster.` : P.id === 'free' ? `${n} stocks · uses the built-in data (the desktop app adds live prices and the full universe). A full scan takes about ${Math.max(1, Math.round(n / 25))} s.` :
     `${n} stocks · uses up to ${n + 1} requests on your ${P.short} plan the first time (cached prices are reused for 3 hours)${per > 1 ? ` · about ${Math.ceil(n * per / 60)} min on the free plan (8 requests a minute)` : ''}.`;
   $('#scAt').textContent = S.at ? 'Last scan ' + ago(S.at) : '';
 }
 
 async function run() {
   if (S.running) return;
+  if (S.source === 'usall' && !USALL.length) {
+    try { toast('Loading the SEC list of US-listed companies…'); const l = listedCommon(await secCompanies(secAgent())); l.forEach(x => { if (!NAME[x.s]) NAME[x.s] = x.n; }); USALL = l.map(x => x.s); sources(); }
+    catch (e) { toast(e.message, 6000); return; }
+  }
   const syms = list(S.source);
   if (!syms.length) { toast('Nothing to scan: add stocks to this list first.'); return; }
   S.running = true; S.cancel = false;
@@ -122,21 +140,25 @@ async function run() {
   const rows = [], errors = [];
   let bench = null;
   try { bench = await benchmarkFor(syms[0]); } catch (e) { /* RS line flags skipped */ }
-  for (let i = 0; i < syms.length && !S.cancel; i++) {
-    const sym = syms[i];
-    $('#scTxt').textContent = `${i + 1} of ${syms.length} · ${sym}`; $('#scBar').style.width = ((i + 1) / syms.length * 100) + '%';
+  const benchC = bench && bench.bars.map(b => ({ time: b.time, close: b.close }));
+  const live = isApp() && provider().id === 'free';
+  const one = async (sym, retry = true) => {
+    if (S.cancel) return;
     try {
-      const d = await daily(sym);
-      const r = screenRow(sym, d.name || App.names[sym] || '', d.bars, PAT.scan(d.bars), bench && bench.bars.map(b => ({ time: b.time, close: b.close })));
+      const d = await daily(sym, live ? { years: 2 } : {});
+      const r = screenRow(sym, d.name || App.names[sym] || NAME[sym] || '', d.bars, PAT.scan(d.bars), benchC, { noVol: NV.has(sym) && !d.live });
       if (r) { r.cu = d.currency; r.g = SECTOR[sym] || ''; rows.push(r); }
       else errors.push(sym + ' (too little history)');
       checkBars(sym, d.bars, d.name);
     } catch (e) {
+      if (e.kind === 'limit' && retry && live) { await new Promise(r => setTimeout(r, 15000)); return one(sym, false); } // free feed throttled: pause, retry once
       errors.push(sym + ': ' + e.message);
-      if (e.kind === 'auth' || e.kind === 'limit') { S.cancel = true; toast(e.message, 6000); }
+      if (e.kind === 'auth' || (e.kind === 'limit' && !live)) { S.cancel = true; toast(e.message, 6000); }
     }
-    if (i % 4 === 3) await new Promise(r => setTimeout(r, 0)); // keep the UI responsive
-  }
+  };
+  const prog = i => { $('#scTxt').textContent = `${i} of ${syms.length}`; $('#scBar').style.width = (i / syms.length * 100) + '%'; };
+  if (live) await pool(syms, 6, sym => one(sym), prog);
+  else for (let i = 0; i < syms.length && !S.cancel; i++) { await one(syms[i]); prog(i + 1); if (i % 4 === 3) await new Promise(r => setTimeout(r, 0)); }
   rankRS(rows);
   S.rows = rows; S.at = Date.now(); S.running = false; score(); await loadFx();
   setTimeout(() => emit('scan'), 0);

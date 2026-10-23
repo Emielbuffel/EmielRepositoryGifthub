@@ -13,10 +13,11 @@ export async function initSettings(el) {
   render(el, html`
     <section class="card">
       <h2>Market data</h2>
-      <p class="small" style="margin:0">Choose where prices come from. Real data needs your own API key from one of these providers. The key is stored only on this device and sent only to that provider.</p>
+      <p class="small" style="margin:0">Choose where prices come from. The built-in data with free live updates needs no account. The other providers need your own API key, stored only on this device and sent only to that provider.</p>
       <div class="provider-list" id="stProv">${Object.values(PROVIDERS).map(p => html`
         <label class="provider${settings.provider === p.id ? ' on' : ''}"><input type="radio" name="prov" value="${p.id}" ${settings.provider === p.id ? raw('checked') : ''}><div><b>${p.name}</b><p>${p.blurb}</p>${p.site ? html`<p><a href="${p.site}" target="_blank" rel="noopener">Get a key at ${new URL(p.site).hostname}</a></p>` : ''}</div></label>`)}</div>
       <div id="stKey"></div>
+      <label class="field"><span>Your e-mail for SEC EDGAR (optional). EDGAR provides US earnings history back to about 2009 and asks automated tools to include a contact e-mail; it is sent only to sec.gov.</span><input class="input" id="stSec" type="email" placeholder="you@example.com" value="${settings.secEmail || ''}" autocapitalize="off" spellcheck="false"></label>
     </section>
     <section class="card">
       <h2>News sources</h2>
@@ -44,13 +45,15 @@ export async function initSettings(el) {
     <section class="card">
       <h2>About</h2>
       <div class="prose small">
-        <p><b>Base Pattern Desk ${VERSION}</b>: base patterns, market direction, a screener and a portfolio risk review.</p>
+        <p><b>Base Pattern Desk ${VERSION}</b>: base patterns, market direction, a screener and a portfolio risk review. For personal use.</p>
+        <p>Data: Yahoo Finance and Stooq chart feeds (prices), SEC EDGAR (US earnings history), and free news feeds. These public feeds are meant for personal use; check their terms before sharing or selling anything built on them.</p>
         <p><b>Not investment advice.</b> The app applies widely published rules of thumb from classic chart analysis to end-of-day prices for education and research. Signals can be wrong; past patterns don't guarantee future results. Make your own decisions, or talk to a licensed adviser.</p>
         <p>The app is independent and not affiliated with any publisher, research service or data provider. Names of third-party products belong to their owners.</p>
         <p>Charts by <a href="https://www.tradingview.com/" target="_blank" rel="noopener">TradingView</a> Lightweight Charts™ (Apache License 2.0).</p>
       </div>
     </section>`);
   keyBox();
+  $('#stSec', el).onchange = async () => { const v = $('#stSec', el).value.trim(); if (v && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v)) { toast('That does not look like an e-mail address.'); return; } settings.secEmail = v; await saveSettings(); toast(v ? 'Saved. SEC requests now include your e-mail.' : 'Removed.'); };
   $$('input[name=prov]', el).forEach(r => {
     r.onchange = async () => {
       settings.provider = r.value; await saveSettings();

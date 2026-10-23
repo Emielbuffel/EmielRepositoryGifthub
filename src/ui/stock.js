@@ -6,7 +6,8 @@ import { setupScore } from '../core/score.js';
 import { listMenu } from './lists.js';
 import { alertSheet } from './alertsui.js';
 import { checkBars, activeFor, onAlerts, describe as describeAlert } from '../data/alerts.js';
-import { daily, benchmarkFor, indexSeries, compareOptions, defaultBenchmark, earnings, isIndexSym, provider, isDemo, isDemoSym, DataError } from '../data/service.js';
+import { daily, benchmarkFor, indexSeries, compareOptions, defaultBenchmark, earnings, isIndexSym, provider, isDemo, isDemoSym, DataError, settings, saveSettings } from '../data/service.js';
+import { isApp } from '../data/net.js';
 import { splitSym, snapshotMeta } from '../data/providers.js';
 import { stockNews, lastSeen, markSeen, newsSettings } from '../data/news.js';
 import { enrich, epsPoints, nextReport, canslimCA, adGrade } from '../core/earnings.js';
@@ -99,7 +100,7 @@ async function load(sym, force = false) {
   chips();
   try {
     const g = group(sym);
-    const [d, bench] = await Promise.all([daily(sym, { force }), benchmarkFor(sym, prefs.rsBench[g]).catch(() => null)]);
+    const [d, bench] = await Promise.all([daily(sym, { force, long: true }), benchmarkFor(sym, prefs.rsBench[g]).catch(() => null)]);
     if (seq !== V.seq) return;
     // an index has no RS line against itself
     V.data = d; V.bench = bench && bench.sym !== sym ? bench : null; V.sym = sym; V.earn = null; V.earnErr = null; V.news = null; V.cmp = [];
@@ -113,7 +114,7 @@ async function load(sym, force = false) {
     const dt = fD(d.bars[n].time);
     if (d.stale) status(`Showing saved prices through ${dt}: ${d.error ? d.error.message : 'refresh failed'}`, 'warn');
     else if ((Date.now() / 1000 - d.bars[n].time) / 86400 > 5 && !isDemoSym(sym)) status(`Prices end on ${dt}: ${Math.floor((Date.now() / 1000 - d.bars[n].time) / 86400)} days old. ${d.builtIn ? 'Built-in data; live updates run in the iPhone, iPad and Mac app.' : 'Tap Refresh.'}`, 'warn');
-    else if (d.builtIn) status(`Built-in data through ${dt}. Live updates run in the iPhone, iPad and Mac app.`, 'ok');
+    else if (d.builtIn) status(`Built-in data through ${dt}. Live prices and the full history load in the desktop app.`, 'ok');
     else status(`${provider().id === 'free' ? 'Live · free public feeds' : src} · daily data through ${dt}${d.cached && !isDemoSym(sym) ? ' · updated ' + ago(d.fetchedAt) : ''}`, isDemoSym(sym) ? 'demo' : 'ok');
     checkBars(sym, d.bars, d.name).then(h => { if (h.length) { toast(describeAlert(h[0], d.name), 6000); head(); } });
     loadCompare(sym, seq);
@@ -303,15 +304,17 @@ function earnCard() {
     const P = provider(), msg = V.earnErr ? V.earnErr : isDemoSym(V.sym) || P.earnings ? 'Loading earnings…' : 'Earnings come with a data provider (FMP, Twelve Data or EODHD).';
     render(el, html`<h2>Earnings</h2><p class="muted small" style="margin:0">${msg}</p>`); return;
   }
-  const q = enrich(V.earn), nx = nextReport(V.earn), last8 = q.slice(-8);
+  const q = enrich(V.earn), nx = nextReport(V.earn), last8 = q.slice(-8), rep = q.filter(r => r.eps != null), src = (V.earn.find(r => r.eps != null) || {}).src;
   const cls = x => x == null ? '' : x >= 0.25 ? 't-ok' : x < 0 ? 't-bad' : 't-warn';
   const ttm = q.filter(r => r.ttm != null);
+  const row = r => html`<tr><td>${fDs(r.time)}${r.period ? html` <span class="muted tiny">${r.period}</span>` : ''}</td><td class="n">${f2(r.eps)}</td><td class="n ${cls(r.yoy)}">${pc(r.yoy, 0)}</td><td class="n ${r.surprise == null ? '' : r.surprise >= 0 ? 't-ok' : 't-bad'}">${pc(r.surprise, 0)}</td><td class="n ${cls(r.revYoy)}">${pc(r.revYoy, 0)}</td><td class="n">${f2(r.ttm)}</td></tr>`;
   render(el, html`<div class="card-head"><h2>Earnings · quarter by quarter</h2>${nx ? html`<span class="tag t-blue">Next report ${fDs(nx.time)}${nx.est != null ? ' · est. ' + f2(nx.est) : ''}</span>` : ''}</div>
     ${last8.length ? html`<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Reported</th><th class="n">EPS</th><th class="n">vs yr ago</th><th class="n">vs est.</th><th class="n">Sales vs yr ago</th><th class="n">4Q EPS</th></tr></thead><tbody>
-      ${[...last8].reverse().map(r => html`<tr><td>${fDs(r.time)}${r.period ? html` <span class="muted tiny">${r.period}</span>` : ''}</td><td class="n">${f2(r.eps)}</td><td class="n ${cls(r.yoy)}">${pc(r.yoy, 0)}</td><td class="n ${r.surprise == null ? '' : r.surprise >= 0 ? 't-ok' : 't-bad'}">${pc(r.surprise, 0)}</td><td class="n ${cls(r.revYoy)}">${pc(r.revYoy, 0)}</td><td class="n">${f2(r.ttm)}</td></tr>`)}
+      ${[...last8].reverse().map(row)}
     </tbody></table></div>` : html`<p class="muted small" style="margin:0">No reported quarters.</p>`}
+    ${rep.length > 8 ? html`<details class="small"><summary>All ${rep.length} quarters since ${new Date(rep[0].time * 1000).getUTCFullYear()}</summary><div class="tbl-wrap"><table class="tbl"><thead><tr><th>Reported</th><th class="n">EPS</th><th class="n">vs yr ago</th><th class="n">vs est.</th><th class="n">Sales vs yr ago</th><th class="n">4Q EPS</th></tr></thead><tbody>${[...q].reverse().slice(8).filter(r => r.eps != null).map(row)}</tbody></table></div></details>` : ''}
     ${ttm.length >= 2 ? html`<p class="small" style="margin:0">4-quarter EPS ${f2(ttm[ttm.length - 1].ttm)}, ${ttm.length >= 5 ? pc(ttm[ttm.length - 1].ttm / ttm[ttm.length - 5].ttm - 1, 0) + ' vs a year ago' : ''}. On the chart, the <b style="color:var(--eps)">EPS line</b> uses the left axis; dots mark each report (green = EPS up 25%+ y/y, orange = up less, red = down).</p>` : ''}
-    <p class="muted tiny" style="margin:0">Source: ${isDemoSym(V.sym) ? 'fictional demo figures' : provider().name}. EPS as the provider reports it (usually adjusted/non-GAAP for estimates).</p>`);
+    <p class="muted tiny" style="margin:0">Source: ${isDemoSym(V.sym) ? 'fictional demo figures' : src === 'sec' ? 'SEC EDGAR filings (10-Q / 10-K): GAAP diluted EPS, adjusted for stock splits; Q4 = full year minus the first three quarters; dates are filing dates (results are usually announced a few days earlier). Switch to adjusted EPS in the EPS menu where available.' : src === 'yahoo' ? 'free fundamentals feed: reported diluted EPS of the last quarters; report dates estimated (quarter end + 6 weeks).' : src === 'adjusted' ? 'built-in data: adjusted EPS (the analyst basis) with the real report dates.' : provider().name + '. EPS as the provider reports it (usually adjusted/non-GAAP for estimates).'}</p>`);
 }
 
 /* ---------- news ---------- */
@@ -328,7 +331,7 @@ function newsCard(loading) {
       const isNew = V.newsSeen && x.date && x.date > V.newsSeen;
       const body = html`<span class="nt">${isNew ? html`<span class="new">NEW</span> ` : ''}${x.title}</span><span class="nm"><span class="tag ${TAG_LBL[x.tag] ? TAG_LBL[x.tag][1] : 't-mute'}">${TAG_LBL[x.tag] ? TAG_LBL[x.tag][0] : 'News'}</span>${x.source || x.domain}${x.date ? ' · ' + agoT(x.date) : ''}${x.paywalled ? ' · may need a subscription' : ''}</span>`;
       return x.link ? html`<a class="news-item" href="${x.link}" target="_blank" rel="noopener">${body}</a>` : html`<div class="news-item">${body}</div>`;
-    })}</div>` : html`<p class="muted small" style="margin:0">${loading ? 'Checking the news sources…' : r && r.browserBlocked ? 'News feeds load in the iPhone, iPad and Mac app. Web browsers block these feeds for security (CORS).' : 'No recent headlines from the enabled sources.'}</p>`}
+    })}</div>` : html`<p class="muted small" style="margin:0">${loading ? 'Checking the news sources…' : r && r.browserBlocked ? 'News feeds load in the desktop app. Web browsers block these feeds for security (CORS).' : 'No recent headlines from the enabled sources.'}</p>`}
     <p class="muted tiny" style="margin:0">${r && r.demo ? 'Example headlines for a fictional company.' : `Checked ${r ? ago(r.at) : '…'} from ${Object.entries(newsSettings().sources).filter(([, v]) => v).length} free sources${newsSettings().hidePaywalled ? ', paywalled sites hidden' : ''}${r && r.errors && r.errors.length && !r.browserBlocked ? ` · not reachable now: ${r.errors.join(', ')}` : ''}. Headlines link to the original site.`}</p>`);
   $('#nRef').onclick = () => loadNews(V.sym, V.seq);
   $$('[data-tag]', el).forEach(b => { b.onclick = () => { V.newsTag = b.dataset.tag; newsCard(false); }; });
@@ -445,8 +448,10 @@ function openMenu(id) {
     }
     if (id === 'pEps') {
       render(p, html`${[['ttm', '4-quarter EPS (trailing 12 months)'], ['q', 'Quarterly EPS'], ['off', 'Hide EPS line']].map(([k, l]) => html`<button data-eps="${k}" class="${prefs.eps === k ? 'on' : ''}">${l}</button>`)}
+        ${provider().id === 'free' && isApp() ? html`<hr>${[['long', 'Longest history (US: SEC filings since ~2009)'], ['adjusted', 'Adjusted EPS only (analyst basis, fewer stocks)']].map(([k, l]) => html`<button data-basis="${k}" class="${settings.epsBasis === k ? 'on' : ''}">${l}</button>`)}` : ''}
         <p class="muted tiny" style="margin:4px 10px 6px">Smooth line on the left axis; a dot marks each report: <b style="color:var(--up)">●</b> EPS up 25%+ y/y, <b style="color:var(--warn)">●</b> up less, <b style="color:var(--down)">●</b> down. ${V.earn ? '' : V.earnErr || 'Earnings data not loaded yet.'}</p>`);
       $$('[data-eps]', p).forEach(x => { x.onclick = () => { prefs.eps = x.dataset.eps; savePrefs(); draw(true); p.hidden = true; }; });
+      $$('[data-basis]', p).forEach(x => { x.onclick = async () => { settings.epsBasis = x.dataset.basis; await saveSettings(); p.hidden = true; V.earn = null; V.earnErr = null; cards(); loadEarnings(V.sym, V.seq); }; });
     }
     if (id === 'pPat') render(p, html`${[['all', 'Current + all past patterns'], ['cur', 'Current base only'], ['off', 'Hide patterns']].map(([k, l]) => html`<button data-pm="${k}" class="${prefs.patMode === k ? 'on' : ''}">${l}</button>`)}<hr>
       <div class="pat-legend" style="padding:6px 10px">${Object.entries(PAT_LABEL).map(([k, l]) => html`<span><i style="background:${patColor(k)}"></i>${l}</span>`)}</div>`);

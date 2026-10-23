@@ -1,7 +1,7 @@
 // App entry: navigation (tab bar on iPhone, sidebar on iPad/Mac), first-launch welcome and boot.
 import { App, VIEWS, on, go, openStock, loadState } from './app.js';
 import { loadSettings, isDemo, provider } from './data/service.js';
-import { Capacitor } from '@capacitor/core';
+import { isApp, isDesktop } from './data/net.js';
 import * as store from './data/store.js';
 import { $, $$, html, raw, render, ICON, sheet } from './ui/dom.js';
 import { pc } from './core/analysis.js';
@@ -61,9 +61,9 @@ function banner() {
   const el = $('#banner');
   if (!isDemo()) {
     // web preview: say where live updates and news come from
-    if (provider().id === 'free' && !Capacitor.isNativePlatform()) {
+    if (provider().id === 'free' && !isApp()) {
       el.hidden = false;
-      render(el, html`<span><b>Preview.</b> Real built-in data for about 380 stocks and the main indexes. Live price updates, other tickers and news load in the iPhone, iPad and Mac app.</span>`);
+      render(el, html`<span><b>Preview.</b> Real built-in data for about 380 stocks and the main indexes. Live prices, about 2,000 more stocks, long EPS history and news load in the desktop app.</span>`);
     } else el.hidden = true;
     return;
   }
@@ -79,7 +79,7 @@ function welcome() {
       <ul>
         <li><b>Chart:</b> every detected pattern drawn in its own colour, with the full breakout history.</li>
         <li><b>Market:</b> distribution days, follow-through days and the market status.</li>
-        <li><b>Screener:</b> scan about 380 stocks or your own lists for breakouts, buy points and volume surges, with a setup score and sector ranking.</li>
+        <li><b>Screener:</b> scan about 2,000 stocks worldwide, every US-listed company, or your own lists for breakouts, buy points and volume surges, with a setup score and sector ranking.</li>
         <li><b>Portfolio:</b> import your broker statement for sell signals, risk and a stress test.</li>
         <li><b>Alerts and lists:</b> set breakout, stop and price alerts, and keep several watchlists in your own order.</li>
       </ul>
@@ -113,11 +113,13 @@ async function boot() {
   if (!(await store.get('onboarded', null))) welcome();
   // check alerts once at start (prices for alert stocks load in the background)
   onAlerts(badge); badge();
-  setTimeout(async () => {
+  const check = async () => {
     const hits = await checkAll();
     if (hits.length) toast(hits.length === 1 ? describe(hits[0]) : `${hits.length} alerts triggered. Tap the bell to see them.`, 6000);
     badge();
-  }, 4000);
+  };
+  setTimeout(check, 4000);
+  if (isDesktop()) setInterval(check, 30 * 60e3); // the desktop app stays open: re-check alerts every 30 minutes
 }
 
 boot().catch(e => { console.error(e); document.body.insertAdjacentHTML('beforeend', `<p style="padding:20px">Something went wrong while starting: ${String(e.message || e)}</p>`); });

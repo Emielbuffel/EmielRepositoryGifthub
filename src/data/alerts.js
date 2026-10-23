@@ -1,8 +1,9 @@
 // Price alerts: buy-point breakouts, stops and price levels, checked on the device whenever prices load
 // (opening a stock, a scan, the portfolio) and with "Check now". In the iPhone/Mac app a triggered alert also
 // sends a notification. iOS doesn't let an app check prices on a timer in the background, so alerts are
-// checked when the app is opened or refreshed.
+// checked when the app is opened or refreshed. The desktop app also checks every 30 minutes while it is open.
 import { Capacitor } from '@capacitor/core';
+import { isDesktop } from './net.js';
 import { LocalNotifications } from '@capacitor/local-notifications';
 import * as store from './store.js';
 import { daily } from './service.js';
@@ -66,6 +67,10 @@ export function describe(a, name = '') {
 }
 
 async function notify(hits, name) {
+  if (isDesktop()) { // desktop app: system notifications through the web Notification API
+    try { hits.forEach(a => new Notification(a.type === 'stop' ? 'Stop alert' : 'Price alert', { body: describe(a, name) })); } catch (e) { /* not allowed */ }
+    return;
+  }
   if (!Capacitor.isNativePlatform()) return;
   try {
     await LocalNotifications.schedule({ notifications: hits.map((a, i) => ({ id: (Date.now() % 2e9) + i, title: a.type === 'stop' ? 'Stop alert' : 'Price alert', body: describe(a, name) })) });

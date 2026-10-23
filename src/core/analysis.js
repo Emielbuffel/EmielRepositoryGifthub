@@ -191,15 +191,15 @@ export function cupPivot(dr) {
 }
 
 /** Summary row for one stock (used by the screener and the portfolio). Port of scripts/screener.js. */
-export function screenRow(sym, name, bars, R, bench) {
+export function screenRow(sym, name, bars, R, bench, { noVol = false } = {}) {
   const b = bars, n = b.length - 1; if (n < 119) return null;
   const c = b.map(x => x.close), v = b.map(x => x.volume);
   const ch = k => n - k >= 0 ? c[n] / c[n - k] - 1 : null;
   let s = 0, m = 0; for (let j = Math.max(0, n - 50); j < n; j++) { s += v[j]; m++; } const avg50 = m ? s / m : 0;
-  const hasVol = avg50 > 0;
+  const hasVol = avg50 > 0 && !noVol; // noVol: prices from a secondary venue, whose volume says little
   let vr = hasVol ? v[n] / avg50 : null; if (vr != null && vr > 25) vr = null; // implausible: usually a data glitch
   let up = 0, dn = 0; for (let j = Math.max(1, n - 49); j <= n; j++) { if (c[j] > c[j - 1]) up += v[j]; else if (c[j] < c[j - 1]) dn += v[j]; }
-  const ud = dn > 0 ? up / dn : null;
+  const ud = hasVol && dn > 0 ? up / dn : null;
   const smaAt = (k, i) => { if (i < k - 1) return null; let t = 0; for (let j = i - k + 1; j <= i; j++) t += c[j]; return t / k; };
   const s50 = smaAt(50, n), s200 = smaAt(200, n);
   let hi52 = -Infinity, lo52 = Infinity; for (let j = Math.max(0, n - 251); j <= n; j++) { hi52 = Math.max(hi52, b[j].high); lo52 = Math.min(lo52, b[j].low); }
