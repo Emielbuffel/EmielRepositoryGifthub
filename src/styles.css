@@ -118,7 +118,7 @@ a:hover { text-decoration: underline; }
 }
 
 /* ---------- cards & lists ---------- */
-.card { scroll-margin-top: calc(var(--safe-t) + 76px); background: var(--bg2); border-radius: var(--radius); padding: 16px; box-shadow: var(--shadow); min-width: 0; display: grid; gap: 12px; align-content: start; }
+.card { scroll-margin-top: calc(var(--safe-t) + 76px); background: var(--bg2); border-radius: var(--radius); padding: 16px; box-shadow: var(--shadow); min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; align-content: start; }
 .card.flush { padding: 0; overflow: hidden; }
 .card-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
 .card h2, .section-title { margin: 0; font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
@@ -391,3 +391,39 @@ table.tbl td.name { max-width: 180px; overflow: hidden; text-overflow: ellipsis;
 .score-bar i { display: block; height: 100%; border-radius: 3px; }
 .list-pick { width: auto; max-width: 170px; padding: 6px 10px; font-size: 13.5px; font-weight: 600; flex: none; }
 @media (min-width: 900px) { .list-pick { display: none; } }
+
+/* ---------- account: cash, evolution, composition, factors ---------- */
+.acc { display: grid; grid-template-columns: auto 1fr; gap: 22px; align-items: center; }
+.acc-donut { position: relative; width: 148px; height: 148px; }
+.acc-mid { position: absolute; inset: 0; display: grid; place-content: center; text-align: center; gap: 1px; }
+.acc-mid b { font-family: var(--display); font-size: 22px; letter-spacing: -.01em; font-variant-numeric: tabular-nums; }
+.acc-legend { display: grid; gap: 10px; min-width: 0; }
+.acc-leg { display: grid; grid-template-columns: 12px minmax(70px, auto) auto 1fr; gap: 10px; align-items: baseline; }
+.acc-leg i { width: 12px; height: 12px; border-radius: 4px; align-self: center; }
+.acc-leg .k { font-weight: 600; }
+.acc-leg b { font-family: var(--display); font-size: 19px; font-variant-numeric: tabular-nums; }
+.acc-bar { display: flex; height: 8px; border-radius: 99px; background: var(--fill); overflow: hidden; }
+.acc-bar i { display: block; height: 100%; }
+.acc-flows summary { cursor: pointer; padding: 4px 0; }
+.evo-chart { height: 300px; position: relative; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 16px; color: var(--muted); }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.legend i { width: 14px; height: 3px; border-radius: 2px; display: inline-block; }
+.mix { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 18px; }
+.mix-col { display: grid; gap: 8px; align-content: start; min-width: 0; }
+.mix-col h3 { margin: 0; font-size: 14px; }
+.mix-stack { display: flex; height: 12px; border-radius: 99px; overflow: hidden; gap: 2px; background: var(--fill); }
+.mix-stack i { display: block; height: 100%; min-width: 3px; }
+.mix-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 5px; font-size: 13px; }
+.mix-list li { display: grid; grid-template-columns: 10px 1fr auto 62px; gap: 8px; align-items: center; }
+.mix-list li i { width: 10px; height: 10px; border-radius: 3px; }
+.mix-list li span:nth-child(2) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mix-list li .tiny { text-align: right; }
+.fbars { display: grid; gap: 8px; }
+.frow { display: grid; grid-template-columns: minmax(80px, 110px) 1fr 52px 40px; gap: 10px; align-items: center; font-size: 13px; }
+.frow .lbl { font-weight: 600; }
+.frow .val { font-family: var(--mono); text-align: right; }
+.ftrack { position: relative; height: 10px; background: var(--fill); border-radius: 99px; }
+.ftrack .zero { position: absolute; left: 50%; top: -3px; bottom: -3px; width: 1.5px; background: var(--sep); }
+.ftrack i { position: absolute; top: 0; bottom: 0; border-radius: 99px; }
+@media (max-width: 560px) { .acc { grid-template-columns: 1fr; justify-items: center; } .acc-legend { width: 100%; } .evo-chart { height: 240px; } .card-head .toolbar .seg button { padding: 5px 8px; } }

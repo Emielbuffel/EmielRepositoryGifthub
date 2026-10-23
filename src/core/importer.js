@@ -51,10 +51,22 @@ export function parseHoldings(text) {
     qty: find(COLS.qty), price: find(COLS.price), cost: find(COLS.cost), cur: find(COLS.cur),
   };
   if (ix.qty < 0) throw new Error('No quantity column found. Expected a header such as Quantity, Shares, Amount or Aantal.');
-  const rows = [];
+  const eurCol = head.findIndex(h => /(value|waarde|valeur|wert).*(eur)|eur.*(value|waarde)/i.test(h));
+  const rows = [], cash = [];
   for (const line of lines.slice(1)) {
     const c = splitLine(line, d);
-    const qty = num(c[ix.qty]); if (!qty) continue;
+    const qty = num(c[ix.qty]);
+    const nameCell = ix.name >= 0 ? c[ix.name] || '' : c[0] || '';
+    if (!qty) {
+      // cash lines: "CASH & CASH FUND & FTX CASH (EUR)", "Cash", "Geldmarktfonds"… (a negative amount = margin loan)
+      if (/\b(cash|geld|liquidit|espèces|especes|bargeld|saldo)\b/i.test(nameCell)) {
+        const nums = c.map(num).filter(v => v != null && v !== 0);
+        const eur = eurCol >= 0 ? num(c[eurCol]) : null, amount = eur != null ? eur : nums.length ? nums[nums.length - 1] : null;
+        const cc = (/\(([A-Z]{3})\)/.exec(nameCell) || [])[1] || c.find(x => /^[A-Z]{3}$/.test(x)) || (eurCol >= 0 ? 'EUR' : '');
+        if (amount != null) cash.push({ name: nameCell, cur: eurCol >= 0 && eur != null ? 'EUR' : cc, amount });
+      }
+      continue;
+    }
     let sym = ix.sym >= 0 ? c[ix.sym] : '', isin = ix.isin >= 0 && ix.isin !== ix.symisin ? c[ix.isin] : '';
     if (ix.symisin >= 0) { const v = c[ix.symisin] || ''; if (/^[A-Z]{2}[A-Z0-9]{9}\d$/.test(v)) isin = v; else sym = sym || v; }
     // DEGIRO puts the currency inside the closing-price cell ("USD 225.07") or next to it
@@ -63,20 +75,38 @@ export function parseHoldings(text) {
     rows.push({
       name: ix.name >= 0 ? c[ix.name] : '', sym: (sym || '').toUpperCase().trim(), isin: (isin || '').toUpperCase().trim(), qty,
       price: num(priceCell), cost: ix.cost >= 0 ? num(c[ix.cost]) : null,
-      cur: ix.cur >= 0 ? (c[ix.cur] || '').toUpperCase() : curMatch ? curMatch[1] : '',
+      cur: ix.cur >= 0 ? (c[ix.cur] || '').toUpperCase() : curMatch ? curMatch[1] : (c.find(x => /^[A-Z]{3}$|^GBX$/.test(x)) || ''), // DEGIRO: currency in its own column
+      eur: eurCol >= 0 ? num(c[eurCol]) : null,
     });
   }
-  if (!rows.length) throw new Error('No positions with a quantity were found.');
+  if (!rows.length && !cash.length) throw new Error('No positions with a quantity were found.');
+  rows.cash = cash;
   return rows;
 }
 
+/** Holdings and cash from a statement: {rows, cash: [{name, cur, amount}], cashTotalEUR}. */
+export function parseStatement(text) {
+  const rows = parseHoldings(text), cash = rows.cash || [];
+  return { rows, cash, cashEUR: cash.filter(x => x.cur === 'EUR').reduce((s, x) => s + x.amount, 0) };
+}
+
+/** Folds a company name for matching: no accents, punctuation or legal suffixes ("Apple Inc." → "APPLE"). */
+export const foldName = t => String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase().replace(/[^A-Z0-9 ]/g, ' ').replace(/\b(INC|INCORPORATED|CORP|CORPORATION|COMPANY|LTD|LIMITED|PLC|NV|SA|AG|SE|CO|THE|AND|HOLDINGS?|GROUP|CLASS [A-C]|CL [A-C]|ORD|ADR|SHS)\b/g, '').replace(/\s+/g, ' ').trim();
+// the same words in any order ("Lilly (Eli)" = "Eli Lilly")
+const sortedKey = f => f.split(' ').sort().join(' ');
+
 /** Fills in app tickers from a directory of [sym, name, isin] rows (by ISIN, then exact ticker, then name). */
 export function resolveTickers(rows, directory) {
-  const byIsin = new Map(), bySym = new Set(), byName = new Map();
-  const fold = t => String(t || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase().replace(/\b(INC|CORP|CORPORATION|LTD|PLC|NV|SA|AG|SE|CO|HOLDINGS?|GROUP|CLASS [A-C])\b|[^A-Z0-9 ]/g, '').replace(/\s+/g, ' ').trim();
-  directory.forEach(([s, n, isin]) => { if (isin) byIsin.set(isin.toUpperCase(), s); bySym.add(s.toUpperCase()); const f = fold(n); if (f && !byName.has(f)) byName.set(f, s); });
+  const byIsin = new Map(), bySym = new Set(), byName = new Map(), bySorted = new Map();
+  directory.forEach(([s, n, isin]) => {
+    if (isin) byIsin.set(isin.toUpperCase(), s); bySym.add(s.toUpperCase());
+    const f = foldName(n); if (!f) return;
+    if (!byName.has(f)) byName.set(f, s);
+    const k = sortedKey(f); if (!bySorted.has(k)) bySorted.set(k, s);
+  });
   return rows.map(r => {
-    let t = r.isin && byIsin.get(r.isin) || (r.sym && bySym.has(r.sym) ? r.sym : '') || byName.get(fold(r.name)) || '';
+    const f = foldName(r.name);
+    const t = r.isin && byIsin.get(r.isin) || (r.sym && bySym.has(r.sym) ? r.sym : '') || byName.get(f) || (f && bySorted.get(sortedKey(f))) || '';
     return { ...r, ticker: t, matched: !!t };
   });
 }

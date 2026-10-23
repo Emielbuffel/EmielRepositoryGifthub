@@ -60,6 +60,36 @@ export async function recordTrade(tr) {
 }
 export async function deleteTrade(tid) { await saveJournal((await journal()).filter(x => x.id !== tid)); }
 
+/** Adds journal entries without changing the holdings (e.g. differences found when a broker statement is imported). */
+export async function addJournalEntries(list) {
+  if (!list.length) return;
+  const J = await journal(); J.unshift(...list.map(t => ({ id: id(), ...t }))); await saveJournal(J);
+}
+
+/* ---------- cash, margin, deposits and withdrawals ---------- */
+// Cash is one balance in one currency (negative = a margin loan). Deposits and withdrawals are kept so the
+// performance can leave them out (time-weighted return).
+export async function cashBalance() { return store.get(k('cash'), null); }
+/** Sets today's cash; `since` remembers when the account was first entered (the start of exact history). */
+export async function setCash(amount, cur, at = Math.floor(Date.now() / 1000)) {
+  const old = await cashBalance(); await store.set(k('cash'), { amount: +amount, cur, at, since: (old && (old.since || old.at)) || at }); emit('cash');
+}
+export async function flows() { return store.get(k('flows'), []); }
+/** {t, amount (+ deposit, − withdrawal), cur, note?}; changes the cash balance too unless keepCash. */
+export async function addFlow(f, { keepCash = false } = {}) {
+  const c = await cashBalance(), moved = !keepCash && !!c && c.cur === f.cur;
+  const F = await flows(); F.push({ id: id(), ...f, amount: +f.amount, moved }); F.sort((a, b) => a.t - b.t); await store.set(k('flows'), F);
+  if (moved) await store.set(k('cash'), { ...c, amount: c.amount + +f.amount });
+  emit('cash');
+}
+/** Removes a deposit/withdrawal; undoes its effect on the cash balance when adding it had changed the balance. */
+export async function deleteFlow(fid) {
+  const F = await flows(), f = F.find(x => x.id === fid); if (!f) return;
+  await store.set(k('flows'), F.filter(x => x !== f));
+  const c = await cashBalance(); if (f.moved && c && c.cur === f.cur) await store.set(k('cash'), { ...c, amount: c.amount - f.amount });
+  emit('cash');
+}
+
 /* ---------- checks ---------- */
 /** Works out the next step for the open plan of `sym` from its latest bars; raises an alert when it becomes due. */
 export async function checkPlan(sym, bars, name = '') {
