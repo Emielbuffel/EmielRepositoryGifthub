@@ -95,8 +95,9 @@ export function nextStep(plan, pos, q) {
 export function sizingChecks(plan, rows, total) {
   const P = { ...DEFAULT_PLAN, ...plan }, out = [];
   if (!rows.length || !total) return out;
-  const w = rows.map(r => ({ ...r, w: r.value / total })).filter(r => r.gain != null);
-  w.filter(r => r.w > P.posPct * 1.25).forEach(r => out.push({ level: 'warn', sym: r.sym, text: `${r.sym} is ${Math.round(r.w * 100)}% of the portfolio, above your ${Math.round(P.posPct * 100)}% target per position.` }));
+  const all = rows.map(r => ({ ...r, w: r.value / total })), w = all.filter(r => r.gain != null);
+  // position size against your own limit (e.g. 20% of the account, cash included)
+  all.filter(r => r.w > P.posPct + 0.005).forEach(r => out.push({ kind: 'size', level: r.w > P.posPct * 1.5 ? 'bad' : 'warn', sym: r.sym, text: `${r.sym} is ${Math.round(r.w * 100)}% of your account, above your ${Math.round(P.posPct * 100)}% limit per position.` }));
   if (w.length >= 2) {
     const byGain = [...w].sort((a, b) => b.gain - a.gain), best = byGain[0], worst = byGain[byGain.length - 1];
     if (worst.gain < 0 && worst.w > best.w) out.push({ level: 'warn', sym: worst.sym, text: `Your weakest position ${worst.sym} (${(worst.gain * 100).toFixed(0)}%) is bigger than your best ${best.sym} (+${(best.gain * 100).toFixed(0)}%). Consider shifting money from the laggard into the leader.` });

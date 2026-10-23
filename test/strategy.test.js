@@ -65,3 +65,10 @@ test('exposureFactors: steady uptrend vs distribution cluster', () => {
   assert.equal(D.down.find(x => x.key === 'dd').ok, true);
   assert.ok(D.raiseCash || D.score < 0);
 });
+
+test('sizingChecks: 20% limit measured against the whole account', () => {
+  const rows = [{ sym: 'MA', value: 13000, gain: null }, { sym: 'BIG', value: 50000, gain: 0.1 }];
+  const m = sizingChecks(DEFAULT_PLAN, rows, 208000);
+  assert.ok(!m.some(x => x.sym === 'MA'));
+  assert.ok(m.some(x => x.sym === 'BIG' && x.kind === 'size' && /24% of your account, above your 20% limit/.test(x.text)));
+});

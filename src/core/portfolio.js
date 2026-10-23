@@ -40,10 +40,10 @@ export function beta(x, y, down = false) {
 
 /**
  * positions: [{sym, name, value (base ccy), bars, fx: Map|null}]
- * bench: {name, bars, fx: Map|null}
+ * bench: {name, bars, fx: Map|null}. maxPos: flag positions above this share of the stocks (null = no size check here)
  * Returns metrics for the whole book and per position.
  */
-export function analysePortfolio(positions, bench, weeks = 104) {
+export function analysePortfolio(positions, bench, weeks = 104, { maxPos = 0.12 } = {}) {
   const pos = positions.filter(p => p.bars && p.bars.length > 60 && p.value > 0);
   const total = pos.reduce((s, p) => s + p.value, 0);
   if (!pos.length || !total) return null;
@@ -82,7 +82,7 @@ export function analysePortfolio(positions, bench, weeks = 104) {
     beta: B ? beta(R[i], B) : null, downBeta: B ? beta(R[i], B, true) : null,
   }));
   const flags = [];
-  per.forEach(x => { if (x.weight > 0.10) flags.push(['warn', `${x.sym} is ${(x.weight * 100).toFixed(0)}% of the portfolio. Many risk guides cap a single stock at 10–12%.`]); });
+  if (maxPos) per.forEach(x => { if (x.weight > maxPos) flags.push(['warn', `${x.sym} is ${(x.weight * 100).toFixed(0)}% of the portfolio. Many risk guides cap a single stock at ${Math.round(maxPos * 100)}%.`]); });
   per.forEach(x => { if (x.downBeta != null && x.downBeta > 1.5) flags.push(['warn', `${x.sym} has a downside beta of ${x.downBeta.toFixed(2)}: in weeks the benchmark fell it fell about ${x.downBeta.toFixed(1)}× as much.`]); });
   const top = [...per].sort((a, b) => b.rc - a.rc)[0];
   if (top && top.rc > 0.35 && per.length > 2) flags.push(['warn', `${top.sym} alone drives ${(top.rc * 100).toFixed(0)}% of the portfolio's volatility.`]);

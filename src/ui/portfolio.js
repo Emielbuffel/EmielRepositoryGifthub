@@ -13,7 +13,7 @@ import { importSheet } from './importui.js';
 import { drawAccount, loadAccountPrefs } from './account.js';
 import { factor } from '../data/fx.js';
 import { addAlert, checkBars, allAlerts } from '../data/alerts.js';
-import { allPlans, journal, strategy, deletePlan } from '../data/plans.js';
+import { allPlans, journal, strategy, deletePlan, cashBalance } from '../data/plans.js';
 import { sizingChecks, pyramid } from '../core/strategy.js';
 
 const DEMO_HOLD = [{ sym: 'ACME.DEMO', shares: 40, cost: 90 }, { sym: 'IRIS.DEMO', shares: 60, cost: 70 }, { sym: 'LUMA.DEMO', shares: 100, cost: 45 }, { sym: 'FLUX.DEMO', shares: 150, cost: 30 }, { sym: 'JADE.DEMO', shares: 50, cost: 88 }];
@@ -87,6 +87,8 @@ function editHolding(h) {
 async function analyse() {
   const seq = ++P.seq; P.strategy = await strategy();
   try { const f = await factor(P.strategy.ccy, P.base); P.capFx = f ? f.v : null; } catch (e) { P.capFx = null; }
+  P.cashBase = null;
+  try { const c = await cashBalance(); if (c) { const f = await factor(c.cur, P.base); P.cashBase = c.amount * (f ? f.v : 1); } } catch (e) { /* no cash entered */ }
   const top = $('#pTop');
   if (!App.holdings.length) {
     render(top, html`<div class="empty">${raw(ICON.portfolio)}<p><b>No holdings yet.</b><br>Add your positions to see their value, sell signals, risk and hidden correlations. Everything stays on this device.</p><button class="btn primary" id="pFirst">${raw(ICON.plus)}Add a holding</button></div>`);
@@ -124,7 +126,7 @@ async function analyse() {
   let bench = null;
   try { const bs = isDemo() ? 'DEMO-500' : 'SPY'; const bd = await daily(bs); bench = { name: isDemo() ? 'Demo 500' : 'S&P 500 (SPY)', bars: bd.bars, fx: await fxWeekly('USD', P.base).catch(() => null) }; } catch (e) { /* no betas */ }
   if (seq !== P.seq) return;
-  const A = rows.length ? analysePortfolio(rows.map(r => ({ sym: r.sym, name: r.d.name, value: r.value, bars: r.d.bars, fx: r.fx })), bench) : null;
+  const A = rows.length ? analysePortfolio(rows.map(r => ({ sym: r.sym, name: r.d.name, value: r.value, bars: r.d.bars, fx: r.fx })), bench, 104, { maxPos: null }) : null;
   P.done = true;
   if (refRate) errs.push(`Some values use reference exchange rates of ${refRate} (live rates load in the desktop app)`);
   draw(rows, A, bench, errs);
@@ -167,8 +169,14 @@ function draw(rows, A, bench, errs) {
   if (!bad) { ['#pFlags', '#pRisk', '#pCorr', '#pStress'].forEach(id => { $(id).innerHTML = ''; }); return; }
   // position sizes are measured against the plan capital (e.g. 20% of 208,000 EUR), or the holdings if larger
   const capBase = P.strategy && P.capFx ? P.strategy.capital * P.capFx : 0;
-  const sizing = sizingChecks(P.strategy || {}, rows.filter(r => r.cost).map(r => ({ sym: r.sym, value: r.value, gain: r.c / r.cost - 1 })), Math.max(total, capBase));
-  render($('#pFlags'), html`<h2>Weak points</h2>${sizing.length ? html`<ul class="notes">${sizing.map(x => html`<li class="${x.level === 'bad' ? 'bad' : 'warn'}">${x.text.replace(/\.DEMO/g, '')}</li>`)}</ul>` : ''}${A.flags.length ? html`<ul class="notes">${A.flags.map(([k, t]) => html`<li class="${k}">${t.replace(/\.DEMO/g, '')}</li>`)}</ul>` : html`<ul class="notes"><li class="good">No concentration or crash-sensitivity warnings at these weights.</li></ul>`}
+  const posPct = Math.round(((P.strategy || {}).posPct || 0.2) * 100);
+  // sizes are measured against the whole account (stocks + cash, margin lowers it); without a cash balance, against
+  // the plan capital or the stocks, whichever is larger
+  const acct = P.cashBase != null ? total + P.cashBase : Math.max(total, capBase);
+  const sizing = sizingChecks(P.strategy || {}, rows.map(r => ({ sym: r.sym, value: r.value, gain: r.cost ? r.c / r.cost - 1 : null })), acct);
+  const biggest = [...rows].sort((a, b) => b.value - a.value)[0];
+  const sizeOk = !sizing.some(x => x.kind === 'size') && biggest && acct > 0 ? html`<li class="good">Every position is within your ${posPct}% limit. Largest: ${biggest.sym.replace('.DEMO', '')} at ${Math.round(biggest.value / acct * 100)}% of the account${P.cashBase != null ? ' (stocks + cash)' : ''}.</li>` : '';
+  render($('#pFlags'), html`<h2>Weak points</h2>${sizing.length || sizeOk ? html`<ul class="notes">${sizeOk}${sizing.map(x => html`<li class="${x.level === 'bad' ? 'bad' : 'warn'}">${x.text.replace(/\.DEMO/g, '')}</li>`)}</ul>` : ''}${A.flags.length ? html`<ul class="notes">${A.flags.map(([k, t]) => html`<li class="${k}">${t.replace(/\.DEMO/g, '')}</li>`)}</ul>` : bench ? html`<ul class="notes"><li class="good">No crash-sensitivity warnings at these weights.</li></ul>` : html`<ul class="notes"><li class="info">Crash sensitivity (downside beta) needs S&P 500 (SPY) prices: they load in the desktop app, or with an FMP key in Settings.</li></ul>`}
     ${rows.some(r => r.sig.some(s => s[0] === 'bad')) ? html`<ul class="notes">${rows.filter(r => r.sig.some(s => s[0] === 'bad')).map(r => html`<li class="bad">${r.sym.replace('.DEMO', '')}: ${r.sig.filter(s => s[0] === 'bad').map(s => s[1]).join('; ')}</li>`)}</ul>` : ''}`);
   const mx = Math.max(...A.per.map(x => Math.max(x.weight, x.rc)));
   render($('#pRisk'), html`<h2>Where the risk comes from</h2><div class="bars">${[...A.per].sort((a, b) => b.rc - a.rc).map(x => html`<div class="brow"><span class="lbl">${x.sym.replace('.DEMO', '')}</span><div style="display:grid;gap:3px"><div class="btrack"><i style="width:${(x.weight / mx * 100).toFixed(1)}%;opacity:.45"></i></div><div class="btrack"><i class="${x.rc > x.weight * 1.4 ? 'hot' : ''}" style="width:${(Math.max(0, x.rc) / mx * 100).toFixed(1)}%"></i></div></div><span class="val">${(x.rc * 100).toFixed(0)}%</span></div>`)}</div>
