@@ -8,6 +8,7 @@ import { alertSheet } from './alertsui.js';
 import { planSheet } from './plansui.js';
 import { planFor, tradesFor, strategy } from '../data/plans.js';
 import { pyramid } from '../core/strategy.js';
+import { sellPoints, SELL_LABEL } from '../core/sells.js';
 import { checkBars, activeFor, onAlerts, describe as describeAlert } from '../data/alerts.js';
 import { daily, benchmarkFor, indexSeries, compareOptions, defaultBenchmark, earnings, isIndexSym, provider, isDemo, isDemoSym, DataError, settings, saveSettings } from '../data/service.js';
 import { isApp } from '../data/net.js';
@@ -23,7 +24,7 @@ import { $, $$, html, raw, render, esc, money, ICON, toast, ago } from './dom.js
 
 const V = { chart: null, S: null, data: null, bench: null, R: null, seq: 0, tool: null, pending: null, poly: null, drawingsAll: {}, earn: null, earnErr: null, news: null, newsSeen: 0, newsTag: 'all', cmp: [], mkt: null };
 const LINE_DEFS = [['l1', '10-day', '--ma1', '2-week'], ['l2', '21-day EMA', '--ma2', '4-week EMA'], ['l3', '50-day', '--ma3', '10-week'], ['l4', '200-day', '--ma4', '40-week'], ['rs', 'RS line', '--rs'], ['bb', 'Bollinger bands', '--muted']];
-let prefs = { tf: 'D', style: 'candles', lines: { l1: false, l2: false, l3: true, l4: true, rs: true, bb: false }, patMode: 'all', panes: { rsi: false, macd: false }, eps: 'ttm', cmp: {}, rsBench: {} };
+let prefs = { tf: 'D', style: 'candles', lines: { l1: false, l2: false, l3: true, l4: true, rs: true, bb: false }, patMode: 'all', sells: true, panes: { rsi: false, macd: false }, eps: 'ttm', cmp: {}, rsBench: {} };
 // comparison choices and the RS benchmark are remembered per market (US, .DE, .T …)
 const group = sym => isDemoSym(sym) ? 'demo' : splitSym(sym).sfx || 'US';
 
@@ -110,6 +111,7 @@ async function load(sym, force = false) {
     V.data = d; V.bench = bench && bench.sym !== sym ? bench : null; V.sym = sym; V.earn = null; V.earnErr = null; V.news = null; V.cmp = [];
     if (d.name) await rememberName(sym, d.name);
     V.R = PAT.scan(d.bars);
+    V.sells = sellPoints(d.bars, V.R);
     V.mkt = isIndexSym(sym) ? analyseIndex(d.bars) : null;
     const n = d.bars.length - 1;
     await rememberQuote(sym, d.bars[n].close, d.bars[n].close / d.bars[n - 1].close - 1);
@@ -226,7 +228,7 @@ function chips() {
 function chartState() {
   return {
     sym: V.sym, daily: V.data.bars, bench: V.bench ? V.bench.bars : null, R: V.R, tf: prefs.tf, lines: prefs.lines, patMode: prefs.patMode,
-    drawings: drawings(), cur: V.data.currency, pending: V.pending, poly: V.poly, mkt: V.mkt, compare: V.cmp, trades: V.trades || [], plan: V.planLv || null,
+    drawings: drawings(), cur: V.data.currency, pending: V.pending, poly: V.poly, mkt: V.mkt, compare: V.cmp, trades: V.trades || [], plan: V.planLv || null, sells: prefs.sells !== false && !V.mkt ? V.sells || [] : [],
     eps: prefs.eps !== 'off' && V.earn ? { mode: prefs.eps, points: epsPoints(V.earn, prefs.eps) } : null,
   };
 }
@@ -357,18 +359,25 @@ function newsCard(loading) {
   $$('[data-tag]', el).forEach(b => { b.onclick = () => { V.newsTag = b.dataset.tag; newsCard(false); }; });
 }
 
+function sellCell(h) {
+  const x = (V.sells || []).find(s => s.h === h), d = V.data.bars;
+  if (!x) return html`<span class="muted">—</span>`;
+  if (x.sell) return html`<b class="${x.sell.ret >= 0 ? 't-ok' : 't-bad'}">${fDs(d[x.sell.i].time)} · ${SELL_LABEL[x.sell.code]} ${pc(x.sell.ret, 0)}</b><br><span class="muted">${x.sell.why}</span>`;
+  return html`<b class="t-blue">Holding</b> · sell line ${fp(x.open.line)} (${x.open.lineWhy}); targets ${fp(x.open.t20)}–${fp(x.open.t25)}${x.open.holdUntil != null ? html`<br><span class="muted">8-week rule: hold until ${x.open.holdUntil < d.length ? fDs(d[x.open.holdUntil].time) : 'about ' + new Date((d[d.length - 1].time + (x.open.holdUntil - d.length + 1) * 1.4 * 86400) * 1000).toISOString().slice(0, 10)}</span>` : ''}`;
+}
 function histCard() {
   const R = V.R, d = V.data.bars;
   render($('#cHist'), html`
     <div class="card-head"><h2>Base history · every breakout found</h2><span class="muted tiny">${R.hist.length} breakout${R.hist.length === 1 ? '' : 's'}</span></div>
-    ${R.hist.length ? html`<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Pattern</th><th>Base</th><th class="n">Weeks</th><th class="n">Depth</th><th class="n">Buy point</th><th>Breakout</th><th class="n">Volume</th><th class="n">Stage</th><th>What happened</th></tr></thead><tbody>
+    ${R.hist.length ? html`<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Pattern</th><th>Base</th><th class="n">Weeks</th><th class="n">Depth</th><th class="n">Buy point</th><th>Breakout</th><th class="n">Volume</th><th class="n">Stage</th><th>What happened</th><th>Sell signal (book rules)</th></tr></thead><tbody>
       ${[...R.hist].reverse().map((h, i) => html`<tr class="click" data-i="${R.hist.length - 1 - i}">
         <td><span class="tag" style="color:${patColor(h.type)}">${h.faulty ? 'faulty' : h.type}</span> ${h.name.replace(' (faulty)', '')}</td>
         <td>${fDs(d[h.a].time)} – ${fDs(d[h.e].time)}</td><td class="n">${Math.round(h.weeks)}</td><td class="n">−${Math.round(h.depth * 100)}%</td><td class="n">${f2(h.pivot)}</td>
         <td>${fDs(d[h.bo].time)}</td><td class="n ${h.volRatio >= 1.5 ? 't-ok' : 't-warn'}">${h.volRatio ? pc(h.volRatio - 1, 0) : '—'}</td><td class="n">${h.addOn ? 'add-on' : h.stage}</td>
-        <td>${h.failed ? html`<span class="t-bad">Failed ${fDs(d[h.failed].time)}</span>` : h.stopped ? html`<span class="t-bad">Stopped −8%</span> <span class="muted">after ${pc(h.best, 0)}</span>` : h.open ? html`<span class="t-ok">${pc(h.best, 0)} so far</span>` : html`<span class="${h.best >= 0.2 ? 't-ok' : 't-warn'}">${pc(h.best, 0)} best</span>`}</td></tr>`)}
+        <td>${h.failed ? html`<span class="t-bad">Failed ${fDs(d[h.failed].time)}</span>` : h.stopped ? html`<span class="t-bad">Stopped −8%</span> <span class="muted">after ${pc(h.best, 0)}</span>` : h.open ? html`<span class="t-ok">${pc(h.best, 0)} so far</span>` : html`<span class="${h.best >= 0.2 ? 't-ok' : 't-warn'}">${pc(h.best, 0)} best</span>`}</td>
+        <td class="small" style="white-space:normal;min-width:220px">${sellCell(h)}</td></tr>`)}
     </tbody></table></div>
-    <p class="muted tiny" style="margin:0">Result = best gain within 13 weeks of the breakout, unless the 8% stop was hit first. "Failed" = closed 2%+ back under the buy point within 5 weeks. Tap a row to see it on the chart.</p>`
+    <p class="muted tiny" style="margin:0">Result = best gain within 13 weeks of the breakout, unless the 8% stop was hit first. Sell signal = the first sell by the book's rules if bought at the buy point (also marked on the chart). "Failed" = closed 2%+ back under the buy point within 5 weeks. Tap a row to see it on the chart.</p>`
     : html`<p class="muted small" style="margin:0">No breakouts detected in the loaded history.</p>`}`);
   $$('#cHist tr.click').forEach(tr => {
     tr.onclick = () => {
@@ -474,7 +483,10 @@ function openMenu(id) {
       $$('[data-basis]', p).forEach(x => { x.onclick = async () => { settings.epsBasis = x.dataset.basis; await saveSettings(); p.hidden = true; V.earn = null; V.earnErr = null; cards(); loadEarnings(V.sym, V.seq); }; });
     }
     if (id === 'pPat') render(p, html`${[['all', 'Current + all past patterns'], ['cur', 'Current base only'], ['off', 'Hide patterns']].map(([k, l]) => html`<button data-pm="${k}" class="${prefs.patMode === k ? 'on' : ''}">${l}</button>`)}<hr>
-      <div class="pat-legend" style="padding:6px 10px">${Object.entries(PAT_LABEL).map(([k, l]) => html`<span><i style="background:${patColor(k)}"></i>${l}</span>`)}</div>`);
+      <div class="pat-legend" style="padding:6px 10px">${Object.entries(PAT_LABEL).map(([k, l]) => html`<span><i style="background:${patColor(k)}"></i>${l}</span>`)}</div><hr>
+      <label><input type="checkbox" id="pmSells" ${prefs.sells !== false ? raw('checked') : ''}><span>Show sell signals (book rules)</span></label>
+      <p class="muted tiny" style="margin:4px 10px 6px">For each breakout, bought at the buy point: the first sell signal (stop 8% under the buy price, raised stop at +15%, breakeven after +20%, climax top, 70% over the 200-day, heavy-volume 50-day break, profit at +20–25% with the 8-week rule). Open breakouts show the current sell line and targets.</p>`);
+    if (id === 'pPat' && $('#pmSells', p)) $('#pmSells', p).onchange = e => { prefs.sells = e.target.checked; savePrefs(); draw(true); };
     if (id === 'pDraw') render(p, html`${[['trend', 'Trend line'], ['hline', 'Level'], ['zone', 'Zone'], ['cup', 'Cup ◡ (your own base)'], ['note', 'Note']].map(([k, l]) => html`<button data-tool="${k}">${l}</button>`)}<hr><button data-undo>Undo last drawing</button>`);
     $$('[data-line]', p).forEach(x => { x.onchange = () => { prefs.lines[x.dataset.line] = x.checked; savePrefs(); draw(true); }; });
     $$('[data-pane]', p).forEach(x => { x.onchange = () => { prefs.panes[x.dataset.pane] = x.checked; savePrefs(); V.chart.setPanes(prefs.panes); }; });

@@ -1,5 +1,6 @@
 // Stock chart: candles/bars, moving averages, RS line, volume, RSI, MACD, every detected base pattern
 // (one colour per pattern type) and the user's own drawings. Built on lightweight-charts v5.
+import { SELL_LABEL } from '../core/sells.js';
 import { createChart, CandlestickSeries, BarSeries, LineSeries, HistogramSeries, createSeriesMarkers, LineStyle, CrosshairMode } from 'lightweight-charts';
 import { calc, weekly, rsNewHigh, valueAt } from '../core/indicators.js';
 import { smoothLine } from '../core/earnings.js';
@@ -290,7 +291,14 @@ export class StockChart {
       if ((kind === 'cur' || kind === 'bo') && p.pivot) {
         this.addPL({ price: p.pivot, color: piv, lineStyle: LineStyle.Dashed, title: 'Buy point' });
         this.addPL({ price: p.pivot * 1.05, color: piv, lineStyle: LineStyle.Dotted, title: '+5%' });
-        if (kind === 'bo') this.addPL({ price: p.pivot * 0.92, color: bad, lineStyle: LineStyle.Dotted, title: '−8% stop' });
+        if (kind === 'bo') {
+          const so = (S.sells || []).find(x => x.h === p);
+          if (so && so.open) { // the position from this breakout is still open: its current sell line and targets
+            this.addPL({ price: so.open.line, color: bad, lineStyle: LineStyle.Dotted, title: so.open.line >= p.pivot ? 'Sell line (breakeven)' : so.open.line > p.pivot * 0.95 ? 'Sell line (raised)' : 'Sell line −8%' });
+            this.addPL({ price: so.open.t20, color: tok('--up'), lineStyle: LineStyle.Dotted, title: '+20% target' });
+            this.addPL({ price: so.open.t25, color: tok('--up'), lineStyle: LineStyle.Dotted, title: '+25%' });
+          } else if (!so) this.addPL({ price: p.pivot * 0.92, color: bad, lineStyle: LineStyle.Dotted, title: '−8% stop' });
+        }
       }
       const lbl = hist ? PAT_SHORT[p.type] + (p.faulty ? ' (faulty)' : '') + ' ' + outcome(p)
         : `${p.name}${p.weeks ? ' · ' + Math.round(p.weeks) + ' wk' : ''}${p.depth != null ? ' · −' + Math.round(p.depth * 100) + '%' : ''}`;
@@ -314,6 +322,15 @@ export class StockChart {
         this.addPL({ price: pv, color: col, lineStyle: LineStyle.Dashed, title: 'Your buy point' });
         markers.push({ time: this.snapT(dr.pts[0][0]), position: 'aboveBar', shape: 'arrowDown', color: col, text: dr.label || 'Your cup' });
       } else if (dr.type === 'note') markers.push({ time: this.snapT(dr.t1), position: 'aboveBar', shape: 'arrowDown', color: col, text: dr.label || 'Note' });
+    }
+    // sell signals by the book's rules for the breakouts on the chart
+    const shown = new Set(patternsToShow(S.R, d, S.patMode).map(x => x.p));
+    for (const x of S.sells || []) {
+      if (!x.sell || !shown.has(x.h) || x.sell.i >= d.length) continue;
+      const tm = this.snapT(d[x.sell.i].time), txt = SELL_LABEL[x.sell.code] + ' ' + (x.sell.ret >= 0 ? '+' : '') + Math.round(x.sell.ret * 100) + '%';
+      const same = markers.find(m => m.sell && m.time === tm); // two breakouts selling on the same day: one marker
+      if (same) { if (!same.text.includes(SELL_LABEL[x.sell.code])) same.text += ' / ' + txt; else same.text += ' / ' + txt.split(' ').pop(); }
+      else markers.push({ sell: true, time: tm, position: 'aboveBar', shape: 'arrowDown', color: x.sell.ret >= 0 ? tok('--orange') : bad, text: 'Sell: ' + txt });
     }
     // buying plan levels and the trades in the journal
     if (S.plan) {

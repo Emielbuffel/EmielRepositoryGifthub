@@ -83,6 +83,7 @@ export function initLearn(el) {
           <li class="warn">Once you are 15% up, raise your sell line to just below the buy point. A stock that rose close to 20% should never be allowed to turn into a loss.</li>
           <li class="warn">Climax tops: a fast run for 2–3 weeks, the biggest one-day gain since the breakout, a gap up while extended, the heaviest volume day, or 70–100% above the 200-day line.</li>
           <li class="warn">Also sell when earnings growth slows sharply for two quarters, the RS rank drops below 70, the 200-day line turns down, or a breakout comes from a 3rd or 4th-stage or wide-and-loose base.</li>
+          <li class="warn">On the chart, <b>Sell:</b> markers show where these rules would have sold each breakout (bought at the buy point), with the reason and the result; the base history lists them. An open breakout shows its current sell line and the +20%/+25% targets.</li>
           <li class="warn">Give a stock that does nothing 13 weeks; sell your worst performer first; carry no loss for 6 months.</li>
         </ul>
       </section>
