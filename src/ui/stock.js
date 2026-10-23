@@ -61,6 +61,7 @@ export async function initStock(el) {
       </div>
       <div class="chart-wrap" id="sChartWrap"><div class="chart-legend" id="sLegend"></div><div id="sChart" style="position:absolute;inset:0"></div></div>
       <div class="chart-hint" id="sHint" hidden></div>
+      <div class="small t-warn" id="sNote" hidden></div>
       <div class="pat-strip" id="sPats" aria-label="Patterns on this chart"></div>
     </section>
     <section class="card" id="cMkt" hidden></section>
@@ -238,10 +239,26 @@ function chartState() {
 function draw(keep) {
   if (!V.data) return;
   V.chart.update(chartState(), keep);
+  lineNotes();
   $$('[data-tf]').forEach(b => b.classList.toggle('on', b.dataset.tf === prefs.tf));
   patStrip();
 }
 const savePrefs = () => store.set('chartPrefs', prefs);
+
+/* says which lines are missing or shorter than the chart, and why */
+function lineNotes() {
+  const el = $('#sNote'); if (!el || !V.data || V.mkt || isDemoSym(V.sym)) { if (el) el.hidden = true; return; }
+  const first = V.data.bars[0].time, out = [], web = !isApp();
+  const why = web ? ' In the web version only the built-in data is available; the desktop app loads it from free feeds.' : '';
+  if (prefs.eps !== 'off' && V.earnErr) out.push(`EPS line: no earnings data for ${V.sym}.${why || ' The free feeds did not answer: try Refresh later.'}`);
+  else if (prefs.eps !== 'off' && V.earn && epsPoints(V.earn, prefs.eps).length < 2) out.push(`EPS line: not enough reported quarters for ${V.sym} yet${prefs.eps === 'ttm' ? ' (the 4-quarter line needs a year of reports; try "Quarterly")' : ''}.`);
+  const ids = (prefs.cmp[group(V.sym)] || []).filter(id => id !== '__none');
+  if (ids.length > V.cmp.length) out.push(`${ids.length - V.cmp.length} comparison line${ids.length - V.cmp.length > 1 ? 's are' : ' is'} not available.${why}`);
+  for (const c of V.cmp) if (c.bars[0].time > first + 30 * 86400) out.push(`${shortName(c.name)} line starts on ${fD(c.bars[0].time)}.${why}`);
+  if (prefs.lines.rs && !V.bench) out.push('RS line: no benchmark data.' + why);
+  else if (prefs.lines.rs && V.bench && V.bench.bars[0].time > first + 30 * 86400) out.push(`RS line starts on ${fD(V.bench.bars[0].time)} (benchmark data).`);
+  el.hidden = !out.length; el.textContent = out.join(' ');
+}
 
 /* ---------- patterns strip: every detected pattern, tap to zoom ---------- */
 function patStrip() {
