@@ -1,7 +1,7 @@
 // Stock chart: candles/bars, moving averages, RS line, volume, RSI, MACD, every detected base pattern
 // (one colour per pattern type) and the user's own drawings. Built on lightweight-charts v5.
 import { SELL_LABEL } from '../core/sells.js';
-import { createChart, CandlestickSeries, BarSeries, LineSeries, HistogramSeries, createSeriesMarkers, LineStyle, CrosshairMode } from 'lightweight-charts';
+import { createChart, CandlestickSeries, BarSeries, LineSeries, HistogramSeries, createSeriesMarkers, LineStyle, CrosshairMode, PriceScaleMode } from 'lightweight-charts';
 import { calc, weekly, rsNewHigh, valueAt } from '../core/indicators.js';
 import { smoothLine } from '../core/earnings.js';
 import { lineVal, cupPivot, fD, f2, pc, fmtVol } from '../core/analysis.js';
@@ -67,7 +67,7 @@ export class StockChart {
     this.ribbon = c.addSeries(HistogramSeries, { priceScaleId: 'ribbon', lastValueVisible: false, priceLineVisible: false, base: 0 }, 0);
     c.priceScale('ribbon').applyOptions({ scaleMargins: { top: 0.975, bottom: 0 }, visible: false });
     this.cmpS = [];
-    c.timeScale().subscribeVisibleLogicalRangeChange(() => { if (this.cmpS.length && !this.rebasePending) { this.rebasePending = true; requestAnimationFrame(() => { this.rebasePending = false; this.rebase(); this.legend(this.lastT ?? null); }); } });
+    c.timeScale().subscribeVisibleLogicalRangeChange(() => { this.applyMarkers(); if (this.cmpS.length && !this.rebasePending) { this.rebasePending = true; requestAnimationFrame(() => { this.rebasePending = false; this.rebase(); this.legend(this.lastT ?? null); }); } });
     const volFmt = { type: 'custom', formatter: fmtVol, minMove: 1 };
     this.volS = c.addSeries(HistogramSeries, { priceFormat: volFmt, lastValueVisible: false, priceLineVisible: false }, 1);
     this.vAvgS = L({ priceFormat: volFmt }, 1);
@@ -164,6 +164,8 @@ export class StockChart {
     this.ln.bbu.setData(ser(K.bbu)); this.ln.bbl.setData(ser(K.bbl)); [this.ln.bbu, this.ln.bbl].forEach(s => s.applyOptions({ visible: !!S.lines.bb }));
     this.rsS.setData(ser(K.rs)); this.rsS.applyOptions({ visible: !!S.lines.rs });
     this.rsMarkers.setMarkers(rsNewHigh(K.rs, S.tf === 'D' ? 252 : 52) ? [{ time: last, position: 'inBar', shape: 'circle', color: tok('--rs'), text: 'RS high' }] : []);
+    // logarithmic price scale (the book's choice): equal distances are equal percentage moves, so long histories stay readable
+    this.chart.priceScale('right').applyOptions({ mode: S.log ? PriceScaleMode.Logarithmic : PriceScaleMode.Normal });
     this.drawEps(S);
     this.drawCompare(S);
     this.ribbon.setData(S.mkt && S.tf === 'D' ? b.map((x, i) => S.mkt.states[i] ? { time: x.time, value: 1, color: tok(STATE_COLOR[S.mkt.states[i]]) + 'CC' } : { time: x.time }) : []);
@@ -217,8 +219,9 @@ export class StockChart {
     const byT = new Map(this.bars.map(x => [S.tf === 'D' ? x.time : (x.last || x.time), x.time]));
     this.epsS.setData(line.map(p => ({ time: byT.get(p.time), value: p.value })).filter(p => p.time != null));
     const first = this.bars[0].time, last = this.bars[this.bars.length - 1].time;
+    this.epsDot = pts.length > 40 ? 0.2 : pts.length > 20 ? 0.35 : 0.55; // many quarters on screen: smaller dots
     this.epsMarkers.setMarkers(pts.filter(p => p.time >= first && p.time <= (S.tf === 'D' ? last : last + 7 * 86400)).map(p => ({
-      time: this.snapT(p.time), position: 'inBar', shape: 'circle', size: 0.55,
+      time: this.snapT(p.time), position: 'inBar', shape: 'circle', size: this.epsDot,
       color: p.yoy == null ? tok('--eps') : p.yoy >= 0.2 ? tok('--up') : p.yoy >= 0 ? tok('--warn') : tok('--down'),
     })).sort((a, b) => a.time - b.time));
   }
@@ -228,7 +231,7 @@ export class StockChart {
     this.cmpS.forEach(x => { try { this.chart.removeSeries(x.s); } catch (e) { /* gone */ } });
     this.cmpS = (S.compare || []).filter(c => c.bars && c.bars.length > 20).map((c, i) => ({
       ...c, color: tok(CMP_COLORS[i % 3]),
-      s: this.chart.addSeries(LineSeries, { color: fade(tok(CMP_COLORS[i % 3]), 0.85), lineWidth: 2, lineStyle: LineStyle.Dotted, lastValueVisible: false, priceLineVisible: false, crosshairMarkerVisible: false, title: c.short || '' }, 0),
+      s: this.chart.addSeries(LineSeries, { color: fade(tok(CMP_COLORS[i % 3]), 0.85), lineWidth: 2, lineStyle: LineStyle.Solid, lastValueVisible: false, priceLineVisible: false, crosshairMarkerVisible: false, title: c.short || '' }, 0),
     }));
     this.cmpPerf = null;
     if (this.cmpS.length) requestAnimationFrame(() => { this.rebase(); this.legend(null); });
@@ -240,11 +243,13 @@ export class StockChart {
     const tAt = x => this.S.tf === 'D' ? x.time : (x.last || x.time);
     this.cmpPerf = [];
     for (const c of this.cmpS) {
-      const v0 = valueAt(c.bars, tAt(b[i0])); if (!v0) { c.s.setData([]); continue; }
-      const k = b[i0].close / v0;
+      // start at the first visible bar, or at the index's first day when the view starts before its data
+      let j0 = i0; while (j0 < i1 && tAt(b[j0]) < c.bars[0].time) j0++;
+      const v0 = valueAt(c.bars, tAt(b[j0])); if (!v0) { c.s.setData([]); continue; }
+      const k = b[j0].close / v0;
       c.s.setData(b.map(x => { const v = valueAt(c.bars, tAt(x)); return v == null || x.time < c.bars[0].time ? { time: x.time } : { time: x.time, value: v * k }; }));
       const v1 = valueAt(c.bars, tAt(b[i1]));
-      this.cmpPerf.push({ name: c.short || c.name, color: c.color, idx: v1 / v0 - 1, stock: b[i1].close / b[i0].close - 1 });
+      this.cmpPerf.push({ name: c.short || c.name, color: c.color, idx: v1 / v0 - 1, stock: b[i1].close / b[j0].close - 1 });
     }
   }
 
@@ -302,8 +307,8 @@ export class StockChart {
       }
       const lbl = hist ? PAT_SHORT[p.type] + (p.faulty ? ' (faulty)' : '') + ' ' + outcome(p)
         : `${p.name}${p.weeks ? ' · ' + Math.round(p.weeks) + ' wk' : ''}${p.depth != null ? ' · −' + Math.round(p.depth * 100) + '%' : ''}`;
-      markers.push({ time: this.snapT(T(p.a)), position: 'aboveBar', shape: 'arrowDown', color, text: lbl, size: hist ? 0.6 : 1 });
-      if (p.bo != null) markers.push({ time: this.snapT(T(p.bo)), position: 'belowBar', shape: 'arrowUp', color: p.failed ? bad : p.volRatio >= 1.5 ? tok('--up') : tok('--muted'), text: p.failed ? 'failed' : 'BO' });
+      markers.push({ minor: hist, time: this.snapT(T(p.a)), position: 'aboveBar', shape: 'arrowDown', color, text: lbl, size: hist ? 0.6 : 1 });
+      if (p.bo != null) markers.push({ minor: hist, time: this.snapT(T(p.bo)), position: 'belowBar', shape: 'arrowUp', color: p.failed ? bad : p.volRatio >= 1.5 ? tok('--up') : tok('--muted'), text: p.failed ? 'failed' : 'BO' });
     }
     // market index: distribution days and follow-through days
     if (S.mkt) {
@@ -330,7 +335,7 @@ export class StockChart {
       const tm = this.snapT(d[x.sell.i].time), txt = SELL_LABEL[x.sell.code] + ' ' + (x.sell.ret >= 0 ? '+' : '') + Math.round(x.sell.ret * 100) + '%';
       const same = markers.find(m => m.sell && m.time === tm); // two breakouts selling on the same day: one marker
       if (same) { if (!same.text.includes(SELL_LABEL[x.sell.code])) same.text += ' / ' + txt; else same.text += ' / ' + txt.split(' ').pop(); }
-      else markers.push({ sell: true, time: tm, position: 'aboveBar', shape: 'arrowDown', color: x.sell.ret >= 0 ? tok('--orange') : bad, text: 'Sell: ' + txt });
+      else markers.push({ sell: true, minor: true, time: tm, position: 'aboveBar', shape: 'arrowDown', color: x.sell.ret >= 0 ? tok('--orange') : bad, text: 'Sell: ' + txt });
     }
     // buying plan levels and the trades in the journal
     if (S.plan) {
@@ -350,7 +355,16 @@ export class StockChart {
       S.poly.forEach((q, k) => markers.push({ time: this.snapT(q[0]), position: 'inBar', shape: 'circle', color: col, text: String(k + 1) }));
     }
     markers.sort((x, y) => x.time - y.time);
-    this.markers.setMarkers(markers);
+    this.allMarkers = markers; this.wideView = null; this.applyMarkers();
+  }
+
+  /** Zoomed far out (400+ bars on screen): past patterns and sell signals keep their arrows but drop their text. */
+  applyMarkers() {
+    if (!this.allMarkers) return;
+    const r = this.chart.timeScale().getVisibleLogicalRange(), wide = !!r && r.to - r.from > 400;
+    if (wide === this.wideView) return;
+    this.wideView = wide;
+    this.markers.setMarkers(this.allMarkers.map(({ minor, sell, ...m }) => wide && minor ? { ...m, text: '' } : m));
   }
 
   destroy() { this.mq.removeEventListener('change', this.onTheme); this.mo.disconnect(); this.chart.remove(); }

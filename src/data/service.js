@@ -81,16 +81,18 @@ export const defaultBenchmark = sym => compareOptions(sym)[0].id;
  * Daily bars for an index key, sector ('S:XLK') or plain ticker. Tries the real index on the user's plan,
  * then a US-listed ETF that tracks it. Returns {id, name, bars, sym, proxy, note}.
  */
-export async function indexSeries(id, demo = isDemo()) {
+/** long: load the whole history (the chart in the desktop app), so comparisons and the RS line cover a long chart. */
+export async function indexSeries(id, demo = isDemo(), { long = false } = {}) {
+  const o = { long };
   if (demo) { const s = DEMO_IDX[id] || 'DEMO-500'; const d = await daily(s); return { id, name: d.name, bars: d.bars, sym: s, proxy: false }; }
-  if (id.startsWith('S:')) { const t = id.slice(2), d = await daily(t); return { id, name: SECTORS[t] + ' ETF (' + t + ')', bars: d.bars, sym: t, proxy: false }; }
+  if (id.startsWith('S:')) { const t = id.slice(2), d = await daily(t, o); return { id, name: SECTORS[t] + ' ETF (' + t + ')', bars: d.bars, sym: t, proxy: false }; }
   const ix = INDEXES[id];
-  if (!ix) { const d = await daily(id); return { id, name: d.name || id, bars: d.bars, sym: id, proxy: false }; }
+  if (!ix) { const d = await daily(id, o); return { id, name: d.name || id, bars: d.bars, sym: id, proxy: false }; }
   const P = provider(); let err = null;
   const real = P.indexSym && P.indexSym(id);
-  if (real) { try { const d = await daily(real); return { id, name: ix.name, bars: d.bars, sym: real, proxy: false }; } catch (e) { err = e; } }
+  if (real) { try { const d = await daily(real, o); return { id, name: ix.name, bars: d.bars, sym: real, proxy: false }; } catch (e) { err = e; } }
   if (ix.etf) {
-    const d = await daily(ix.etf);
+    const d = await daily(ix.etf, o);
     const usd = !['GSPC', 'IXIC', 'NDX', 'DJI', 'RUT', 'SOX', 'WORLD'].includes(id);
     return { id, name: `${ix.name} (${ix.etf} ETF${usd ? ', in USD' : ''})`, bars: d.bars, sym: ix.etf, proxy: true };
   }
@@ -98,10 +100,10 @@ export async function indexSeries(id, demo = isDemo()) {
 }
 
 /** Benchmark for the RS line: the chosen index, falling back to the S&P 500. */
-export async function benchmarkFor(sym, id) {
+export async function benchmarkFor(sym, id, opts = {}) {
   const demo = isDemo() || isDemoSym(sym);
-  try { return await indexSeries(id || defaultBenchmark(sym), demo); }
-  catch (e) { return indexSeries('GSPC', demo); }
+  try { return await indexSeries(id || defaultBenchmark(sym), demo, opts); }
+  catch (e) { return indexSeries('GSPC', demo, opts); }
 }
 
 /* ---------- market indexes ---------- */

@@ -24,7 +24,7 @@ import { $, $$, html, raw, render, esc, money, ICON, toast, ago } from './dom.js
 
 const V = { chart: null, S: null, data: null, bench: null, R: null, seq: 0, tool: null, pending: null, poly: null, drawingsAll: {}, earn: null, earnErr: null, news: null, newsSeen: 0, newsTag: 'all', cmp: [], mkt: null };
 const LINE_DEFS = [['l1', '10-day', '--ma1', '2-week'], ['l2', '21-day EMA', '--ma2', '4-week EMA'], ['l3', '50-day', '--ma3', '10-week'], ['l4', '200-day', '--ma4', '40-week'], ['rs', 'RS line', '--rs'], ['bb', 'Bollinger bands', '--muted']];
-let prefs = { tf: 'D', style: 'candles', lines: { l1: false, l2: false, l3: true, l4: true, rs: true, bb: false }, patMode: 'all', sells: true, panes: { rsi: false, macd: false }, eps: 'ttm', cmp: {}, rsBench: {} };
+let prefs = { tf: 'D', style: 'candles', lines: { l1: false, l2: false, l3: true, l4: true, rs: true, bb: false }, patMode: 'all', sells: true, log: true, panes: { rsi: false, macd: false }, eps: 'ttm', cmp: {}, rsBench: {} };
 // comparison choices and the RS benchmark are remembered per market (US, .DE, .T …)
 const group = sym => isDemoSym(sym) ? 'demo' : splitSym(sym).sfx || 'US';
 
@@ -105,7 +105,7 @@ async function load(sym, force = false) {
   chips();
   try {
     const g = group(sym);
-    const [d, bench] = await Promise.all([daily(sym, { force, long: true }), benchmarkFor(sym, prefs.rsBench[g]).catch(() => null)]);
+    const [d, bench] = await Promise.all([daily(sym, { force, long: true }), benchmarkFor(sym, prefs.rsBench[g], { long: true }).catch(() => null)]);
     if (seq !== V.seq) return;
     // an index has no RS line against itself
     V.data = d; V.bench = bench && bench.sym !== sym ? bench : null; V.sym = sym; V.earn = null; V.earnErr = null; V.news = null; V.cmp = [];
@@ -139,7 +139,7 @@ async function load(sym, force = false) {
 
 async function loadCompare(sym, seq) {
   const ids = (prefs.cmp[group(sym)] || []).filter(id => id !== '__none');
-  const res = await Promise.all(ids.map(id => indexSeries(id, isDemo() || isDemoSym(sym)).then(x => ({ ...x, short: shortName(x.name) })).catch(() => null)));
+  const res = await Promise.all(ids.map(id => indexSeries(id, isDemo() || isDemoSym(sym), { long: true }).then(x => ({ ...x, short: shortName(x.name) })).catch(() => null)));
   if (seq !== V.seq) return;
   V.cmp = res.filter(x => x && x.sym !== sym).map(x => ({ ...x, bars: x.bars.map(b => ({ time: b.time, close: b.close })) }));
   if (ids.length && V.cmp.length < ids.length) toast('Some comparison data is not available on your plan.');
@@ -227,7 +227,7 @@ function chips() {
 
 function chartState() {
   return {
-    sym: V.sym, daily: V.data.bars, bench: V.bench ? V.bench.bars : null, R: V.R, tf: prefs.tf, lines: prefs.lines, patMode: prefs.patMode,
+    sym: V.sym, daily: V.data.bars, bench: V.bench ? V.bench.bars : null, R: V.R, tf: prefs.tf, lines: prefs.lines, patMode: prefs.patMode, log: prefs.log !== false,
     drawings: drawings(), cur: V.data.currency, pending: V.pending, poly: V.poly, mkt: V.mkt, compare: V.cmp, trades: V.trades || [], plan: V.planLv || null, sells: prefs.sells !== false && !V.mkt ? V.sells || [] : [],
     eps: prefs.eps !== 'off' && V.earn ? { mode: prefs.eps, points: epsPoints(V.earn, prefs.eps) } : null,
   };
@@ -458,7 +458,9 @@ function openMenu(id) {
   if (!p.hidden) {
     if (id === 'pLines') render(p, html`${LINE_DEFS.map(([k, l, c, w]) => html`<label><input type="checkbox" data-line="${k}" ${prefs.lines[k] ? raw('checked') : ''}><span class="sw" style="background:var(${c})"></span>${prefs.tf === 'W' && w ? w : l}</label>`)}<hr>
       <label><input type="checkbox" data-pane="rsi" ${prefs.panes.rsi ? raw('checked') : ''}>RSI pane</label><label><input type="checkbox" data-pane="macd" ${prefs.panes.macd ? raw('checked') : ''}>MACD pane</label><hr>
-      <button data-style="candles" class="${prefs.style === 'candles' ? 'on' : ''}">Candles</button><button data-style="bars" class="${prefs.style === 'bars' ? 'on' : ''}">OHLC bars</button>`);
+      <button data-style="candles" class="${prefs.style === 'candles' ? 'on' : ''}">Candles</button><button data-style="bars" class="${prefs.style === 'bars' ? 'on' : ''}">OHLC bars</button><hr>
+      <label><input type="checkbox" id="lnLog" ${prefs.log !== false ? raw('checked') : ''}>Logarithmic price scale (the book's choice: equal steps are equal % moves)</label>`);
+    if (id === 'pLines' && $('#lnLog', p)) $('#lnLog', p).onchange = e => { prefs.log = e.target.checked; savePrefs(); draw(true); };
     if (id === 'pCmp') {
       const opts = compareOptions(V.sym), g = group(V.sym), sel = prefs.cmp[g] || [], rs = prefs.rsBench[g] || defaultBenchmark(V.sym);
       const custom = sel.filter(x => !opts.some(o => o.id === x));
@@ -473,7 +475,7 @@ function openMenu(id) {
       const setSel = list => { prefs.cmp[g] = list.slice(0, 3); savePrefs(); loadCompare(V.sym, V.seq); openMenu('pCmp'); openMenu('pCmp'); };
       $$('[data-cmp]', p).forEach(x => { x.onchange = () => { const l = (prefs.cmp[g] || []).filter(v => v !== x.dataset.cmp); if (x.checked) { if (l.length >= 3) { toast('Up to three comparisons at a time.'); x.checked = false; return; } l.push(x.dataset.cmp); } setSel(l); }; });
       $('#cmpForm', p).onsubmit = e => { e.preventDefault(); const t = $('#cmpIn', p).value.toUpperCase().trim().replace(/[^A-Z0-9.\-^]/g, ''); if (!t) return; const l = (prefs.cmp[g] || []).filter(v => v !== t); if (l.length >= 3) { toast('Up to three comparisons at a time.'); return; } setSel([...l, t]); };
-      $('#rsSel', p).onchange = async () => { prefs.rsBench[g] = $('#rsSel', p).value; savePrefs(); V.bench = await benchmarkFor(V.sym, prefs.rsBench[g]).catch(() => V.bench); draw(true); cards(); toast('RS line now measured against ' + (V.bench ? V.bench.name : 'the index') + '.'); };
+      $('#rsSel', p).onchange = async () => { prefs.rsBench[g] = $('#rsSel', p).value; savePrefs(); V.bench = await benchmarkFor(V.sym, prefs.rsBench[g], { long: true }).catch(() => V.bench); draw(true); cards(); toast('RS line now measured against ' + (V.bench ? V.bench.name : 'the index') + '.'); };
     }
     if (id === 'pEps') {
       render(p, html`${[['ttm', '4-quarter EPS (trailing 12 months)'], ['q', 'Quarterly EPS'], ['off', 'Hide EPS line']].map(([k, l]) => html`<button data-eps="${k}" class="${prefs.eps === k ? 'on' : ''}">${l}</button>`)}
