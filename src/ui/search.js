@@ -17,15 +17,18 @@ export function openSearch() {
     $$('button', res).forEach(b => { b.onclick = () => pick(+b.dataset.i); });
   };
   const pick = i => { const x = items[i]; if (!x) return; sh.close(); openStock(x.symbol, x.name); };
-  const own = t => /^[A-Z0-9^][A-Z0-9.\-]{0,14}$/.test(t) ? [{ symbol: t, name: 'Open this ticker', exchange: '' }] : [];
+  // only offer "open this ticker" for text that looks like a ticker (AAPL, ASML.AS, 7203.T, ^GSPC), not a company name
+  const own = t => /^\^?[A-Z0-9]{1,6}([.\-=][A-Z0-9]{1,4})?$/.test(t) ? [{ symbol: t, name: 'Open this ticker', exchange: '' }] : [];
+  let pending = false;
   const run = async term => {
-    const s = ++seq, T = term.toUpperCase().replace(/\s+/g, '');
+    const s = ++seq, T = term.toUpperCase().replace(/\s+/g, ''); timer = null; pending = true;
     try {
       const r = await provider().search(term, settings.keys[settings.provider]);
       if (s !== seq) return;
       const list = r.slice(0, 12); if (!isDemo() && !list.some(x => x.symbol === T)) list.push(...own(T));
       show(list, list.length ? '' : 'No matches.');
     } catch (e) { if (s === seq) show(isDemo() ? [] : own(T), e.message); }
+    finally { if (s === seq) pending = false; }
   };
   inp.oninput = () => {
     clearTimeout(timer); const t = inp.value.trim();
@@ -34,7 +37,12 @@ export function openSearch() {
   };
   inp.onkeydown = e => {
     if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); if (!items.length) return; act = (act + (e.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length; $$('button', res).forEach((b, i) => b.classList.toggle('act', i === act)); }
-    else if (e.key === 'Enter') { e.preventDefault(); if (items.length) pick(act); else if (inp.value.trim() && !isDemo()) { sh.close(); openStock(inp.value.trim()); } }
+    else if (e.key === 'Enter') {
+      e.preventDefault();
+      // Enter before the results arrived: search now and take the best match
+      if (timer || pending) { clearTimeout(timer); timer = null; run(inp.value.trim()).then(() => { if (items.length) pick(0); else if (inp.value.trim() && !isDemo()) { sh.close(); openStock(inp.value.trim()); } }); return; }
+      if (items.length) pick(act); else if (inp.value.trim() && !isDemo()) { sh.close(); openStock(inp.value.trim()); }
+    }
   };
   inp.oninput();
   setTimeout(() => inp.focus(), 60);

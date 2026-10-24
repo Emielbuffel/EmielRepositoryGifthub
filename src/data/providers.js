@@ -1,6 +1,7 @@
 // Market data providers. The user brings their own API key (stored on the device only).
 // Tickers inside the app use Yahoo-style suffixes (AAPL, ASML.AS, 7203.T, 005930.KS); each provider maps them.
 // Endpoints follow each provider's public documentation; check them if a provider changes its API.
+import { secCompanies } from './sec.js';
 import { httpGet, isApp } from './net.js';
 import { demoBars, demoEarnings, demoNews, DEMO, DEMO_INDEXES, DEMO_BENCH } from './demo.js';
 
@@ -344,7 +345,15 @@ const FREE = {
     const rows = [...m.stocks.map(x => [x.s, x.n, '', x.x]), ...m.directory.filter(r => !have.has(r[0])), ...U.items.filter(r => !known.has(r[0])).map(r => [r[0], r[1], r[4], r[2]])];
     const local = rows.map(r => [score(r[0], r[1]), r]).filter(x => x[0] > 0).sort((a, b) => b[0] - a[0] || (have.has(b[1][0]) - have.has(a[1][0]))).slice(0, 10)
       .map(([, r]) => ({ symbol: r[0], name: r[1], exchange: have.has(r[0]) ? 'Built-in data' : (r[3] || '') + (isApp() ? '' : ' · loads in the desktop app'), isin: r[2] }));
-    if (!isApp() || local.length >= 8) return local;
+    if (!isApp()) return local;
+    // every company listed in the US, from the SEC's list (cached a week): finds names outside the built-in lists
+    try {
+      const seen = new Set(local.map(x => x.symbol));
+      const sec = (await secCompanies('BasePatternDesk/1.0 personal research')).filter(x => /^(Nasdaq|NYSE)/i.test(x.x) && !seen.has(x.s));
+      const hits = sec.map(x => [score(x.s, x.n), x]).filter(x => x[0] >= 35).sort((a, b) => b[0] - a[0]).slice(0, 8).map(([, x]) => ({ symbol: x.s, name: x.n, exchange: x.x }));
+      local.push(...hits); local.sort((a, b) => score(b.symbol, b.name) - score(a.symbol, a.name));
+    } catch (e) { /* SEC list unavailable */ }
+    if (local.length >= 8) return local.slice(0, 14);
     try {
       const d = await getJSON(`https://query2.finance.yahoo.com/v1/finance/search?${new URLSearchParams({ q, quotesCount: 10, newsCount: 0 })}`);
       const extra = (d.quotes || []).filter(x => x.symbol && /EQUITY|ETF|INDEX/.test(x.quoteType || '') && !local.some(l => l.symbol === x.symbol)).map(x => ({ symbol: x.symbol, name: x.longname || x.shortname, exchange: x.exchDisp || x.exchange }));

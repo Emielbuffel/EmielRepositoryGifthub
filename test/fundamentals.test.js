@@ -36,3 +36,19 @@ test('Yahoo time series and year-over-year growth', () => {
   assert.equal(r.cur, 'EUR'); assert.equal(r.rows.length, 5); assert.equal(r.rows[4].fcf, 13);
   assert.ok(Math.abs(yoy(r.rows, 'rev') - 0.3) < 1e-12);
 });
+
+test('SEC IFRS filer (20-F): yearly figures', async () => {
+  const { parseSecFundamentals } = await import('../src/core/fundamentals.js');
+  const Y = (y, v) => ({ start: `${y}-01-01`, end: `${y}-12-31`, val: v, form: '20-F', filed: `${y + 1}-04-10` });
+  const doc = { facts: { 'ifrs-full': { Revenue: { units: { TWD: [Y(2023, 2.16e12), Y(2024, 2.89e12)] } }, ProfitLossAttributableToOwnersOfParent: { units: { TWD: [Y(2023, 8.4e11), Y(2024, 1.17e12)] } }, CashAndCashEquivalents: { units: { TWD: [{ end: '2024-12-31', val: 2.1e12, form: '20-F', filed: '2025-04-10' }] } } } } };
+  const r = parseSecFundamentals(doc);
+  assert.equal(r.basis, 'IFRS'); assert.equal(r.cur, 'TWD'); assert.equal(r.rows.length, 0);
+  assert.deepEqual(r.annual.map(x => x.end), ['2023-12-31', '2024-12-31']); assert.equal(r.annual[1].cash, 2.1e12);
+});
+
+test('Yahoo profile and the funds item', async () => {
+  const { parseYahooProfile } = await import('../src/data/company.js').catch(() => ({}));
+  if (!parseYahooProfile) return; // browser-only imports
+  const p = parseYahooProfile({ quoteSummary: { result: [{ assetProfile: { sector: 'Consumer Cyclical', industry: 'Furnishings' }, defaultKeyStatistics: { heldPercentInstitutions: { raw: 0.62 }, floatShares: { raw: 9e7 } }, financialData: { returnOnEquity: { raw: 0.21 } }, price: { longName: 'SharkNinja, Inc.', currency: 'USD' } }] } });
+  assert.equal(p.name, 'SharkNinja, Inc.'); assert.equal(p.inst, 0.62); assert.equal(p.roe, 0.21);
+});

@@ -74,26 +74,48 @@ function instants(fs) {
   return m;
 }
 
+// foreign companies listed in the US (20-F filers such as TSMC or Alibaba) report under IFRS
+export const IFRS_TAGS = {
+  rev: ['Revenue', 'RevenueFromContractsWithCustomers'], gross: ['GrossProfit'], op: ['ProfitLossFromOperatingActivities'],
+  net: ['ProfitLossAttributableToOwnersOfParent', 'ProfitLoss'], eps: ['DilutedEarningsLossPerShare', 'BasicEarningsLossPerShare'],
+  ocf: ['CashFlowsFromUsedInOperatingActivities'], capex: ['PurchaseOfPropertyPlantAndEquipmentClassifiedAsInvestingActivities', 'PurchaseOfPropertyPlantAndEquipment'],
+  ltd: ['Borrowings'], ltdNon: ['NoncurrentPortionOfNoncurrentBorrowings', 'LongtermBorrowings'], ltdCur: ['CurrentPortionOfLongtermBorrowings', 'CurrentBorrowings', 'ShorttermBorrowings'], short: [],
+  cash: ['CashAndCashEquivalents'], sti: ['CurrentFinancialAssetsAtFairValueThroughProfitOrLoss', 'ShorttermDepositsNotClassifiedAsCashEquivalents'], equity: ['EquityAttributableToOwnersOfParent', 'Equity'],
+};
+
+/** Full-year values per year end (duration facts of about a year), latest filing wins. */
+function annualize(fs) {
+  const m = new Map();
+  for (const f of fs) { if (!f.start) continue; const d = days(f.start, f.end); if (d < 340 || d > 380) continue; const p = m.get(f.end); if (!p || f.filed >= p.last) m.set(f.end, { end: f.end, v: f.val, filed: p ? p.filed : f.filed, last: f.filed }); }
+  return m;
+}
+
+/** {cur, rows (quarters), annual (years)} from EDGAR company facts, US GAAP or IFRS. */
 export function parseSecFundamentals(doc) {
-  const g = (doc && doc.facts && doc.facts['us-gaap']) || {};
+  const F = (doc && doc.facts) || {}, gaap = F['us-gaap'] || {}, ifrs = F['ifrs-full'] || {};
+  const useIfrs = !SEC_TAGS.rev.some(t => gaap[t]) && !SEC_TAGS.net.some(t => gaap[t]) && Object.keys(ifrs).length;
+  const g = useIfrs ? ifrs : gaap, TAGS = useIfrs ? IFRS_TAGS : SEC_TAGS;
   const money = /^[A-Z]{3}$/, perShare = /^[A-Z]{3}\/shares$/;
-  const cur = (() => { for (const t of SEC_TAGS.rev) { const u = g[t] && g[t].units; if (u) { const k = Object.keys(u).find(x => money.test(x)); if (k) return k; } } return 'USD'; })();
-  const Q = Object.fromEntries(['rev', 'gross', 'op', 'net', 'ocf', 'capex'].map(k => [k, quarterize(facts(g, SEC_TAGS[k], money))]));
-  Q.eps = quarterize(facts(g, SEC_TAGS.eps, perShare));
-  const I = Object.fromEntries(['ltd', 'ltdNon', 'ltdCur', 'short', 'cash', 'sti', 'equity'].map(k => [k, instants(facts(g, SEC_TAGS[k], money))]));
-  const ends = [...new Set([...Q.rev.keys(), ...Q.net.keys(), ...Q.ocf.keys()])].sort();
+  const cur = (() => { for (const t of [...TAGS.rev, ...TAGS.net]) { const u = g[t] && g[t].units; if (u) { const k = Object.keys(u).find(x => money.test(x)); if (k) return k; } } return 'USD'; })();
+  const raw = Object.fromEntries(['rev', 'gross', 'op', 'net', 'ocf', 'capex'].map(k => [k, facts(g, TAGS[k], money)]));
+  raw.eps = facts(g, TAGS.eps, perShare);
+  const I = Object.fromEntries(['ltd', 'ltdNon', 'ltdCur', 'short', 'cash', 'sti', 'equity'].map(k => [k, instants(facts(g, TAGS[k], money))]));
   const near = (m, end) => { if (m.has(end)) return m.get(end); for (const [e, v] of m) if (Math.abs(days(e, end)) <= 10) return v; return null; };
   const val = (m, end) => { const x = near(m, end); return x ? x.v : null; };
-  const rows = ends.map(end => {
-    const ltd = val(I.ltd, end), non = val(I.ltdNon, end), cu = val(I.ltdCur, end), sh = val(I.short, end);
-    const debt = ltd != null ? ltd + (sh || 0) : non != null || cu != null ? (non || 0) + (cu || 0) + (sh || 0) : sh;
-    const c = val(I.cash, end), s = val(I.sti, end);
-    const ocf = val(Q.ocf, end), capex = val(Q.capex, end);
-    const filed = [Q.rev, Q.net, Q.ocf].map(m => near(m, end)).filter(Boolean).map(x => x.filed).sort()[0] || null;
-    return { end, filed, rev: val(Q.rev, end), gross: val(Q.gross, end), op: val(Q.op, end), net: val(Q.net, end), eps: val(Q.eps, end), ocf, capex, fcf: ocf != null ? ocf - (capex || 0) : null, debt, cash: c != null ? c + (s || 0) : null, equity: val(I.equity, end) };
-  });
-  // a quarter needs at least revenue or profit; drop late restatement-only periods
-  return { cur, rows: rows.filter(r => (r.rev != null || r.net != null) && (!r.filed || days(r.end, r.filed) <= 200)) };
+  const build = Q => {
+    const ends = [...new Set([...Q.rev.keys(), ...Q.net.keys(), ...Q.ocf.keys()])].sort();
+    return ends.map(end => {
+      const ltd = val(I.ltd, end), non = val(I.ltdNon, end), cu = val(I.ltdCur, end), sh = val(I.short, end);
+      const debt = ltd != null ? ltd + (sh || 0) : non != null || cu != null ? (non || 0) + (cu || 0) + (sh || 0) : sh;
+      const c = val(I.cash, end), s2 = val(I.sti, end);
+      const ocf = val(Q.ocf, end), capex = val(Q.capex, end);
+      const filed = [Q.rev, Q.net, Q.ocf].map(m => near(m, end)).filter(Boolean).map(x => x.filed).sort()[0] || null;
+      return { end, filed, rev: val(Q.rev, end), gross: val(Q.gross, end), op: val(Q.op, end), net: val(Q.net, end), eps: val(Q.eps, end), ocf, capex, fcf: ocf != null ? ocf - (capex || 0) : null, debt, cash: c != null ? c + (s2 || 0) : null, equity: val(I.equity, end) };
+    }).filter(r => (r.rev != null || r.net != null) && (!r.filed || days(r.end, r.filed) <= 200));
+  };
+  const Qm = Object.fromEntries(Object.entries(raw).map(([k, fs]) => [k, quarterize(fs)]));
+  const Ym = Object.fromEntries(Object.entries(raw).map(([k, fs]) => [k, annualize(fs)]));
+  return { cur, rows: build(Qm), annual: build(Ym), basis: useIfrs ? 'IFRS' : 'US GAAP' };
 }
 
 /* ---------- Yahoo fundamentals time series ---------- */

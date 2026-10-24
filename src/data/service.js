@@ -166,8 +166,9 @@ async function freeEarnings(sym, P) {
   try { built = (await P.earnings(sym)).map(r => ({ ...r, src: 'adjusted' })); } catch (e) { err = e; }
   let long = null;
   if (liveFeeds() && settings.epsBasis !== 'adjusted' && !sym.startsWith('^')) {
-    try { long = !splitSym(sym).sfx ? await secEarnings(sym, secAgent(), await splitsFor(sym).catch(() => [])) : await yahooEps(sym); }
-    catch (e) { err = err || e; }
+    // US: SEC filings; others, and US-listed companies without US-GAAP quarterly EPS (e.g. 20-F filers): the free feed
+    if (!splitSym(sym).sfx) { try { long = await secEarnings(sym, secAgent(), await splitsFor(sym).catch(() => [])); } catch (e) { err = err || e; } }
+    if (!long || long.length < 4) { try { const y = await yahooEps(sym); if (y && y.length > (long || []).length) long = y; } catch (e) { err = err || e; } }
   }
   const reported = built.filter(r => r.eps != null);
   let rows = reported.length ? built : [];

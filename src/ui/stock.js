@@ -1,6 +1,8 @@
 // The Chart tab: one stock with its chart (EPS line, index comparisons, every detected pattern), the base card,
 // signal, earnings, growth checklist, news, flags, key numbers, base history and the user's drawings.
 import { fundCard } from './fundui.js';
+import { companyCard, fundsItem } from './companyui.js';
+import { companyInfo } from '../data/company.js';
 import PAT from '../core/pat.js';
 import { baseCard, signal, pc, fD, fDs, f2, lineVal, cupPivot, screenRow, baseState } from '../core/analysis.js';
 import { setupScore } from '../core/score.js';
@@ -73,6 +75,7 @@ export async function initStock(el) {
       <section class="card" id="cEarn"></section>
       <section class="card" id="cCanslim"></section>
     </div>
+    <section class="card" id="cCo" hidden></section>
     <section class="card" id="cFund"></section>
     <div class="grid2">
       <section class="card" id="cNews"></section>
@@ -111,6 +114,7 @@ async function load(sym, force = false) {
     const [d, bench] = await Promise.all([daily(sym, { force, long: true }), benchmarkFor(sym, prefs.rsBench[g], { long: true }).catch(() => null)]);
     if (seq !== V.seq) return;
     // an index has no RS line against itself
+    $('#sChartWrap').hidden = false;
     V.data = d; V.bench = bench && bench.sym !== sym ? bench : null; V.sym = sym; V.earn = null; V.earnErr = null; V.news = null; V.cmp = [];
     if (d.name) await rememberName(sym, d.name);
     V.R = PAT.scan(d.bars);
@@ -133,6 +137,8 @@ async function load(sym, force = false) {
     loadCompare(sym, seq);
     if (!V.mkt) loadEarnings(sym, seq); else earnCard();
     $('#cFund').hidden = !!V.mkt || isDemoSym(sym); if (!$('#cFund').hidden) fundCard(sym);
+    V.co = null; $('#cCo').hidden = true;
+    if (!V.mkt && !isDemoSym(sym)) companyInfo(sym).then(co => { if (seq !== V.seq) return; V.co = co; companyCard(co, d.bars[n].close); renderCanslim(); });
     loadNews(sym, seq);
   } catch (e) {
     if (seq !== V.seq) return;
@@ -182,12 +188,27 @@ function emptyState(sym, e) {
   const msg = e instanceof DataError && e.kind === 'auth'
     ? html`<p>${e.message}</p><button class="btn primary" id="eSet">Open Settings</button>`
     : html`<p>${e.message || 'Could not load ' + sym + '.'}</p>${isDemo() ? html`<button class="btn primary" id="eDemo">Open a demo stock</button>` : ''}`;
-  ['#cBase', '#cSig', '#cCanslim', '#cFlags', '#cHist', '#cNums', '#cDraw', '#cEarn', '#cNews'].forEach(id => { $(id).innerHTML = ''; });
+  ['#cBase', '#cSig', '#cCanslim', '#cFlags', '#cHist', '#cNums', '#cDraw', '#cEarn', '#cNews', '#cFund', '#cCo'].forEach(id => { const x = $(id); if (x) x.innerHTML = ''; });
   $('#cMkt').hidden = true;
-  render($('#cBase'), html`<div class="empty">${raw(ICON.info)}${msg}</div>`);
+  // no stale chart of the previous stock
+  V.data = null; $('#sChartWrap').hidden = true; $('#sNote').hidden = true; $('#sSym').textContent = sym; $('#sName').textContent = '';
+  render($('#cBase'), html`<div class="empty">${raw(ICON.info)}${msg}<div id="eSug"></div></div>`);
+  if (!isDemo() && !(e instanceof DataError && e.kind === 'auth')) suggest(sym);
   $('#eSet') && ($('#eSet').onclick = () => go('settings'));
   $('#eDemo') && ($('#eDemo').onclick = () => openStock('ACME.DEMO'));
   $('#sPats').innerHTML = '';
+}
+
+/* a name typed instead of a ticker ("SHARKNINJA"): find the company and open it, or offer the matches */
+async function suggest(sym) {
+  let list = [];
+  try { list = (await provider().search(sym, settings.keys[settings.provider])).filter(x => x.symbol && x.symbol.toUpperCase() !== sym); } catch (e) { return; }
+  const fold = t => String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+  const top = list[0], q = fold(sym);
+  if (top && q.length >= 4 && !/[.\d]/.test(sym) && fold(top.name).startsWith(q) && V.autoFrom !== top.symbol) { V.autoFrom = top.symbol; toast(`Opened ${top.symbol} (${top.name}): "${sym}" is not a ticker.`, 5000); openStock(top.symbol, top.name); return; }
+  const el = $('#eSug'); if (!el || !list.length) return;
+  render(el, html`<p class="small" style="margin:8px 0 4px">Did you mean:</p><div class="toolbar" style="justify-content:center">${list.slice(0, 6).map(x => html`<button class="btn sm" data-sug="${x.symbol}" data-n="${x.name || ''}"><b>${x.symbol}</b>&nbsp;${x.name || ''}</button>`)}</div>`);
+  $$('[data-sug]', el).forEach(b => { b.onclick = () => openStock(b.dataset.sug, b.dataset.n); });
 }
 
 function status(t, cls) { $('#sStatus').textContent = t; $('#sDot').className = 'dot ' + (cls || ''); }
@@ -413,7 +434,7 @@ function renderCanslim() {
   const el = $('#cCanslim'); if (!el || !V.sig) return;
   const cs = V.sig.canslim, ca = V.earn ? canslimCA(V.earn) : null;
   const na = V.mkt ? ['na', 'Not used for an index.'] : ['na', V.earnErr || (provider().earnings || isDemoSym(V.sym) ? 'Loading earnings…' : 'Needs earnings from a data provider.')];
-  const L = [['EPS', 'Quarter growth', ca ? ca.C : na], ['EPS', '5-year growth', ca ? ca.A : na], ['High', 'Near new high', cs.N], ['Vol', 'Demand', cs.S], ['RS', 'Leadership', cs.L], ['Funds', 'Ownership', ['na', 'Not scored: needs fund-ownership data.']], ['Mkt', 'Market trend', cs.M]];
+  const L = [['EPS', 'Quarter growth', ca ? ca.C : na], ['EPS', '5-year growth', ca ? ca.A : na], ['High', 'Near new high', cs.N], ['Vol', 'Demand', cs.S], ['RS', 'Leadership', cs.L], ['Funds', 'Ownership', V.mkt ? ['na', 'Not used for an index.'] : V.co ? fundsItem(V.co) : ['na', 'Loading fund ownership…']], ['Mkt', 'Market trend', cs.M]];
   render(el, html`
     <div class="card-head"><h2>Growth checklist</h2><span class="muted tiny">Tap an item for details</span></div>
     <div class="canslim">${L.map(([k, nm, [st, why]]) => html`<div class="cs ${st}" title="${why}" tabindex="0" data-why="${nm}: ${why}"><b>${k}</b><span>${nm}</span></div>`)}</div>

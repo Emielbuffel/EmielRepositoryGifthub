@@ -4,7 +4,7 @@
 //  - an FMP key (Settings) as a fallback, also in the web version
 //  - the built-in data (revenue and EPS only) when nothing else answers
 // Cached for a day; when a newer quarter appears than the one seen before, an alert "New results" is raised.
-import { parseSecFundamentals, parseYahooFundamentals, parseFmpFundamentals, SEC_TAGS, YAHOO_TYPES, yoy } from '../core/fundamentals.js';
+import { parseSecFundamentals, parseYahooFundamentals, parseFmpFundamentals, SEC_TAGS, IFRS_TAGS, YAHOO_TYPES, yoy } from '../core/fundamentals.js';
 import { secGet, secCompanies } from './sec.js';
 import { getJSON, PROVIDERS, splitSym, snapshotMeta } from './providers.js';
 import { settings, secAgent } from './service.js';
@@ -12,17 +12,16 @@ import { isApp } from './net.js';
 import { pushEvent } from './alerts.js';
 import * as store from './store.js';
 
-const ALL_TAGS = [...new Set(Object.values(SEC_TAGS).flat())];
+const ALL_TAGS = [...new Set(Object.values(SEC_TAGS).flat())], ALL_IFRS = [...new Set(Object.values(IFRS_TAGS).flat())];
 
 async function fromSec(sym) {
   const list = await secCompanies(secAgent()), c = list.find(x => x.s === sym.toUpperCase());
   if (!c) return null;
   const doc = await secGet(`https://data.sec.gov/api/xbrl/companyfacts/CIK${String(c.cik).padStart(10, '0')}.json`, secAgent());
   if (!doc) return null;
-  const g = (doc.facts && doc.facts['us-gaap']) || {}, keep = {};
-  ALL_TAGS.forEach(t => { if (g[t]) keep[t] = g[t]; });
-  const r = parseSecFundamentals({ facts: { 'us-gaap': keep } });
-  return r.rows.length ? { ...r, src: 'SEC EDGAR filings' } : null;
+  const pick = (g, tags) => { const k = {}; tags.forEach(t => { if (g && g[t]) k[t] = g[t]; }); return k; };
+  const F = doc.facts || {}, r = parseSecFundamentals({ facts: { 'us-gaap': pick(F['us-gaap'], ALL_TAGS), 'ifrs-full': pick(F['ifrs-full'], ALL_IFRS) } });
+  return r.rows.length || r.annual.length ? { ...r, src: `SEC EDGAR filings (${r.basis})` } : null;
 }
 
 async function fromYahoo(sym) {
@@ -62,7 +61,14 @@ export async function fundamentals(sym, { force = false } = {}) {
   if (isApp() && us) tries.push(() => fromSec(sym));
   if (isApp()) tries.push(() => fromYahoo(sym));
   if (key && us) tries.push(() => fromFmp(sym, key));
-  for (const t of tries) { try { r = await t(); if (r && r.rows.length >= 4) break; } catch (e) { err = err || e; } }
+  // combine sources: the longest quarterly history from one, the longest yearly history from another
+  const got = [];
+  for (const t of tries) { try { const x = await t(); if (x) got.push(x); if (x && x.rows.length >= 8 && (x.annual || []).length >= 3) break; } catch (e) { err = err || e; } }
+  if (got.length) {
+    const q = got.reduce((a, b) => (b.rows.length > a.rows.length ? b : a)), y = got.reduce((a, b) => ((b.annual || []).length > (a.annual || []).length ? b : a));
+    r = { cur: q.rows.length ? q.cur : y.cur, rows: q.rows, annual: y.annual || [], src: q === y || !q.rows.length ? (q.rows.length ? q.src : y.src) : `${q.src}; years: ${y.src}` };
+    if (q.rows.length && y.cur && q.cur && y.cur !== q.cur) r.annual = []; // don't mix currencies
+  }
   if (!r || (!r.rows.length && !(r.annual || []).length)) { try { r = await fromBuiltIn(sym); } catch (e) { /* none */ } }
   if (!r) { if (c) return { ...c, stale: true }; throw err || new Error('No fundamentals for ' + sym + (isApp() ? '.' : ' in the web version. They load in the desktop app, or with an FMP key (Settings) for US stocks.')); }
   const doc = { ...r, fetchedAt: Date.now() };
