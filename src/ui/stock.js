@@ -1,6 +1,7 @@
 // The Chart tab: one stock with its chart (EPS line, index comparisons, every detected pattern), the base card,
 // signal, earnings, growth checklist, news, flags, key numbers, base history and the user's drawings.
 import { fundCard } from './fundui.js';
+import { drawIntraday } from './intraday.js';
 import { companyCard, fundsItem } from './companyui.js';
 import { companyInfo } from '../data/company.js';
 import PAT from '../core/pat.js';
@@ -15,7 +16,7 @@ import { sellPoints, SELL_LABEL } from '../core/sells.js';
 import { checkBars, activeFor, onAlerts, describe as describeAlert } from '../data/alerts.js';
 import { daily, benchmarkFor, indexSeries, compareOptions, defaultBenchmark, earnings, isIndexSym, provider, isDemo, isDemoSym, DataError, settings, saveSettings } from '../data/service.js';
 import { isApp } from '../data/net.js';
-import { splitSym, snapshotMeta } from '../data/providers.js';
+import { splitSym, snapshotMeta, yahooIntraday } from '../data/providers.js';
 import { stockNews, lastSeen, markSeen, newsSettings } from '../data/news.js';
 import { enrich, epsPoints, nextReport, canslimCA, adGrade } from '../core/earnings.js';
 import { analyseIndex, STATUS, EXPOSURE } from '../core/market.js';
@@ -52,7 +53,7 @@ export async function initStock(el) {
     <div class="row" style="gap:8px;justify-content:flex-start"><select class="input list-pick" id="sList" aria-label="Watchlist"></select><div class="chips" id="sChips" aria-label="Watchlist" style="flex:1;min-width:0"></div></div>
     <section class="card chart-card">
       <div class="chart-tools">
-        <div class="seg" role="group" aria-label="Time frame"><button data-tf="D">Daily</button><button data-tf="W">Weekly</button></div>
+        <div class="seg" role="group" aria-label="Time frame"><button data-it="1d" title="Today, 5-minute bars (Yahoo Finance)">1D</button><button data-it="5d" title="Last 5 days, 15-minute bars (Yahoo Finance)">5D</button><button data-tf="D">Daily</button><button data-tf="W">Weekly</button></div>
         <div class="menu"><button class="btn sm" id="mLines">${raw(ICON.layers)}Lines</button><div class="menu-pop" id="pLines" hidden></div></div>
         <div class="menu"><button class="btn sm" id="mCmp">Compare</button><div class="menu-pop" id="pCmp" hidden></div></div>
         <div class="menu"><button class="btn sm" id="mEps">EPS</button><div class="menu-pop" id="pEps" hidden></div></div>
@@ -61,7 +62,7 @@ export async function initStock(el) {
         <span class="spacer"></span>
         <div class="seg" role="group" aria-label="Time range" id="sSpan">${[[3, '3M'], [6, '6M'], [12, '1Y'], [24, '2Y'], [60, '5Y'], [0, 'All']].map(([m, l]) => html`<button data-span="${m}">${l}</button>`)}</div>
       </div>
-      <div class="chart-wrap" id="sChartWrap"><div class="chart-legend" id="sLegend"></div><div id="sChart" style="position:absolute;inset:0"></div></div>
+      <div class="chart-wrap" id="sChartWrap"><div class="chart-legend" id="sLegend"></div><div id="sChart" style="position:absolute;inset:0"></div><div id="sIntra" style="position:absolute;inset:0" hidden></div></div>
       <div class="chart-hint" id="sHint" hidden></div>
       <div class="small t-warn" id="sNote" hidden></div>
       <div class="pat-strip" id="sPats" aria-label="Patterns on this chart"></div>
@@ -114,7 +115,7 @@ async function load(sym, force = false) {
     const [d, bench] = await Promise.all([daily(sym, { force, long: true }), benchmarkFor(sym, prefs.rsBench[g], { long: true }).catch(() => null)]);
     if (seq !== V.seq) return;
     // an index has no RS line against itself
-    $('#sChartWrap').hidden = false;
+    $('#sChartWrap').hidden = false; if (IV.range) intra(null);
     V.data = d; V.bench = bench && bench.sym !== sym ? bench : null; V.sym = sym; V.earn = null; V.earnErr = null; V.news = null; V.cmp = [];
     if (d.name) await rememberName(sym, d.name);
     V.R = PAT.scan(d.bars);
@@ -197,6 +198,31 @@ function emptyState(sym, e) {
   $('#eSet') && ($('#eSet').onclick = () => go('settings'));
   $('#eDemo') && ($('#eDemo').onclick = () => openStock('ACME.DEMO'));
   $('#sPats').innerHTML = '';
+}
+
+/* ---------- intraday view (1 day / 5 days) from the free Yahoo feed, refreshed every minute ---------- */
+const IV = { range: null, chart: null, timer: null };
+async function intra(range) {
+  IV.range = range; clearInterval(IV.timer);
+  if (IV.chart) { try { IV.chart.remove(); } catch (e) { /* gone */ } IV.chart = null; }
+  const box = $('#sIntra'); $('#sChart').hidden = !!range; $('#sLegend').hidden = !!range; box.hidden = !range;
+  $$('[data-it]').forEach(b => b.classList.toggle('on', b.dataset.it === range));
+  $$('[data-tf]').forEach(b => b.classList.toggle('on', !range && b.dataset.tf === prefs.tf));
+  if (!range) return;
+  if (!isApp()) { render(box, html`<div class="empty">${raw(ICON.info)}<p>Intraday charts come from Yahoo Finance's free feed in the desktop app (browsers block it).</p></div>`); return; }
+  const sym = V.sym, load = async () => {
+    try {
+      const D = await yahooIntraday(sym, range === '1d' ? { range: '1d', interval: '5m' } : { range: '5d', interval: '15m' });
+      if (IV.range !== range || V.sym !== sym) return;
+      if (IV.chart) { try { IV.chart.remove(); } catch (e) { /* gone */ } }
+      box.innerHTML = ''; IV.chart = drawIntraday(box, D);
+      const last = D.price ?? D.bars[D.bars.length - 1].close, r = D.prevClose ? last / D.prevClose - 1 : null;
+      status(`Intraday · ${range === '1d' ? '5-minute' : '15-minute'} bars · ${D.open ? 'market open' : 'market closed'} · ${r == null ? '' : (r >= 0 ? '+' : '') + (r * 100).toFixed(2) + '% vs previous close · '}Yahoo Finance (can be delayed)`, 'ok');
+    } catch (e) { render(box, html`<div class="empty">${raw(ICON.info)}<p>${e.message}</p></div>`); }
+  };
+  render(box, html`<div class="empty"><span class="spinner"></span><span>Loading intraday prices…</span></div>`);
+  await load();
+  IV.timer = setInterval(() => { if (document.visibilityState === 'visible' && !box.hidden) load(); }, 60000);
 }
 
 /* a name typed instead of a ticker ("SHARKNINJA"): find the company and open it, or offer the matches */
@@ -541,7 +567,8 @@ function openMenu(id) {
 }
 
 function wireTools() {
-  $$('[data-tf]').forEach(b => { b.onclick = () => { prefs.tf = b.dataset.tf; savePrefs(); draw(false); }; });
+  $$('[data-tf]').forEach(b => { b.onclick = () => { intra(null); prefs.tf = b.dataset.tf; savePrefs(); draw(false); }; });
+  $$('[data-it]').forEach(b => { b.onclick = () => intra(b.dataset.it); });
   $('#mLines').onclick = e => { e.stopPropagation(); openMenu('pLines'); };
   $('#mPat').onclick = e => { e.stopPropagation(); openMenu('pPat'); };
   $('#mCmp').onclick = e => { e.stopPropagation(); openMenu('pCmp'); };

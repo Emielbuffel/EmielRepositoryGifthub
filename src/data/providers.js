@@ -271,6 +271,24 @@ async function yahoo(sym, fromT, { max = false } = {}) {
   return { bars, splits, currency: r.meta.currency, name: r.meta.longName || r.meta.shortName || '', exchange: r.meta.fullExchangeName || r.meta.exchangeName || '' };
 }
 /**
+ * Intraday bars from the free Yahoo chart feed (desktop app; browsers block it). range '1d' or '5d'; interval '1m',
+ * '5m', '15m'… Times are shifted to the exchange's local clock so the chart axis shows local trading hours.
+ * Returns {bars, prevClose, price, at, tz, open (market open now), session: {start, end}, currency, name}.
+ */
+export async function yahooIntraday(sym, { range = '1d', interval = '5m' } = {}) {
+  const d = await getJSON(`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(yahooSym(sym))}?range=${range}&interval=${interval}&includePrePost=false`);
+  const r = d && d.chart && d.chart.result && d.chart.result[0];
+  if (!r || !r.timestamp) throw new DataError((d && d.chart && d.chart.error && d.chart.error.description) || 'No intraday data for ' + sym + '.', 'notfound');
+  const q = r.indicators.quote[0], m = r.meta, off = m.gmtoffset || 0, bars = [];
+  r.timestamp.forEach((t, i) => { if (q.close[i] != null && q.open[i] != null) bars.push({ time: t + off, open: q.open[i], high: q.high[i], low: q.low[i], close: q.close[i], volume: q.volume[i] || 0 }); });
+  const reg = m.currentTradingPeriod && m.currentTradingPeriod.regular, now = Date.now() / 1000;
+  return {
+    bars, prevClose: range === '1d' ? (m.chartPreviousClose ?? m.previousClose) : (m.previousClose ?? m.chartPreviousClose), price: m.regularMarketPrice ?? (bars.length ? bars[bars.length - 1].close : null),
+    at: m.regularMarketTime || null, tz: m.exchangeTimezoneName || '', off, open: !!(reg && now >= reg.start && now < reg.end), session: reg ? { start: reg.start + off, end: reg.end + off } : null,
+    currency: m.currency || '', name: m.longName || m.shortName || '',
+  };
+}
+/**
  * Next earnings date and recent EPS estimates from Yahoo (desktop app only: needs a session crumb).
  * Returns {next: {time, est} | null, hist: [{end, est, actual}]}.
  */

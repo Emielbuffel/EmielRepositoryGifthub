@@ -1,4 +1,5 @@
 // The Market tab: market direction. Index charts with distribution days (D) and follow-through days (FTD).
+import { marketIntraday } from './intraday.js';
 import { createChart, CandlestickSeries, LineSeries, HistogramSeries, createSeriesMarkers, LineStyle } from 'lightweight-charts';
 import { analyseIndex, combine, STATUS, EXPOSURE } from '../core/market.js';
 import { marketSeries, provider, isDemo } from '../data/service.js';
@@ -22,6 +23,7 @@ const M = { rows: null, charts: [], loading: false, loadedFor: null };
 export function initMarket(el) {
   render(el, html`
     <section class="card" id="mSum"><div class="empty"><span class="spinner"></span><span>Loading the market…</span></div></section>
+    <section class="card" id="mIntra"></section>
     <div class="grid2"><section class="card" id="mExp"></section><section class="card" id="mDaily"></section></div>
     <section class="card"><div class="card-head"><h2>Index scorecard</h2><button class="btn sm" id="mRefresh">${raw(ICON.refresh)}Refresh</button></div><div id="mTable"></div></section>
     <div class="grid2" id="mGrid"></div>
@@ -42,8 +44,9 @@ export function initMarket(el) {
       </div>
     </details>`);
   $('#mRefresh').onclick = () => load(true);
-  on(type => { if (type === 'scan') { sectors(); exposure(); routine(); } if (['plans', 'journal', 'watch', 'holdings'].includes(type) && M.rows) routine(); if (type === 'theme' && M.rows && App.view === 'market') charts(); if (type === 'provider') { M.loadedFor = null; if (App.view === 'market') load(); else preload(); } if (type === 'view' && App.view === 'market') { load(); M.charts.forEach(c => c.redraw && c.redraw()); } });
+  on(type => { if (type === 'scan') { sectors(); exposure(); routine(); } if (['plans', 'journal', 'watch', 'holdings'].includes(type) && M.rows) routine(); if (type === 'theme' && M.rows && App.view === 'market') charts(); if (type === 'provider') { M.loadedFor = null; if (App.view === 'market') load(); else preload(); } if (type === 'view' && App.view === 'market') { load(); marketIntraday(); M.charts.forEach(c => c.redraw && c.redraw()); } });
   preload();
+  if (App.view === 'market') marketIntraday();
 }
 
 /** Loads the market quietly so the market item of the checklist is known on the Chart tab too. */

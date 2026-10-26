@@ -434,3 +434,10 @@ table.tbl td.name { max-width: 180px; overflow: hidden; text-overflow: ellipsis;
 .fpanel h3 { margin: 0; font-size: 14px; }
 .fpanel p { margin: 0; }
 .fchart { width: 100%; height: auto; display: block; }
+
+/* ---------- intraday ---------- */
+.intra-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
+.intra { background: var(--fill); border-radius: 12px; padding: 10px 12px; display: grid; gap: 6px; min-width: 0; }
+.intra .row { justify-content: space-between; gap: 8px; font-size: 13px; }
+.intra .row b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.intra-chart { height: 110px; position: relative; }
