@@ -77,6 +77,7 @@ function draw() {
     <div class="mkt-status">
       ${us ? html`<div class="mkt-row"><span class="pill lg t-${STATUS[us.us][1]}">${STATUS[us.us][0]}</span><div><h3>United States</h3><div class="muted small">${M.rows.filter(r => r.region === 'US' && r.k !== 'DJI').map(line).join(' ')}</div></div></div>` : html`<p class="muted">No US index data.</p>`}
       ${eu ? html`<div class="mkt-row"><span class="pill lg t-${STATUS[eu.R.state][1]}">${STATUS[eu.R.state][0]}</span><div><h3>Europe</h3><div class="muted small">${line(eu)}</div></div></div>` : ''}
+      ${M.rows.filter(r => r.label && r.R).map(r => html`<div class="mkt-row"><span class="pill lg t-${STATUS[r.R.state][1]}">${STATUS[r.R.state][0]}</span><div><h3>${r.label}</h3><div class="muted small">${line(r)}</div></div></div>`)}
     </div>
     ${us ? html`<p class="small" style="margin:0;border-left:3px solid var(--blue);padding-left:10px">${EXPOSURE[us.us]}</p>` : ''}`);
   render($('#mTable'), html`<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Index</th><th class="n">Close</th><th class="n">Day</th><th class="n">vs 50-day</th><th class="n">vs 200-day</th><th class="n">Off high</th><th class="n">Dist. days</th><th>Last FTD</th><th>Status</th></tr></thead><tbody>

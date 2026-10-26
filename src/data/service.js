@@ -118,10 +118,8 @@ export async function benchmarkFor(sym, id, opts = {}) {
 export async function marketSeries() {
   const out = [];
   const list = isDemo() ? [{ k: 'IXIC', region: 'US' }, { k: 'GSPC', region: 'US' }] : MARKET;
-  for (const m of list) {
-    try { const d = await indexSeries(m.k); out.push({ k: m.k, region: m.region, ...d }); }
-    catch (e) { out.push({ k: m.k, name: INDEXES[m.k].name, region: m.region, error: e }); }
-  }
+  // all indexes at once (nine of them load much faster in parallel)
+  out.push(...await Promise.all(list.map(m => indexSeries(m.k).then(d => ({ k: m.k, region: m.region, label: m.label, ...d }), e => ({ k: m.k, name: INDEXES[m.k].name, region: m.region, label: m.label, error: e })))));
   return out;
 }
 

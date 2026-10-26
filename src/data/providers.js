@@ -92,6 +92,8 @@ export const INDEXES = {
   KQ11: { name: 'KOSDAQ', fmp: '^KQ11', eod: 'KQ11.INDX' },
   HSI: { name: 'Hang Seng', fmp: '^HSI', eod: 'HSI.INDX', etf: 'EWH' },
   SSEC: { name: 'Shanghai Composite', fmp: '000001.SS', eod: 'SSEC.INDX', etf: 'MCHI' },
+  NSEI: { name: 'Nifty 50', fmp: '^NSEI', eod: 'NSEI.INDX', etf: 'INDA' },
+  BSESN: { name: 'BSE Sensex', fmp: '^BSESN', eod: 'BSESN.INDX', etf: 'INDA' },
   GSPTSE: { name: 'S&P/TSX Composite', fmp: '^GSPTSE', eod: 'GSPTSE.INDX', etf: 'EWC' },
   AXJO: { name: 'S&P/ASX 200', fmp: '^AXJO', eod: 'AXJO.INDX', etf: 'EWA' },
 };
@@ -117,6 +119,8 @@ export function indexesFor(sym) {
 /* ---------- market tab indexes ---------- */
 export const MARKET = [
   { k: 'IXIC', region: 'US' }, { k: 'GSPC', region: 'US' }, { k: 'DJI', region: 'US' }, { k: 'STOXX50E', region: 'EU' },
+  { k: 'KS11', region: 'KR', label: 'South Korea' }, { k: 'N225', region: 'JP', label: 'Japan' }, { k: 'SSEC', region: 'CN', label: 'China' },
+  { k: 'HSI', region: 'HK', label: 'Hong Kong' }, { k: 'NSEI', region: 'IN', label: 'India' },
 ].map(m => ({ ...m, name: INDEXES[m.k].name, etf: INDEXES[m.k].etf }));
 
 /* ---------- providers ---------- */
@@ -253,7 +257,7 @@ async function snapBars(sym) {
   return { bars: rows.map(r => ({ time: r[0], open: r[1], high: r[2], low: r[3], close: r[4], volume: r[5] })), name: info.n || '', currency: info.c || '', exchange: info.x || '', asOf: rows[rows.length - 1][0] };
 }
 // index ids used by the app -> Yahoo symbols
-const YH_INDEX = { GSPC: '^GSPC', IXIC: '^IXIC', NDX: '^NDX', DJI: '^DJI', RUT: '^RUT', SOX: '^SOX', WORLD: 'URTH', STOXX50E: '^STOXX50E', GDAXI: '^GDAXI', FCHI: '^FCHI', AEX: '^AEX', FTSEMIB: 'FTSEMIB.MI', IBEX: '^IBEX', BFX: '^BFX', FTSE: '^FTSE', SSMI: '^SSMI', OMXS30: '^OMX', OMXC25: '^OMXC25', OMXH25: '^OMXH25', OBX: 'OBX.OL', N225: '^N225', KS11: '^KS11', KQ11: '^KQ11', HSI: '^HSI', SSEC: '000001.SS', GSPTSE: '^GSPTSE', AXJO: '^AXJO' };
+const YH_INDEX = { GSPC: '^GSPC', IXIC: '^IXIC', NDX: '^NDX', DJI: '^DJI', RUT: '^RUT', SOX: '^SOX', WORLD: 'URTH', STOXX50E: '^STOXX50E', GDAXI: '^GDAXI', FCHI: '^FCHI', AEX: '^AEX', FTSEMIB: 'FTSEMIB.MI', IBEX: '^IBEX', BFX: '^BFX', FTSE: '^FTSE', SSMI: '^SSMI', OMXS30: '^OMX', OMXC25: '^OMXC25', OMXH25: '^OMXH25', OBX: 'OBX.OL', N225: '^N225', KS11: '^KS11', KQ11: '^KQ11', HSI: '^HSI', SSEC: '000001.SS', NSEI: '^NSEI', BSESN: '^BSESN', GSPTSE: '^GSPTSE', AXJO: '^AXJO' };
 const yahooSym = sym => sym.startsWith('^') ? YH_INDEX[sym.slice(1)] || sym : sym;
 async function yahoo(sym, fromT, { max = false } = {}) {
   const now = Math.floor(Date.now() / 1000), from = fromT || now - Math.round(4.3 * 365.25 * 86400);
