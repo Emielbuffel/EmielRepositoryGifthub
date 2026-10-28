@@ -1,7 +1,7 @@
 // App entry: navigation (tab bar on iPhone, sidebar on iPad/Mac), first-launch welcome and boot.
 import { App, VIEWS, on, go, openStock, loadState } from './app.js';
 import { loadSettings, isDemo, provider } from './data/service.js';
-import { isApp, isDesktop } from './data/net.js';
+import { isApp, isDesktop, detectRelay } from './data/net.js';
 import * as store from './data/store.js';
 import { $, $$, html, raw, render, ICON, sheet } from './ui/dom.js';
 import { pc } from './core/analysis.js';
@@ -65,7 +65,7 @@ function banner() {
     // web preview: say where live updates and news come from
     if (provider().id === 'free' && !isApp()) {
       el.hidden = false;
-      render(el, html`<span><b>Preview.</b> Real built-in data for about 380 stocks and the main indexes. Live prices, about 2,000 more stocks, long EPS history and news load in the desktop app.</span>`);
+      render(el, html`<span><b>Preview.</b> Real built-in data for about 380 stocks and the main indexes. Live prices, about 2,000 more stocks, long EPS history and news load in the desktop app, or here once your free website with its data relay is set up (Settings → Phone &amp; updates).</span>`);
     } else el.hidden = true;
     return;
   }
@@ -93,9 +93,44 @@ function welcome() {
   $('#wReal').onclick = () => { sh.close(); go('settings'); };
 }
 
+/* automatic updates: the installable web/phone app (service worker) and the desktop app (downloads new builds) */
+function updates() {
+  if (isDesktop() && window.desktop.onUpdateReady) {
+    window.desktop.onUpdateReady(build => {
+      const t = $('#toast'); t.hidden = false; t.innerHTML = '';
+      t.append('A new version is ready (build ' + build + '). ');
+      const b = document.createElement('button'); b.className = 'btn sm primary'; b.textContent = 'Restart now'; b.onclick = () => window.desktop.restart(); t.append(b);
+    });
+    return;
+  }
+  // phone/tablet apps built with Capacitor: say when a newer build is on your website
+  if (window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform()) {
+    import('./data/service.js').then(async ({ settings }) => {
+      if (!settings.site) return;
+      try { const v = await fetch(settings.site.replace(/\/+$/, '') + '/version.json', { cache: 'no-store' }).then(r => r.json()); if (v.build > __BUILD__) toast('A newer version is available: on GitHub open Releases → "Latest build" and install the new APK (your data stays).', 9000); } catch (e) { /* offline */ }
+    });
+    return;
+  }
+  if (!('serviceWorker' in navigator) || location.protocol !== 'https:' || /claude(usercontent)?\.(ai|com)$/.test(location.hostname) || (window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform())) return;
+  const hadController = !!navigator.serviceWorker.controller; // the first install needs no reload
+  navigator.serviceWorker.register('./sw.js').then(reg => {
+    setInterval(() => reg.update().catch(() => {}), 30 * 60e3);
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') reg.update().catch(() => {}); });
+  }).catch(() => {});
+  let reloaded = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (reloaded || !hadController) return; reloaded = true;
+    // reload into the new version, unless a dialog is open (then wait until it closes)
+    const go = () => { if ($('#sheet').hidden) location.reload(); else setTimeout(go, 3000); };
+    go();
+  });
+}
+
 async function boot() {
   applyTheme(await store.get('theme', 'system'));
   await loadSettings();
+  await detectRelay(); // web version on its own site: live data through the site's relay
+  updates();
   await loadState();
   nav();
   on(type => {

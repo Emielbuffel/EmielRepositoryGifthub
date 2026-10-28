@@ -6,7 +6,63 @@ const path = require('node:path');
 const fs = require('node:fs');
 const { pathToFileURL } = require('node:url');
 
-const DIST = path.join(__dirname, '..', 'dist');
+const BUNDLED = path.join(__dirname, '..', 'dist');
+const SHELL = 2; // this desktop shell's version (see vite.config.js)
+const crypto = require('node:crypto');
+// Automatic updates: the newest build of the web app is downloaded from your own website (the Cloudflare Pages
+// address set in Settings) into the user-data folder and used from the next start. Every file is checked against
+// the SHA-256 in version.json. The shell itself (this file) only changes with a new download of the app.
+const UPD = () => path.join(app.getPath('userData'), 'ui');
+const updFile = () => path.join(app.getPath('userData'), 'update.json');
+const readJSON = f => { try { return JSON.parse(fs.readFileSync(f, 'utf8')); } catch (e) { return null; } };
+function activeDist() {
+  const cur = readJSON(path.join(UPD(), 'current.json')), bundled = readJSON(path.join(BUNDLED, 'version.json'));
+  if (cur && cur.dir && fs.existsSync(path.join(UPD(), cur.dir, 'index.html')) && (!bundled || cur.build > bundled.build) && (cur.shell || 1) <= SHELL) return path.join(UPD(), cur.dir);
+  return BUNDLED;
+}
+let DIST = BUNDLED;
+const upd = { site: '', state: 'idle', build: '', note: '' };
+async function checkUpdate(win) {
+  const cfg = readJSON(updFile()) || {}; upd.site = cfg.site || '';
+  const testHttp = process.env.BPD_UPDATE_TEST_HTTP === '1' && /^http:\/\/127\.0\.0\.1:/.test(upd.site); // local tests only
+  if (!/^https:\/\//.test(upd.site) && !testHttp) { upd.state = 'off'; return upd; }
+  try {
+    upd.state = 'checking';
+    const base = upd.site.replace(/\/+$/, '') + '/';
+    const r = await fetch(base + 'version.json', { headers: { 'Cache-Control': 'no-cache' }, signal: AbortSignal.timeout(20000) });
+    if (!r.ok) throw new Error('version.json: HTTP ' + r.status);
+    const v = await r.json(), have = readJSON(path.join(DIST, 'version.json')) || {};
+    if (!v.build || v.build <= (have.build || '')) { upd.state = 'latest'; upd.build = have.build || ''; return upd; }
+    if ((v.shell || 1) > SHELL) { upd.state = 'shell'; upd.build = v.build; upd.note = 'This update needs a new download of the desktop app.'; return upd; }
+    upd.state = 'downloading'; upd.build = v.build;
+    const dir = 'b' + v.build.replace(/[^0-9a-z-]/gi, ''), tmp = path.join(UPD(), dir + '.tmp');
+    fs.rmSync(tmp, { recursive: true, force: true }); fs.mkdirSync(tmp, { recursive: true });
+    // reuse unchanged files from the running build, download the rest
+    const local = new Map(((have.files) || []).map(f => [f.path + '|' + f.sha256, path.join(DIST, f.path)]));
+    for (const f of v.files) {
+      if (!/^[\w./-]+$/.test(f.path) || f.path.includes('..')) throw new Error('Bad file name ' + f.path);
+      const out = path.join(tmp, f.path); fs.mkdirSync(path.dirname(out), { recursive: true });
+      const same = local.get(f.path + '|' + f.sha256);
+      let buf = same && fs.existsSync(same) ? fs.readFileSync(same) : null;
+      if (!buf) { const x = await fetch(base + f.path, { signal: AbortSignal.timeout(120000) }); if (!x.ok) throw new Error(f.path + ': HTTP ' + x.status); buf = Buffer.from(await x.arrayBuffer()); }
+      if (crypto.createHash('sha256').update(buf).digest('hex') !== f.sha256) throw new Error('Checksum mismatch for ' + f.path);
+      fs.writeFileSync(out, buf);
+    }
+    fs.writeFileSync(path.join(tmp, 'version.json'), JSON.stringify(v));
+    fs.rmSync(path.join(UPD(), dir), { recursive: true, force: true }); fs.renameSync(tmp, path.join(UPD(), dir));
+    const prev = readJSON(path.join(UPD(), 'current.json'));
+    fs.writeFileSync(path.join(UPD(), 'current.json'), JSON.stringify({ dir, build: v.build, shell: v.shell || 1 }));
+    // keep only the new and the previous build
+    for (const d of fs.readdirSync(UPD())) if (d !== dir && d !== (prev && prev.dir) && d !== 'current.json') fs.rmSync(path.join(UPD(), d), { recursive: true, force: true });
+    upd.state = 'ready';
+    if (win && !win.isDestroyed()) win.webContents.send('update-ready', v.build);
+  } catch (e) { upd.state = 'error'; upd.note = String(e.message || e); }
+  return upd;
+}
+ipcMain.handle('set-update-site', (_e, site) => { const s = String(site || '').trim(); fs.writeFileSync(updFile(), JSON.stringify({ site: s })); return true; });
+ipcMain.handle('update-check', () => checkUpdate(BrowserWindow.getAllWindows()[0]));
+ipcMain.handle('update-status', () => ({ ...upd, shell: SHELL, running: (readJSON(path.join(DIST, 'version.json')) || {}).build || '' }));
+ipcMain.handle('update-restart', () => { app.relaunch(); app.exit(0); });
 const UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0 Safari/537.36';
 
 protocol.registerSchemesAsPrivileged([{ scheme: 'app', privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true, stream: true } }]);
@@ -56,6 +112,7 @@ function createWindow() {
 }
 
 app.whenReady().then(() => {
+  DIST = activeDist();
   protocol.handle('app', req => {
     const { pathname } = new URL(req.url);
     const file = path.normalize(path.join(DIST, decodeURIComponent(pathname)));
@@ -63,6 +120,9 @@ app.whenReady().then(() => {
     return net.fetch(pathToFileURL(file).toString());
   });
   createWindow();
+  // check for a new build shortly after start and then every 3 hours
+  setTimeout(() => checkUpdate(BrowserWindow.getAllWindows()[0]), 8000);
+  setInterval(() => checkUpdate(BrowserWindow.getAllWindows()[0]), 3 * 3600e3);
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
 });
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });

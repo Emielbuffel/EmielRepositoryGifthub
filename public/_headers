@@ -1,0 +1,10 @@
+# Cloudflare Pages: the update files are always fetched fresh; built assets have unique names and can be cached
+/sw.js
+  Cache-Control: no-cache
+/version.json
+  Cache-Control: no-cache
+  Access-Control-Allow-Origin: *
+/index.html
+  Cache-Control: no-cache
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable

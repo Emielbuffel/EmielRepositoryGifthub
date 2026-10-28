@@ -1,6 +1,7 @@
 // Settings: data provider and API key, appearance, cache, privacy and about.
 import { PROVIDERS } from '../data/providers.js';
-import { settings, saveSettings, daily, provider } from '../data/service.js';
+import { settings, saveSettings, daily, provider, applySite } from '../data/service.js';
+import { isDesktop } from '../data/net.js';
 import * as store from '../data/store.js';
 import { App, emit, loadState } from '../app.js';
 import { NEWS_SOURCES, newsSettings } from '../data/news.js';
@@ -22,6 +23,14 @@ export async function initSettings(el) {
         <label class="provider${settings.provider === p.id ? ' on' : ''}"><input type="radio" name="prov" value="${p.id}" ${settings.provider === p.id ? raw('checked') : ''}><div><b>${p.name}</b><p>${p.blurb}</p>${p.site ? html`<p><a href="${p.site}" target="_blank" rel="noopener">Get a key at ${new URL(p.site).hostname}</a></p>` : ''}</div></label>`)}</div>
       <div id="stKey"></div>
       <label class="field"><span>Your e-mail for SEC EDGAR (optional). EDGAR provides US earnings history back to about 2009 and asks automated tools to include a contact e-mail; it is sent only to sec.gov.</span><input class="input" id="stSec" type="email" placeholder="you@example.com" value="${settings.secEmail || ''}" autocapitalize="off" spellcheck="false"></label>
+    </section>
+    <section class="card" id="stSite">
+      <h2>Phone &amp; automatic updates</h2>
+      <p class="small" style="margin:0">Your own free website (for example on Cloudflare Pages, connected to your GitHub repository) hosts the newest version of the app. It gives you: the app on your phone (open the address and choose <b>Add to Home Screen</b>), live data there through its built-in data relay, and automatic updates for this ${isDesktop() ? 'desktop app' : 'app'}. Step-by-step guide: docs/PHONE.md in the repository.</p>
+      <div class="grid2"><label class="field"><span>Your app website</span><input class="input" id="stSiteUrl" type="url" placeholder="https://base-pattern-desk.pages.dev" value="${settings.site || ''}" autocapitalize="off" spellcheck="false"></label>
+      <label class="field"><span>Relay key (the RELAY_KEY you set on the website)</span><input class="input" id="stRelayKey" type="password" value="${settings.relayKey || ''}" autocapitalize="off" spellcheck="false"></label></div>
+      <div class="toolbar"><button class="btn primary" id="stSiteSave">Save and test</button>${isDesktop() ? html`<button class="btn" id="stUpd">Check for updates now</button>` : ''}<span class="small" id="stSiteMsg"></span></div>
+      <p class="muted tiny" style="margin:0" id="stBuild">Version ${VERSION} · build ${__BUILD__}</p>
     </section>
     <section class="card">
       <h2>Buying plan</h2>
@@ -75,6 +84,7 @@ export async function initSettings(el) {
       </div>
     </section>`);
   keyBox();
+  siteBox(el);
   const ex = () => { const p = pyramid(S, 100); $('#stPlanEx', el).textContent = `Example: ${Math.round(S.capital).toLocaleString('en-US')} ${S.ccy} → ${p.target.toLocaleString('en-US')} ${S.ccy} per position, bought as ${p.steps.map(x => x.amount.toLocaleString('en-US')).join(' + ')} ${S.ccy}; stop ${Math.round(S.stop * 100)}% below ${S.stopFrom === 'pivot' ? 'the buy point' : 'your average purchase price'}, raised to just below the buy point at +15% and to breakeven at +20%.`; };
   ex();
   $('#stPlan', el).onsubmit = async e => {
@@ -159,6 +169,32 @@ function keyBox() {
     try { const d = await daily('AAPL', { force: true }); m.className = 'small t-ok'; m.textContent = `Works: AAPL loaded, ${d.bars.length} days of history.`; await switchProvider(); }
     catch (e) { m.className = 'small t-bad'; m.textContent = e.message; }
   };
+}
+
+/* your website: data relay for the web/phone version, update source for the desktop app */
+function siteBox(el) {
+  const msg = $('#stSiteMsg', el), set = (t, c = 'muted') => { msg.className = 'small t-' + c; msg.textContent = t; };
+  const status = async () => {
+    if (!isDesktop() || !window.desktop.updateStatus) return;
+    const u = await window.desktop.updateStatus();
+    const st = { off: 'add your website to get automatic updates', checking: 'checking…', latest: 'up to date', downloading: 'downloading build ' + u.build + '…', ready: 'build ' + u.build + ' downloaded: restart to use it', shell: u.note, error: 'update check failed: ' + u.note, idle: '' }[u.state] || '';
+    $('#stBuild', el).textContent = `Version ${VERSION} · running build ${u.running || __BUILD__} · desktop shell ${u.shell}${st ? ' · ' + st : ''}`;
+  };
+  status();
+  $('#stSiteSave', el).onclick = async () => {
+    const site = $('#stSiteUrl', el).value.trim().replace(/\/+$/, ''), key = $('#stRelayKey', el).value.trim();
+    if (site && !/^https:\/\/[^\s/]+/.test(site)) { set('The address must start with https://', 'bad'); return; }
+    settings.site = site; settings.relayKey = key; await saveSettings(); applySite();
+    if (!site) { set('Removed.'); return; }
+    set('Testing…');
+    try {
+      const r = await fetch(site + '/relay?ping=1', { headers: key ? { 'x-relay-key': key } : {} }).then(x => x.json());
+      const v = await fetch(site + '/version.json', { cache: 'no-store' }).then(x => x.json()).catch(() => null);
+      set(`Website found${v ? ', newest build ' + v.build : ''}. Relay ${r.keyOk ? 'works' : r.keyRequired ? 'needs the right key' : 'works'}${r.keyRequired ? '' : ' (tip: set RELAY_KEY on the website so only you can use it)'}.`, r.keyOk ? 'ok' : 'warn');
+      if (isDesktop()) { await window.desktop.checkUpdate(); status(); }
+    } catch (e) { set(isDesktop() ? 'Saved. Could not reach the website: check the address.' : 'Saved. The test could not reach the website from this page (it works once you open the app from the website itself).', 'warn'); }
+  };
+  const u = $('#stUpd', el); if (u) u.onclick = async () => { set('Checking…'); await window.desktop.checkUpdate(); await status(); set(''); };
 }
 
 async function switchProvider() { await loadState(); emit('provider'); emit('watch'); }

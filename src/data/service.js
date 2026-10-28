@@ -1,7 +1,8 @@
 // Loads prices through the chosen provider with an on-device cache and incremental updates.
 import { PROVIDERS, MARKET, INDEXES, SECTORS, indexesFor, DataError, splitSym, currencyOf } from './providers.js';
 import * as store from './store.js';
-import { isApp, isDesktop } from './net.js';
+import { isApp, isDesktop, relay } from './net.js';
+import { Capacitor } from '@capacitor/core';
 import { snapshotMeta, yahooEps, yahooSplits, yahooCalendar } from './providers.js';
 import { secEarnings } from './sec.js';
 
@@ -19,7 +20,15 @@ export async function loadSettings() {
   // version 1 started in demo mode; from version 2 real built-in data is the default
   if (s && !s.v) { if (settings.provider === 'demo') settings.provider = 'free'; settings.v = 2; await store.set('settings', settings); }
   if (!PROVIDERS[settings.provider]) settings.provider = 'free';
+  applySite();
   return settings;
+}
+/** The user's own website (e.g. Cloudflare Pages): its data relay serves the web/phone version, its version file
+ * tells the desktop app about updates. */
+export function applySite() {
+  relay.key = settings.relayKey || '';
+  relay.url = settings.site && !isDesktop() && !Capacitor.isNativePlatform() ? settings.site.replace(/\/+$/, '') + '/relay' : '';
+  if (isDesktop() && window.desktop.setUpdateSite) window.desktop.setUpdateSite(settings.site || '');
 }
 export async function saveSettings() { await store.set('settings', settings); }
 
