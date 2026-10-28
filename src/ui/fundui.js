@@ -20,7 +20,7 @@ const sgn = (x, d = 0) => (x == null || !isFinite(x) ? '—' : (x >= 0 ? '+' : '
 const lbl = (end, mode) => (mode === 'y' ? end.slice(0, 4) : `Q${Math.ceil(+end.slice(5, 7) / 3)} ’${end.slice(2, 4)}`);
 
 /** Grouped bars (values below zero go down) with optional lines on the same scale. */
-function bars(rows, series, { cur, mode, lines = [], h = 190 }) {
+export function bars(rows, series, { cur, mode, lines = [], h = 190 }) {
   const n = rows.length, k = series.length, bw = Math.max(3, Math.min(14, Math.floor(560 / Math.max(1, n) / (k + 0.8)))), gw = bw * k + Math.max(3, bw * 0.8);
   const W = Math.max(320, n * gw + 56), top = 10, bot = 24;
   const vals = [...series, ...lines].flatMap(s => rows.map(r => s.get(r))).filter(v => v != null && isFinite(v));
@@ -48,7 +48,7 @@ function bars(rows, series, { cur, mode, lines = [], h = 190 }) {
 }
 
 /** Percentage lines (margins). */
-function pctLines(rows, series, { mode, h = 190 }) {
+export function pctLines(rows, series, { mode, h = 190 }) {
   const n = rows.length, W = Math.max(320, n * 22 + 56), top = 10, bot = 24;
   const vals = series.flatMap(s => rows.map(r => s.get(r))).filter(v => v != null && isFinite(v));
   if (!vals.length) return '';
@@ -70,21 +70,21 @@ function pctLines(rows, series, { mode, h = 190 }) {
 const legend = items => html`<div class="legend small">${items.map(([c, t]) => html`<span><i style="background:${c};height:10px;width:10px;border-radius:3px"></i>${t}</span>`)}</div>`;
 const trend = (rows, f) => { const v = rows.map(f).filter(x => x != null && isFinite(x)); if (v.length < 5) return null; const a = v.slice(-5, -4)[0], z = v[v.length - 1]; return z - a; };
 
-export async function fundCard(sym) {
-  const el = $('#cFund'); if (!el) return;
-  const seq = ++U.seq;
+export async function fundCard(sym, el = $('#cFund')) {
+  if (!el) return;
+  const seq = ++U.seq; el.dataset.seq = seq;
   U.mode = await store.get('fund.mode', U.mode); U.range = await store.get('fund.range', U.range);
-  render(el, html`<div class="card-head"><h2>Fundamentals</h2></div><div class="empty"><span class="spinner"></span><span>Loading results…</span></div>`);
+  render(el, html`<div class="card-head"><h2>${el.dataset.title || 'Fundamentals'}</h2></div><div class="empty"><span class="spinner"></span><span>Loading results…</span></div>`);
   let F;
-  try { F = await fundamentals(sym); } catch (e) { if (seq === U.seq) render(el, html`<div class="card-head"><h2>Fundamentals</h2></div><p class="muted small" style="margin:0">${e.message}</p>`); return; }
-  if (seq !== U.seq) return;
+  try { F = await fundamentals(sym); } catch (e) { if (+el.dataset.seq === seq) render(el, html`<div class="card-head"><h2>${el.dataset.title || 'Fundamentals'}</h2></div><p class="muted small" style="margin:0">${e.message}</p>`); return; }
+  if (+el.dataset.seq !== seq) return;
   draw(el, sym, F);
 }
 
 function draw(el, sym, F) {
   const hasQ = F.rows.length >= 4, hasY = (F.annual || []).length >= 2;
   let mode = U.mode; if (mode === 'y' && !hasY) mode = hasQ ? 'q' : 'y'; if (mode !== 'y' && !hasQ) mode = 'y';
-  let rows = mode === 'y' ? F.annual : mode === 't' ? ttm(F.rows) : F.rows;
+  let rows = (mode === 'y' ? F.annual : mode === 't' ? ttm(F.rows) : F.rows) || [];
   if (U.range === '5Y') rows = rows.slice(mode === 'y' ? -6 : -20);
   const cur = F.cur, c = C(), z = rows[rows.length - 1] || {}, M = r => margins(r);
   const T = ttm(F.rows), tz = T[T.length - 1] || (mode === 'y' ? z : null);
@@ -92,7 +92,7 @@ function draw(el, sym, F) {
   const netDebt = z.debt != null && z.cash != null ? z.debt - z.cash : null;
   const kp = (k, v, s, cls = '') => html`<div class="kpi"><span class="k">${k}</span><span class="v ${cls}">${v}</span><span class="s">${s}</span></div>`;
   const mt = trend(rows, r => M(r).net), ft = trend(rows, r => r.fcf);
-  const head = html`<div class="card-head"><h2>Fundamentals</h2><div class="toolbar">
+  const head = html`<div class="card-head"><h2>${el.dataset.title || 'Fundamentals'}</h2><div class="toolbar">
       <div class="seg" id="fMode">${hasQ ? html`<button data-m="q" class="${mode === 'q' ? 'on' : ''}">Quarterly</button><button data-m="t" class="${mode === 't' ? 'on' : ''}">TTM</button>` : ''}${hasY ? html`<button data-m="y" class="${mode === 'y' ? 'on' : ''}">Yearly</button>` : ''}</div>
       <div class="seg" id="fRange"><button data-r="5Y" class="${U.range === '5Y' ? 'on' : ''}">5Y</button><button data-r="All" class="${U.range === 'All' ? 'on' : ''}">All</button></div></div></div>`;
   if (!rows.length) { render(el, html`${head}<p class="muted small" style="margin:0">Not enough reported periods yet.</p>`); wire(el, sym, F); return; }

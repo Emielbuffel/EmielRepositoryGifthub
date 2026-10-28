@@ -6,12 +6,14 @@ import { DEMO, snapshotMeta, universe } from '../data/providers.js';
 import { isApp, pool } from '../data/net.js';
 import { secCompanies, listedCommon } from '../data/sec.js';
 import * as store from '../data/store.js';
-import { App, on, openStock, emit } from '../app.js';
+import { App, on, openStock, emit, rememberQuotes } from '../app.js';
 import { $, $$, html, raw, render, money, ICON, toast, ago } from './dom.js';
 import { patColor } from './chart.js';
 import { setupScore } from '../core/score.js';
 import { enrich } from '../core/earnings.js';
 import { checkBars } from '../data/alerts.js';
+import { fundamentals } from '../data/fundamentals.js';
+import { fundSummary } from '../core/fundamentals.js';
 import { factor } from '../data/fx.js';
 
 export const US_LARGE = ['AAPL', 'MSFT', 'NVDA', 'AMZN', 'GOOGL', 'META', 'AVGO', 'TSLA', 'JPM', 'LLY', 'V', 'UNH', 'XOM', 'MA', 'COST', 'HD', 'PG', 'JNJ', 'NFLX', 'WMT', 'ABBV', 'CRM', 'ORCL', 'AMD', 'BAC', 'KO', 'MRK', 'CVX', 'PEP', 'ADBE', 'TMO', 'LIN', 'CSCO', 'ACN', 'MCD', 'ABT', 'WFC', 'DIS', 'INTU', 'TXN', 'QCOM', 'IBM', 'AMAT', 'GE', 'CAT', 'NOW', 'ISRG', 'UBER', 'PANW', 'BKNG'];
@@ -23,11 +25,14 @@ const PRESETS = [
   ['lead', 'Leaders', r => r.rs >= 80 && r.s50 > 0],
   ['vol', 'Volume surge', r => r.vr >= 2],
   ['sell', 'Sell signals', r => r.sell.length > 0],
+  ['right', 'Right side / handle', r => r.ph && (r.ph.s === 2 || r.ph.s === 3)],
+  ['growth', 'Growth leaders', r => r.rs >= 80 && FUND[r.s] && FUND[r.s].eg >= 0.25 && FUND[r.s].sg >= 0.2],
 ];
 const COLS = [
   ['s', 'Symbol'], ['nm', 'Name'], ['sc', 'Setup', 'n'], ['c', 'Close', 'n'], ['d1', 'Day', 'n'], ['m1', '1 mo', 'n'], ['m3', '3 mo', 'n'], ['y1', '1 yr', 'n'],
-  ['rs', 'Strength', 'n'], ['g', 'Sector'], ['vr', 'Vol ×', 'n'], ['p', 'Pattern'], ['di', 'To buy pt', 'n'], ['hi', 'Off high', 'n'], ['sig', 'Signals'], ['sp', '60 days'],
+  ['rs', 'Strength', 'n'], ['g', 'Sector'], ['vr', 'Vol ×', 'n'], ['ph', 'Phase'], ['p', 'Pattern'], ['di', 'To buy pt', 'n'], ['hi', 'Off high', 'n'], ['eg', 'EPS g', 'n'], ['sg', 'Sales g', 'n'], ['nm', 'Net m', 'n'], ['sig', 'Signals'], ['sp', '60 days'],
 ];
+const FF = { eg: null, sg: null, nm: null, de: null, acc: false, up3: false, fcf: false }, FUND = {};
 const S = { rows: [], at: null, running: false, cancel: false, sort: 'sc', asc: false, ccy: '', fx: {}, preset: 'all', q: '', minRs: 0, sector: '', source: null, custom: '' };
 
 export async function initScreener(el) {
@@ -53,6 +58,19 @@ export async function initScreener(el) {
         <label class="chk">Min strength <input class="input" type="number" id="scRs" min="0" max="99" step="10" value="0" style="width:80px"></label>
         <span class="muted small" id="scCount"></span>
       </div>
+      <details class="fscreen" id="scFund"><summary><b>Fundamentals</b> <span class="muted small" id="scFundSum">EPS and sales growth, acceleration, margins, cash flow, debt</span></summary>
+        <div class="fs-grid">
+          <label class="chk">EPS growth ≥ <input class="input" type="number" data-ff="eg" step="5" placeholder="25" style="width:72px">%</label>
+          <label class="chk">Sales growth ≥ <input class="input" type="number" data-ff="sg" step="5" placeholder="20" style="width:72px">%</label>
+          <label class="chk">Net margin ≥ <input class="input" type="number" data-ff="nm" step="1" placeholder="10" style="width:72px">%</label>
+          <label class="chk">Debt / equity ≤ <input class="input" type="number" data-ff="de" step="0.1" placeholder="1" style="width:72px"></label>
+          <label class="chk"><input type="checkbox" data-ff="acc"> EPS growth accelerating (3 quarters)</label>
+          <label class="chk"><input type="checkbox" data-ff="up3"> EPS up each of the last 3 years</label>
+          <label class="chk"><input type="checkbox" data-ff="fcf"> Positive free cash flow</label>
+        </div>
+        <div class="toolbar"><button class="btn sm primary" id="scFundLoad">Load fundamentals for the stocks shown</button><button class="btn sm" id="scFundClear">Clear filters</button><span class="small muted" id="scFundMsg"></span></div>
+        <p class="muted tiny" style="margin:0">Figures come from company filings (SEC, US), the free Yahoo feed (other markets) or FMP, cached for a day. Loading them takes about a second per stock the first time, so filter on price first (preset, strength, sector). Stocks without loaded figures are hidden while a fundamental filter is on. EPS growth = latest quarter vs the same quarter a year earlier.</p>
+      </details>
       <div class="tbl-wrap"><table class="tbl" id="scTable"></table></div>
       <p class="muted tiny" style="margin:0">Setup = 0–100 score combining the base (30), strength (25), trend (15), demand (10), earnings (10, when known) and the market (10); hover or long-press for the breakdown. Strength = 1–99 rank of 12-month price strength (latest quarter double-weighted) within this scan only. The app's own measure. Tap a row to open its chart. ▲ buy-side and ▼ sell-side signals follow classic chart rules; they are not advice.</p>
     </section>`);
@@ -64,6 +82,11 @@ export async function initScreener(el) {
   $('#scRs').oninput = () => { S.minRs = +$('#scRs').value || 0; table(); };
   $('#scSec').onchange = () => { S.sector = $('#scSec').value; table(); };
   $('#scCcy').onchange = async () => { S.ccy = $('#scCcy').value; await loadFx(); table(); };
+  Object.assign(FF, await store.get('screen.ff', {})); Object.assign(FUND, await store.get('screen.fund', {}));
+  $$('[data-ff]').forEach(i => { const k = i.dataset.ff; if (i.type === 'checkbox') i.checked = !!FF[k]; else i.value = FF[k] ?? '';
+    i.oninput = i.onchange = () => { FF[k] = i.type === 'checkbox' ? i.checked : (i.value === '' ? null : +i.value); store.set('screen.ff', FF); table(); }; });
+  $('#scFundLoad').onclick = loadFund;
+  $('#scFundClear').onclick = () => { Object.keys(FF).forEach(k => { FF[k] = typeof FF[k] === 'boolean' ? false : null; }); $$('[data-ff]').forEach(i => { if (i.type === 'checkbox') i.checked = false; else i.value = ''; }); store.set('screen.ff', FF); table(); };
   on((type, data) => { if (type === 'sector') { S.sector = data || ''; S.preset = 'all'; presets(); table(); } if (type === 'market' && S.rows.length) { score(); table(); } if (type === 'provider') reset(); if (type === 'view' && App.view === 'screener') { sources(); if (!S.rows.length && (isDemo() || (provider().id === 'free' && !isApp())) && !S.running) run(); } });
   await reset();
   if (App.view === 'screener' && (isDemo() || (provider().id === 'free' && !isApp())) && !S.rows.length) run();
@@ -161,6 +184,7 @@ async function run() {
   else for (let i = 0; i < syms.length && !S.cancel; i++) { await one(syms[i]); prog(i + 1); if (i % 4 === 3) await new Promise(r => setTimeout(r, 0)); }
   rankRS(rows);
   S.rows = rows; S.at = Date.now(); S.running = false; score(); await loadFx();
+  rememberQuotes(rows.map(r => ({ s: r.s, c: r.c, ch: r.d1, ph: r.ph && r.ph.l, pt: r.ph && r.ph.t, rs: r.rs })));
   setTimeout(() => emit('scan'), 0);
   await store.set('screen.' + provider().id, { rows, at: S.at });
   $('#scProg').hidden = true; $('#scRun').disabled = false;
@@ -187,18 +211,50 @@ function presets() {
   $$('[data-p]').forEach(b => { b.onclick = () => { S.preset = b.dataset.p; presets(); table(); }; });
 }
 
-const val = (r, k) => k === 'p' ? (r.p ? Object.keys(ST).indexOf(r.p.st) : 99) : k === 'di' ? (r.p && r.p.di != null ? r.p.di : null) : k === 'sig' ? r.buy.length - r.sell.length : r[k];
+const fundOn = () => FF.eg != null || FF.sg != null || FF.nm != null || FF.de != null || FF.acc || FF.up3 || FF.fcf;
+function fundOk(r) {
+  if (!fundOn()) return true;
+  const f = FUND[r.s]; if (!f) return false;
+  if (FF.eg != null && !(f.eg != null && f.eg * 100 >= FF.eg)) return false;
+  if (FF.sg != null && !(f.sg != null && f.sg * 100 >= FF.sg)) return false;
+  if (FF.nm != null && !(f.nm != null && f.nm * 100 >= FF.nm)) return false;
+  if (FF.de != null && !(f.de != null && f.de <= FF.de)) return false;
+  if (FF.acc && f.acc !== true) return false;
+  if (FF.up3 && f.up3 !== true) return false;
+  if (FF.fcf && !(f.fcf > 0)) return false;
+  return true;
+}
+/** Loads (cached) fundamentals for the rows currently shown, a few at a time. */
+async function loadFund() {
+  const btn = $('#scFundLoad'), msg = $('#scFundMsg');
+  const saved = Object.assign({}, FF); Object.keys(FF).forEach(k => { FF[k] = typeof FF[k] === 'boolean' ? false : null; });
+  const shown = currentRows(); Object.assign(FF, saved); // the stocks shown by the price filters
+  const todo = shown.map(r => r.s).filter(s => !FUND[s] || Date.now() - FUND[s].at > 24 * 3600e3).slice(0, 500);
+  if (!todo.length) { msg.textContent = 'Fundamentals already loaded for these stocks.'; table(); return; }
+  btn.disabled = true; let done = 0, got = 0;
+  await pool(todo, 4, async sym => {
+    try { const F = await fundamentals(sym); const x = fundSummary(F); if (x) { FUND[sym] = { ...x, at: Date.now() }; got++; } } catch (e) { /* no data for this stock */ }
+  }, () => { done++; msg.textContent = `Loading ${done} of ${todo.length}…`; });
+  await store.set('screen.fund', FUND);
+  btn.disabled = false; msg.textContent = `Fundamentals for ${got} of ${todo.length} stocks${got < todo.length ? ' (the rest had no data' + (isApp() ? '' : ': most load in the desktop app') + ')' : ''}.`;
+  table();
+}
+const val = (r, k) => k === 'eg' || k === 'sg' || k === 'nm' ? (FUND[r.s] ? FUND[r.s][k] : null) : k === 'ph' ? (r.ph ? r.ph.s || 0 : null) : k === 'p' ? (r.p ? Object.keys(ST).indexOf(r.p.st) : 99) : k === 'di' ? (r.p && r.p.di != null ? r.p.di : null) : k === 'sig' ? r.buy.length - r.sell.length : r[k];
 function spark(a, up) {
   if (!a || a.length < 2) return '';
   const w = 70, h = 20, pts = a.map((v, i) => `${(i / (a.length - 1) * w).toFixed(1)},${(h - 1 - v / 99 * (h - 2)).toFixed(1)}`).join(' ');
   return `<svg class="spark" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" aria-hidden="true"><polyline fill="none" stroke="var(${up ? '--up' : '--down'})" stroke-width="1.5" points="${pts}"/></svg>`;
 }
-function table() {
+function currentRows() {
   const f = PRESETS.find(p => p[0] === S.preset)[2];
+  return S.rows.filter(f).filter(fundOk).filter(r => (r.rs || 0) >= S.minRs).filter(r => !S.sector || r.g === S.sector).filter(r => !S.q || r.s.includes(S.q) || (r.nm || '').toUpperCase().includes(S.q));
+}
+function table() {
   const secs = [...new Set(S.rows.map(r => r.g || SECTOR[r.s]).filter(Boolean))].sort();
   const sel = $('#scSec'); if (sel && sel.options.length !== secs.length + 1) render(sel, html`<option value="">All sectors</option>${secs.map(x => html`<option ${x === S.sector ? raw('selected') : ''}>${x}</option>`)}`);
   S.rows.forEach(r => { if (!r.g && SECTOR[r.s]) r.g = SECTOR[r.s]; });
-  let R = S.rows.filter(f).filter(r => (r.rs || 0) >= S.minRs).filter(r => !S.sector || r.g === S.sector).filter(r => !S.q || r.s.includes(S.q) || (r.nm || '').toUpperCase().includes(S.q));
+  let R = currentRows();
+  const fs = $('#scFundSum'); if (fs) fs.textContent = fundOn() ? `filter on · ${Object.keys(FUND).length} stocks with figures loaded` : 'EPS and sales growth, acceleration, margins, cash flow, debt';
   const k = S.sort, dir = S.asc ? 1 : -1;
   R = R.sort((a, b) => { const x = val(a, k), y = val(b, k); if (x == null) return 1; if (y == null) return -1; return (typeof x === 'string' ? x.localeCompare(y) : x - y) * dir; });
   $('#scCount').textContent = `${R.length} of ${S.rows.length}`;
@@ -215,6 +271,8 @@ function table() {
       case 'di': return html`<td class="n">${r.p && r.p.di != null ? pc(r.p.di) : '—'}</td>`;
       case 'sig': return html`<td title="${[...r.buy.map(x => '▲ ' + x), ...r.sell.map(x => '▼ ' + x)].join('\n')}">${r.buy.length ? html`<span class="t-ok">▲${r.buy.length}</span> ` : ''}${r.sell.length ? html`<span class="t-bad">▼${r.sell.length}</span>` : ''}${!r.buy.length && !r.sell.length ? html`<span class="muted">—</span>` : ''}</td>`;
       case 'sp': return html`<td>${raw(spark(r.sp, r.m3 >= 0))}</td>`;
+      case 'eg': case 'sg': case 'nm': { const f = FUND[r.s], v = f ? f[c] : (c === 'eg' && EPSYOY[r.s] != null ? EPSYOY[r.s] : null); return html`<td class="n ${v == null ? 'muted' : c !== 'nm' ? (v >= 0.25 ? 'up' : v < 0 ? 'down' : '') : ''}" title="${f && f.acc ? 'EPS growth accelerating' : ''}">${v == null ? '—' : pc(v, 0)}${c === 'eg' && f && f.acc ? raw(' <span class="t-ok">↑</span>') : ''}</td>`; }
+      case 'ph': return r.ph ? html`<td title="${r.ph.d || ''}"><span class="mini-steps">${[1, 2, 3, 4, 5, 6, 7].map(i => html`<i class="${r.ph.s === i ? 'on t-' + r.ph.t : r.ph.s && i < r.ph.s ? 'done' : ''}"></i>`)}</span> <span class="small t-${r.ph.t}">${r.ph.l}</span></td>` : html`<td class="muted">—</td>`;
       default: { const v = r[c]; return html`<td class="n ${v > 0 ? 'up' : v < 0 ? 'down' : ''}">${pc(v)}</td>`; }
     }
   };

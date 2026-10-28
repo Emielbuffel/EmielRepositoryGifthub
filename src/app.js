@@ -6,6 +6,7 @@ export const VIEWS = [
   { id: 'chart', label: 'Chart', icon: 'chart' },
   { id: 'market', label: 'Market', icon: 'market' },
   { id: 'screener', label: 'Screener', icon: 'screener' },
+  { id: 'fund', label: 'Fundamentals', icon: 'fund' },
   { id: 'portfolio', label: 'Portfolio', icon: 'portfolio' },
   { id: 'learn', label: 'Learn', icon: 'learn' },
 ];
@@ -63,8 +64,14 @@ export async function rememberName(sym, name) {
   if (!name || App.names[sym] === name) return;
   App.names[sym] = name; await store.set('names', App.names);
 }
-export async function rememberQuote(sym, close, chg) {
-  App.last[sym] = { c: close, ch: chg }; await store.set('lastQuotes', App.last); emit('quote');
+/** Last close and change (plus the pattern phase and strength when known) for the watchlist. */
+export async function rememberQuote(sym, close, chg, extra = {}) {
+  App.last[sym] = { ...(App.last[sym] || {}), c: close, ch: chg, ...extra }; await store.set('lastQuotes', App.last); emit('quote');
+}
+/** Many at once (after a scan): [{s, c, ch, ph, pt, rs}]. */
+export async function rememberQuotes(list) {
+  for (const x of list) App.last[x.s] = { ...(App.last[x.s] || {}), c: x.c, ch: x.ch, ph: x.ph, pt: x.pt, rs: x.rs };
+  await store.set('lastQuotes', App.last); emit('quote');
 }
 
 /* simple event bus: 'view', 'stock', 'watch', 'provider', 'market', 'quote' */

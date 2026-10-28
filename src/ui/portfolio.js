@@ -1,7 +1,8 @@
 // The Portfolio tab: holdings you enter by hand, analysed on the device: value, P/L, classic sell rules,
 // volatility, betas (incl. downside beta), risk contribution, correlations and a stress replay.
 import PAT from '../core/pat.js';
-import { baseState, pc, fD, fDs } from '../core/analysis.js';
+import { baseState, pc, fD, fDs, patternPhase } from '../core/analysis.js';
+import { phaseTag } from './phase.js';
 import { sma } from '../core/indicators.js';
 import { analysePortfolio } from '../core/portfolio.js';
 import { daily, fxWeekly, isDemo, provider, DataError } from '../data/service.js';
@@ -120,7 +121,7 @@ async function analyse() {
       if (s50 && c / s50 - 1 > 0.25) sig.push(['warn', `${pc(c / s50 - 1, 0)} above the 50-day: consider taking some profit`]);
       if (h.cost && c >= h.cost * 1.2) sig.push(['good', `Up ${pc(c / h.cost - 1, 0)}: the rule of thumb takes most profits at +20–25%`]);
       if (['NEAR BUY POINT', 'IN BUY ZONE'].includes(B.st)) sig.push(['good', (B.p ? B.p.name + ': ' : '') + B.st.toLowerCase()]);
-      rows.push({ ...h, d, cur, fx: fx || null, fxNow: fxNow || 1, c, ch: c / b[n - 1].close - 1, value: h.shares * c * (fxNow || 1), costV: h.cost ? h.shares * h.cost * (fxNow || 1) : null, B, sig, s200: s200 ? c / s200 - 1 : null });
+      rows.push({ ...h, d, cur, ph: patternPhase(R, b), fx: fx || null, fxNow: fxNow || 1, c, ch: c / b[n - 1].close - 1, value: h.shares * c * (fxNow || 1), costV: h.cost ? h.shares * h.cost * (fxNow || 1) : null, B, sig, s200: s200 ? c / s200 - 1 : null });
     } catch (e) { errs.push(`${h.sym}: ${e.message}`); if (e instanceof DataError && e.kind === 'auth') break; }
     if (seq !== P.seq) return;
   }
@@ -157,12 +158,12 @@ function draw(rows, A, bench, errs) {
     ${errs.length ? html`<p class="small t-warn" style="margin:0">${errs.join(' · ')}</p>` : ''}
     ${A && A.error ? html`<p class="small t-warn" style="margin:0">${A.error}</p>` : ''}`);
   const per = new Map((bad ? A.per : []).map(x => [x.sym, x]));
-  render($('#pHold'), html`<div class="tbl-wrap"><table class="tbl"><thead><tr><th class="sticky">Position</th><th class="n">Shares</th><th class="n">Price</th><th class="n">Day</th><th class="n">Value ${P.base}</th><th class="n">Weight</th><th class="n">vs cost</th><th class="n">vs 200-day</th><th class="n">Down β</th><th>Base</th><th>Signals</th><th></th></tr></thead><tbody>
+  render($('#pHold'), html`<div class="tbl-wrap"><table class="tbl"><thead><tr><th class="sticky">Position</th><th class="n">Shares</th><th class="n">Price</th><th class="n">Day</th><th class="n">Value ${P.base}</th><th class="n">Weight</th><th class="n">vs cost</th><th class="n">vs 200-day</th><th class="n">Down β</th><th>Phase</th><th>Signals</th><th></th></tr></thead><tbody>
     ${rows.map(r => { const x = per.get(r.sym); return html`<tr class="click" data-s="${r.sym}"><td class="sticky"><b>${r.sym.replace('.DEMO', '')}</b><div class="muted tiny" style="max-width:160px;overflow:hidden;text-overflow:ellipsis">${r.d.name || ''}</div></td>
       <td class="n">${r.shares}</td><td class="n">${money(r.c, r.cur)}</td><td class="n ${r.ch >= 0 ? 'up' : 'down'}">${pc(r.ch, 1)}</td><td class="n">${big(r.value, P.base)}</td><td class="n">${pc(total ? r.value / total : 0, 1).replace('+', '')}</td>
       <td class="n ${r.cost ? (r.c >= r.cost ? 'up' : 'down') : ''}">${r.cost ? pc(r.c / r.cost - 1, 0) : '—'}</td><td class="n ${r.s200 >= 0 ? 'up' : 'down'}">${pc(r.s200, 0)}</td>
       <td class="n ${x && x.downBeta > 1.5 ? 't-warn' : ''}">${x && x.downBeta != null ? x.downBeta.toFixed(2) : '—'}</td>
-      <td class="small">${r.B.st.toLowerCase()}</td>
+      <td>${phaseTag(r.ph)}</td>
       <td class="small" style="white-space:normal;min-width:200px">${r.sig.length ? r.sig.map(([k, t]) => html`<div class="${k === 'bad' ? 't-bad' : k === 'warn' ? 't-warn' : 't-ok'}">${k === 'good' ? '▲' : '▼'} ${t}</div>`) : html`<span class="muted">—</span>`}</td>
       <td><button class="btn sm" data-edit="${r.sym}" aria-label="Edit ${r.sym}">Edit</button></td></tr>`; })}
   </tbody></table></div><p class="muted tiny" style="margin:0">Tap a row for its chart and base patterns. Down β = how much the position moved per 1% fall of the benchmark, measured only in weeks the benchmark fell.</p>`);

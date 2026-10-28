@@ -93,3 +93,8 @@ test('portfolio metrics', () => {
   assert.ok(Math.abs(A.per.reduce((s, x) => s + x.rc, 0) - 1) < 1e-9);
   assert.equal(A.corr.length, 3);
 });
+
+test('patternPhase covers the demo stocks', async () => {
+  const { patternPhase } = await import('../src/core/analysis.js');
+  for (const d of DEMO) { const b = demoBars(d.sym).bars, ph = patternPhase(PAT.scan(b), b); assert.ok(ph.label, d.sym); }
+});

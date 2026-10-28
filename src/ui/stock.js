@@ -1,11 +1,12 @@
 // The Chart tab: one stock with its chart (EPS line, index comparisons, every detected pattern), the base card,
 // signal, earnings, growth checklist, news, flags, key numbers, base history and the user's drawings.
 import { fundCard } from './fundui.js';
+import { phaseTag, phaseStrip } from './phase.js';
 import { drawIntraday } from './intraday.js';
 import { companyCard, fundsItem } from './companyui.js';
 import { companyInfo } from '../data/company.js';
 import PAT from '../core/pat.js';
-import { baseCard, signal, pc, fD, fDs, f2, lineVal, cupPivot, screenRow, baseState } from '../core/analysis.js';
+import { baseCard, signal, pc, fD, fDs, f2, lineVal, cupPivot, screenRow, baseState, patternPhase } from '../core/analysis.js';
 import { setupScore } from '../core/score.js';
 import { listMenu } from './lists.js';
 import { alertSheet } from './alertsui.js';
@@ -119,10 +120,11 @@ async function load(sym, force = false) {
     V.data = d; V.bench = bench && bench.sym !== sym ? bench : null; V.sym = sym; V.earn = null; V.earnErr = null; V.news = null; V.cmp = [];
     if (d.name) await rememberName(sym, d.name);
     V.R = PAT.scan(d.bars);
+    V.phase = isIndexSym(sym) ? null : patternPhase(V.R, d.bars);
     V.sells = sellPoints(d.bars, V.R);
     V.mkt = isIndexSym(sym) ? analyseIndex(d.bars) : null;
     const n = d.bars.length - 1;
-    await rememberQuote(sym, d.bars[n].close, d.bars[n].close / d.bars[n - 1].close - 1);
+    await rememberQuote(sym, d.bars[n].close, d.bars[n].close / d.bars[n - 1].close - 1, V.phase ? { ph: V.phase.label, pt: V.phase.tone } : {});
     head(); draw(false); cards();
     if (App.pendingZoom && App.pendingZoom.sym === sym) { // "Review chart" from the journal
       const z = App.pendingZoom; App.pendingZoom = null; const idx = t => { let i = d.bars.findIndex(b => b.time >= t); return i < 0 ? n : i; };
@@ -266,7 +268,7 @@ async function tags() {
   const sr = screenRow(sym, '', V.data.bars, V.R, V.bench ? V.bench.bars : null);
   let sc = null;
   if (sr) { sr.rs = rs; const q = enrich(V.earn || []).pop(); sc = setupScore(sr, q ? q.yoy : null, App.mkt); V.score = sc; }
-  render(el, html`${sc ? html`<span class="tag ${sc.score >= 70 ? 't-ok' : sc.score >= 45 ? 't-warn' : 't-mute'}" title="${sc.parts.map(p => `${p[0]} ${p[1]}/${p[2]} (${p[3]})`).join(' · ')}">Setup ${sc.score}</span>` : ''}${rs != null ? html`<span class="tag ${rs >= 80 ? 't-ok' : rs >= 50 ? 't-blue' : 't-mute'}" title="12-month price strength, latest quarter double-weighted, ranked 1–99 among ${n} stocks. The app's own measure.">RS ${rs}</span>` : ''}${sector ? html`<span class="tag t-mute">${sector}</span>` : ''}`);
+  render(el, html`${phaseTag(V.phase)}${sc ? html`<span class="tag ${sc.score >= 70 ? 't-ok' : sc.score >= 45 ? 't-warn' : 't-mute'}" title="${sc.parts.map(p => `${p[0]} ${p[1]}/${p[2]} (${p[3]})`).join(' · ')}">Setup ${sc.score}</span>` : ''}${rs != null ? html`<span class="tag ${rs >= 80 ? 't-ok' : rs >= 50 ? 't-blue' : 't-mute'}" title="12-month price strength, latest quarter double-weighted, ranked 1–99 among ${n} stocks. The app's own measure.">RS ${rs}</span>` : ''}${sector ? html`<span class="tag t-mute">${sector}</span>` : ''}`);
 }
 
 function chips() {
@@ -353,6 +355,7 @@ function cards() {
   if (V.mkt) mktCard(); else $('#cMkt').hidden = true;
   render($('#cBase'), html`
     <div class="card-head"><h2>Base pattern</h2>${B.p ? html`<span class="tag" style="color:${patColor(B.p.type)}">${PAT_LABEL[B.p.type] || ''}</span>` : ''}</div>
+    ${phaseStrip(V.phase)}
     <div class="row" style="justify-content:flex-start;flex-wrap:wrap"><span class="pill lg ${tone(B.tone)}">${B.st}</span><h3>${C.title}</h3></div>
     ${C.facts.length ? html`<div class="facts">${C.facts.map(([k, v]) => html`<div class="fact"><div class="k">${k}</div><div class="v">${v}</div></div>`)}</div>` : ''}
     ${C.plan.length ? html`<ol class="plan">${C.plan.map(x => html`<li>${raw(x)}</li>`)}</ol>` : ''}

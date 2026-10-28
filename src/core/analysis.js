@@ -31,6 +31,48 @@ export function baseState(R, d) {
   return { st: 'NO BASE', tone: 'mute', p: null, alts: [], msg: "No sound base right now. The stock is not near a buy point." };
 }
 
+/** Steps of a base-and-breakout cycle, for the phase indicator. */
+export const PHASES = ['Left side', 'Right side', 'Handle / tight', 'Near buy point', 'Buy zone', 'Extended', 'Profit zone'];
+
+/**
+ * Where the stock is in the cycle of its current or latest base: correcting (left side), recovering (right side),
+ * handle or tight area, near the buy point, in the 5% buy zone, extended, or in the +20% profit zone, or off-cycle
+ * (failed breakout, stop hit, faulty base, no base). Returns {label, step (1–7 or null), tone, detail, stage}.
+ */
+export function patternPhase(R, d) {
+  const B = baseState(R, d), n = d.length - 1, c = d[n].close, p = B.p;
+  const stage = p && p.stage && p.stage !== '—' ? p.stage : null;
+  const name = p ? p.name : '';
+  if (B.st === 'NEAR BUY POINT' || B.st === 'BASE FORMING') {
+    const dist = B.dist;
+    if (dist >= -0.05) return { label: 'Near buy point', step: 4, tone: 'ok', detail: `${name}: ${(Math.abs(dist) * 100).toFixed(1)}% below the buy point`, stage };
+    const handle = p.type === 'cwh' || p.type === '3wt' || p.type === 'flat' || p.type === 'htf';
+    return handle ? { label: p.type === 'cwh' ? 'Handle forming' : 'Tight area forming', step: 3, tone: 'warn', detail: `${name}: ${(Math.abs(dist) * 100).toFixed(1)}% below the buy point`, stage }
+      : { label: 'Right side', step: 2, tone: 'warn', detail: `${name}: ${(Math.abs(dist) * 100).toFixed(1)}% below the buy point`, stage };
+  }
+  if (B.bo) {
+    const g = B.dist;
+    if (B.st === 'STOP HIT') return { label: 'Stop hit', step: null, tone: 'bad', detail: `${name} breakout: ${pc(g)} vs the buy point (more than 8% below)`, stage };
+    if (g < 0) return { label: 'Below buy point', step: null, tone: 'warn', detail: `${name} breakout fell back ${pc(g)}: a close 2% under the buy point counts as failed`, stage };
+    if (g <= 0.05) return { label: 'Buy zone', step: 5, tone: 'ok', detail: `${name} breakout: ${pc(g)} above the buy point (up to +5% is buyable)`, stage };
+    if (g >= 0.2) return { label: 'Profit zone', step: 7, tone: 'blue', detail: `${name} breakout: ${pc(g)}. The book takes most profits at +20–25% (unless the 8-week hold rule applies)`, stage };
+    return { label: 'Extended', step: 6, tone: 'warn', detail: `${name} breakout: ${pc(g)} above the buy point, past the buy zone: don't chase`, stage };
+  }
+  if (R.last && R.last.failed && n - R.last.failed <= 15) return { label: 'Failed breakout', step: null, tone: 'bad', detail: `${R.last.name} breakout failed ${n - R.last.failed} sessions ago`, stage: null };
+  if (B.st === 'FAULTY BASE') return { label: 'Faulty base', step: null, tone: 'bad', detail: `${name}: lower highs, not a sound base`, stage };
+  // no pattern recognised yet: is a new base starting? (pullback of 8%+ from a recent high)
+  const look = d.slice(Math.max(0, n - 130)), off = n - look.length + 1;
+  let iH = 0; look.forEach((x, i) => { if (x.close > look[iH].close) iH = i; });
+  const H = look[iH].close; let iL = iH; for (let i = iH; i < look.length; i++) if (look[i].close < look[iL].close) iL = i;
+  const L = look[iL].close, dd = 1 - L / H, since = look.length - 1 - iH;
+  if (dd >= 0.08 && since >= 5) {
+    const back = (c - L) / (H - L);
+    if (look.length - 1 - iL <= 3 || c <= L * 1.02) return { label: 'Left side', step: 1, tone: 'mute', detail: `Correcting: −${Math.round(dd * 100)}% from the high of ${fD(d[off + iH].time)}. A base needs at least 5–7 weeks`, stage: null };
+    return { label: 'Right side', step: 2, tone: 'mute', detail: `Recovering: ${Math.round(back * 100)}% of the ${Math.round(dd * 100)}% decline won back (${pc(c / H - 1)} from the high)`, stage: null };
+  }
+  return { label: B.st === 'NO BASE YET' ? 'Near highs, no base' : 'No base', step: null, tone: 'mute', detail: B.msg || '', stage: null };
+}
+
 /** Facts, plan and notes for the base card. */
 export function baseCard(R, d, bench, fp) {
   const B = baseState(R, d), n = d.length - 1, P = R.P;
@@ -237,6 +279,7 @@ export function screenRow(sym, name, bars, R, bench, { noVol = false } = {}) {
     s: sym, nm: name, c: c[n], d1: ch(1), w1: ch(5), m1: ch(21), m3: ch(63), m6: ch(126), y1: ch(252),
     vr, ud, dv: avg50 * c[n], s50: s50 ? c[n] / s50 - 1 : null, s200: s200 ? c[n] / s200 - 1 : null,
     hi: c[n] / hi52 - 1, lo: c[n] / lo52 - 1, rsRaw, rs: null, rsh, p, buy, sell, sp, dt: b[n].time,
+    ph: (() => { const x = patternPhase(R, b); return { l: x.label, s: x.step, t: x.tone, d: x.detail }; })(),
   };
 }
 

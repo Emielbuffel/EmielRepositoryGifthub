@@ -168,3 +168,25 @@ export function yoy(rows, k) {
   const a = rows.find(r => Math.abs(days(r.end, z.end) - 365) <= 20);
   return a && a[k] ? (z[k] - a[k]) / Math.abs(a[k]) : null;
 }
+
+/**
+ * The figures the screener filters on: latest EPS and sales growth vs a year earlier, EPS acceleration (growth
+ * rising over the last three quarters), net margin and free cash flow over 12 months, debt/equity, and whether
+ * yearly EPS rose in each of the last three years.
+ */
+export function fundSummary(F) {
+  if (!F) return null;
+  const q = F.rows || [], y = F.annual || [];
+  const growth = (rows, k, i, gap) => { const r = rows[i]; if (!r || r[k] == null) return null; const a = rows.find(x => Math.abs(days(x.end, r.end) - gap) <= 25); return a && a[k] ? (r[k] - a[k]) / Math.abs(a[k]) : null; };
+  const n = q.length - 1;
+  const eg = n >= 4 ? growth(q, 'eps', n, 365) ?? growth(q, 'net', n, 365) : y.length >= 2 ? growth(y, 'eps', y.length - 1, 365) : null;
+  const sg = n >= 4 ? growth(q, 'rev', n, 365) : y.length >= 2 ? growth(y, 'rev', y.length - 1, 365) : null;
+  const g3 = n >= 6 ? [growth(q, 'eps', n - 2, 365), growth(q, 'eps', n - 1, 365), growth(q, 'eps', n, 365)] : null;
+  const acc = g3 && g3.every(v => v != null) ? g3[2] > g3[1] && g3[1] > g3[0] : null;
+  const T = ttm(q), L = T.length ? T[T.length - 1] : y[y.length - 1] || null, Z = q[n] || y[y.length - 1] || null;
+  const up3 = y.length >= 4 ? y.slice(-4).every((r, i, a) => i === 0 || (r.eps != null && a[i - 1].eps != null && r.eps > a[i - 1].eps)) : null;
+  return {
+    eg, sg, acc, up3, nm: L && L.rev && L.net != null ? L.net / L.rev : null, fcf: L ? L.fcf ?? null : null,
+    de: Z && Z.debt != null && Z.equity ? Z.debt / Z.equity : null, end: Z ? Z.end : null, limited: !!F.limited,
+  };
+}

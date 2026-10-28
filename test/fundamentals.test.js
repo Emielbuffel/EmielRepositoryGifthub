@@ -52,3 +52,12 @@ test('Yahoo profile and the funds item', async () => {
   const p = parseYahooProfile({ quoteSummary: { result: [{ assetProfile: { sector: 'Consumer Cyclical', industry: 'Furnishings' }, defaultKeyStatistics: { heldPercentInstitutions: { raw: 0.62 }, floatShares: { raw: 9e7 } }, financialData: { returnOnEquity: { raw: 0.21 } }, price: { longName: 'SharkNinja, Inc.', currency: 'USD' } }] } });
   assert.equal(p.name, 'SharkNinja, Inc.'); assert.equal(p.inst, 0.62); assert.equal(p.roe, 0.21);
 });
+
+test('fundSummary: growth, acceleration, margins', async () => {
+  const { fundSummary } = await import('../src/core/fundamentals.js');
+  const ends = ['2024-03-31', '2024-06-30', '2024-09-30', '2024-12-31', '2025-03-31', '2025-06-30', '2025-09-30', '2025-12-31'];
+  const eps = [1, 1, 1, 1, 1.1, 1.2, 1.4, 1.6], rows = ends.map((end, i) => ({ end, eps: eps[i], rev: 100 + i * 10, net: 10 + i, fcf: 5, debt: 50, equity: 100 }));
+  const s = fundSummary({ rows, annual: [] });
+  assert.ok(Math.abs(s.eg - 0.6) < 1e-9); assert.equal(s.acc, true); assert.equal(s.de, 0.5);
+  assert.ok(Math.abs(s.sg - 40 / 130) < 1e-9);
+});

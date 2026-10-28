@@ -113,6 +113,7 @@ a:hover { text-decoration: underline; }
   .side-watch-list .s { font-weight: 600; font-size: 13.5px; }
   .side-watch-list .n { grid-column: 1; font-size: 11.5px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .side-watch-list .c { grid-row: 1 / span 2; grid-column: 2; align-self: center; font-size: 12px; }
+  .side-watch-list .ph { grid-column: 1 / -1; font-size: 10.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .side-foot { margin-top: auto; font-size: 11.5px; color: var(--muted); padding: 0 10px; }
   .page-title { font-size: 26px; }
 }
@@ -441,3 +442,22 @@ table.tbl td.name { max-width: 180px; overflow: hidden; text-overflow: ellipsis;
 .intra .row { justify-content: space-between; gap: 8px; font-size: 13px; }
 .intra .row b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .intra-chart { height: 110px; position: relative; }
+
+/* ---------- pattern phase ---------- */
+.phase { display: grid; gap: 8px; }
+.phase-steps { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }
+.ps { display: grid; gap: 4px; font-size: 10.5px; color: var(--muted); text-align: center; min-width: 0; }
+.ps i { display: block; height: 6px; border-radius: 99px; background: var(--fill); }
+.ps span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ps.done i { background: color-mix(in srgb, var(--blue) 35%, var(--fill)); }
+.ps.on i { background: var(--blue); }
+.ps.on.t-ok i { background: var(--up); } .ps.on.t-warn i { background: var(--warn); } .ps.on.t-blue i { background: var(--blue); }
+.ps.on span { color: var(--ink); font-weight: 700; }
+.mini-steps { display: inline-flex; gap: 2px; vertical-align: middle; }
+.mini-steps i { width: 7px; height: 7px; border-radius: 2px; background: var(--fill); display: block; }
+.mini-steps i.done { background: color-mix(in srgb, var(--blue) 35%, var(--fill)); }
+.mini-steps i.on { background: var(--blue); } .mini-steps i.on.t-ok { background: var(--up); } .mini-steps i.on.t-warn { background: var(--warn); } .mini-steps i.on.t-bad { background: var(--down); }
+.chip .x { border: 0; background: none; color: inherit; font-size: 15px; line-height: 1; padding: 0 0 0 4px; cursor: pointer; }
+.fscreen { border-top: .5px solid var(--sep); padding-top: 8px; display: grid; gap: 8px; }
+.fscreen summary { cursor: pointer; }
+.fs-grid { display: flex; flex-wrap: wrap; gap: 8px 18px; margin: 8px 0; }
