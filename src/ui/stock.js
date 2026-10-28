@@ -2,6 +2,7 @@
 // signal, earnings, growth checklist, news, flags, key numbers, base history and the user's drawings.
 import { fundCard } from './fundui.js';
 import { phaseTag, phaseStrip } from './phase.js';
+import { renderPanel } from './panel.js';
 import { drawIntraday } from './intraday.js';
 import { companyCard, fundsItem } from './companyui.js';
 import { companyInfo } from '../data/company.js';
@@ -52,6 +53,7 @@ export async function initStock(el) {
       </div>
     </div>
     <div class="row" style="gap:8px;justify-content:flex-start"><select class="input list-pick" id="sList" aria-label="Watchlist"></select><div class="chips" id="sChips" aria-label="Watchlist" style="flex:1;min-width:0"></div></div>
+    <div class="chart-row">
     <section class="card chart-card">
       <div class="chart-tools">
         <div class="seg" role="group" aria-label="Time frame"><button data-it="1d" title="Today, 5-minute bars (Yahoo Finance)">1D</button><button data-it="5d" title="Last 5 days, 15-minute bars (Yahoo Finance)">5D</button><button data-tf="D">Daily</button><button data-tf="W">Weekly</button></div>
@@ -68,6 +70,8 @@ export async function initStock(el) {
       <div class="small t-warn" id="sNote" hidden></div>
       <div class="pat-strip" id="sPats" aria-label="Patterns on this chart"></div>
     </section>
+      <aside class="card data-panel" id="sPanel" hidden></aside>
+    </div>
     <section class="card" id="cMkt" hidden></section>
     <div class="grid2">
       <section class="card" id="cBase"></section>
@@ -117,7 +121,7 @@ async function load(sym, force = false) {
     if (seq !== V.seq) return;
     // an index has no RS line against itself
     $('#sChartWrap').hidden = false; if (IV.range) intra(null);
-    V.data = d; V.bench = bench && bench.sym !== sym ? bench : null; V.sym = sym; V.earn = null; V.earnErr = null; V.news = null; V.cmp = [];
+    V.data = d; V.bench = bench && bench.sym !== sym ? bench : null; V.sym = sym; V.rs = null; V.score = null; V.earn = null; V.earnErr = null; V.news = null; V.cmp = [];
     if (d.name) await rememberName(sym, d.name);
     V.R = PAT.scan(d.bars);
     V.phase = isIndexSym(sym) ? null : patternPhase(V.R, d.bars);
@@ -140,8 +144,8 @@ async function load(sym, force = false) {
     loadCompare(sym, seq);
     if (!V.mkt) loadEarnings(sym, seq); else earnCard();
     $('#cFund').hidden = !!V.mkt || isDemoSym(sym); if (!$('#cFund').hidden) fundCard(sym);
-    V.co = null; $('#cCo').hidden = true;
-    if (!V.mkt && !isDemoSym(sym)) companyInfo(sym).then(co => { if (seq !== V.seq) return; V.co = co; companyCard(co, d.bars[n].close); renderCanslim(); });
+    V.co = null; $('#cCo').hidden = true; renderPanel(V);
+    if (!V.mkt && !isDemoSym(sym)) companyInfo(sym).then(co => { if (seq !== V.seq) return; V.co = co; companyCard(co, d.bars[n].close); renderCanslim(); renderPanel(V); });
     loadNews(sym, seq);
   } catch (e) {
     if (seq !== V.seq) return;
@@ -264,10 +268,12 @@ async function tags() {
   if (row && row.rs != null) { rs = row.rs; n = scan.rows.length; }
   try { const m = await snapshotMeta(); const st = m.stocks.find(x => x.s === sym); if (st) { sector = st.g || ''; if (rs == null && st.r) { rs = st.r; n = m.stocks.length; } } } catch (e) { /* no built-in data */ }
   if (sym !== V.sym) return;
+  V.rs = rs;
   // setup score: base, strength, trend, demand, earnings and market in one number
   const sr = screenRow(sym, '', V.data.bars, V.R, V.bench ? V.bench.bars : null);
   let sc = null;
   if (sr) { sr.rs = rs; const q = enrich(V.earn || []).pop(); sc = setupScore(sr, q ? q.yoy : null, App.mkt); V.score = sc; }
+  renderPanel(V);
   render(el, html`${phaseTag(V.phase)}${sc ? html`<span class="tag ${sc.score >= 70 ? 't-ok' : sc.score >= 45 ? 't-warn' : 't-mute'}" title="${sc.parts.map(p => `${p[0]} ${p[1]}/${p[2]} (${p[3]})`).join(' · ')}">Setup ${sc.score}</span>` : ''}${rs != null ? html`<span class="tag ${rs >= 80 ? 't-ok' : rs >= 50 ? 't-blue' : 't-mute'}" title="12-month price strength, latest quarter double-weighted, ranked 1–99 among ${n} stocks. The app's own measure.">RS ${rs}</span>` : ''}${sector ? html`<span class="tag t-mute">${sector}</span>` : ''}`);
 }
 

@@ -98,3 +98,11 @@ test('patternPhase covers the demo stocks', async () => {
   const { patternPhase } = await import('../src/core/analysis.js');
   for (const d of DEMO) { const b = demoBars(d.sym).bars, ph = patternPhase(PAT.scan(b), b); assert.ok(ph.label, d.sym); }
 });
+
+test('own ratings: EPS score scale and composite', async () => {
+  const { epsScore, composite } = await import('../src/core/ratings.js');
+  const rows = g => Array.from({ length: 8 }, (_, i) => ({ time: i * 9e6, eps: i < 4 ? 1 : 1 + g }));
+  assert.ok(epsScore(rows(0.5)) > epsScore(rows(0.25)) && epsScore(rows(0.25)) > epsScore(rows(0)));
+  assert.ok(epsScore(rows(0.25)) >= 70);
+  assert.equal(composite({ rs: 90, eps: 90, offHigh: 0, ad: 'A' }) >= 90, true);
+});
