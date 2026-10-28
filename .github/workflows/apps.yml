@@ -1,8 +1,7 @@
-# Builds the apps on GitHub's free runners and attaches them to a release you can download (also on your phone):
-#  - every push to main (or this working branch): tests, the web app, and the Android app (APK)
-#  - on demand (Actions → "Build apps" → Run workflow, tick "desktop"): also the Mac and Windows apps
-# The web/phone version and the automatic updates come from Cloudflare Pages, which builds the site itself
-# (see docs/PHONE.md); this workflow does not need any secrets.
+# Checks every push on GitHub's free runners (tests + a web build). On demand (Actions → "Build apps" → Run workflow,
+# tick "desktop") it also builds the Mac app (Apple silicon and Intel) and attaches it to the "latest" release.
+# The iPhone/iPad version comes from your own website (Cloudflare Pages builds it itself, see docs/PHONE.md) or from
+# Xcode on your Mac; this workflow needs no secrets.
 name: Build apps
 on:
   push:
@@ -10,7 +9,7 @@ on:
   workflow_dispatch:
     inputs:
       desktop:
-        description: Also build the Mac and Windows apps
+        description: Also build the Mac app
         type: boolean
         default: false
 permissions:
@@ -20,38 +19,20 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  android:
+  check:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with: { node-version: 22, cache: npm }
-      - uses: actions/setup-java@v4
-        with: { distribution: temurin, java-version: 21 }
       - run: npm ci
       - run: npm test
       - run: npm run build
-      - run: npx cap sync android
-      - name: Build the APK
-        working-directory: android
-        run: ./gradlew assembleDebug --no-daemon
-      - run: cp android/app/build/outputs/apk/debug/app-debug.apk Base-Pattern-Desk-android.apk
-      - uses: actions/upload-artifact@v4
-        with: { name: android-apk, path: Base-Pattern-Desk-android.apk }
-      - name: Publish to the "latest" release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: latest
-          name: Latest build
-          prerelease: true
-          make_latest: true
-          body: |
-            Built automatically from ${{ github.sha }} (run ${{ github.run_number }}).
-            Android: download Base-Pattern-Desk-android.apk on your phone and open it (allow installs from this source once).
-            Mac/Windows zips appear here when the workflow is run with "desktop" ticked.
-          files: Base-Pattern-Desk-android.apk
+      - name: Remove the old Android file from the release (the app is Apple-only now)
+        env: { GH_TOKEN: '${{ github.token }}' }
+        run: gh release delete-asset latest Base-Pattern-Desk-android.apk --repo "$GITHUB_REPOSITORY" --yes || true
 
-  desktop:
+  mac:
     if: github.event_name == 'workflow_dispatch' && inputs.desktop
     runs-on: macos-latest
     steps:
@@ -60,19 +41,18 @@ jobs:
         with: { node-version: 22, cache: npm }
       - run: npm ci
       - run: npm run build
-      - name: Mac (Apple silicon and Intel), ad-hoc signed
+      - name: Mac app (Apple silicon and Intel), ad-hoc signed
         run: |
           npx electron-builder --mac zip --arm64 --x64 --publish never
           for d in release/mac-arm64 release/mac; do codesign --force --deep --sign - "$d/Base Pattern Desk.app"; done
           (cd release/mac-arm64 && zip -qry -y ../Base-Pattern-Desk-mac-AppleSilicon.zip "Base Pattern Desk.app")
           (cd release/mac && zip -qry -y ../Base-Pattern-Desk-mac-Intel.zip "Base Pattern Desk.app")
-      - name: Windows
-        run: npx electron-builder --win zip --x64 --publish never
       - uses: softprops/action-gh-release@v2
         with:
           tag_name: latest
+          name: Latest build
           prerelease: true
+          body: Mac app built from ${{ github.sha }}. Apple silicon (M1–M4) or Intel; right-click → Open the first time.
           files: |
             release/Base-Pattern-Desk-mac-AppleSilicon.zip
             release/Base-Pattern-Desk-mac-Intel.zip
-            release/*-win-x64.zip

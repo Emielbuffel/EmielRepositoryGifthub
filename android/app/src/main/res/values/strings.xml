@@ -1,7 +1,0 @@
-<?xml version='1.0' encoding='utf-8'?>
-<resources>
-    <string name="app_name">Base Pattern Desk</string>
-    <string name="title_activity_main">Base Pattern Desk</string>
-    <string name="package_name">com.basepatterndesk.app</string>
-    <string name="custom_url_scheme">com.basepatterndesk.app</string>
-</resources>

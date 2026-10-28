@@ -103,11 +103,11 @@ function updates() {
     });
     return;
   }
-  // phone/tablet apps built with Capacitor: say when a newer build is on your website
+  // the iPhone/iPad app built with Xcode (Capacitor): say when a newer build is on your website
   if (window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform()) {
     import('./data/service.js').then(async ({ settings }) => {
       if (!settings.site) return;
-      try { const v = await fetch(settings.site.replace(/\/+$/, '') + '/version.json', { cache: 'no-store' }).then(r => r.json()); if (v.build > __BUILD__) toast('A newer version is available: on GitHub open Releases → "Latest build" and install the new APK (your data stays).', 9000); } catch (e) { /* offline */ }
+      try { const v = await fetch(settings.site.replace(/\/+$/, '') + '/version.json', { cache: 'no-store' }).then(r => r.json()); if (v.build > __BUILD__) toast('A newer version is available on your website. Rebuild the app from Xcode (npm run ios), or use the Home Screen version from your website, which updates itself.', 9000); } catch (e) { /* offline */ }
     });
     return;
   }
