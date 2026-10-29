@@ -179,9 +179,14 @@ async function freeEarnings(sym, P) {
   }
   const reported = built.filter(r => r.eps != null);
   let rows = reported.length ? built : [];
-  if (long && long.length > reported.length) {
+  const longQ = long ? long.filter(r => !r.annual) : [];
+  if (long && longQ.length > reported.length) {
     const lastT = long[long.length - 1].time;
     rows = [...long, ...built.filter(r => r.eps == null && r.time > lastT)]; // keep the next report date
+  } else if (long && long.length) {
+    // the built-in history is longer: add newer quarters it doesn't have yet, and yearly EPS for the years before it
+    const t0 = reported.length ? reported[0].time : Infinity, t1 = reported.length ? reported[reported.length - 1].time : -Infinity;
+    rows = [...rows, ...longQ.filter(r => r.time > t1 + 45 * 86400), ...long.filter(r => r.annual && r.time < t0 - 60 * 86400)];
   }
   // desktop: the next report date and recent estimates for any stock (Yahoo calendar)
   if (isDesktop() && !sym.startsWith('^')) {

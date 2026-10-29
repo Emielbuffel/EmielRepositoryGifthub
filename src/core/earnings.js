@@ -2,8 +2,16 @@
 // the earnings items of the growth checklist, and an accumulation grade.
 // Input rows: ascending [{time (report date, epoch s), eps, est?, rev?, revEst?, period?}]; future rows have eps == null.
 
-/** Reported quarters only (eps known), ascending. */
-export const reported = rows => (rows || []).filter(r => r.eps != null && isFinite(r.eps)).sort((a, b) => a.time - b.time);
+/** Reported quarters (or half years) only (eps known), ascending; yearly rows are kept apart. */
+export const reported = rows => (rows || []).filter(r => r.eps != null && isFinite(r.eps) && !r.annual).sort((a, b) => a.time - b.time);
+/** Yearly rows (eps known), ascending. */
+export const yearly = rows => (rows || []).filter(r => r.eps != null && isFinite(r.eps) && r.annual).sort((a, b) => a.time - b.time);
+/** Periods per year: 4 for quarterly reporters, 2 for half-year reporters (many European companies). */
+function perYear(q) {
+  if (q.some(r => r.half)) return 2;
+  const g = q.slice(1).map((r, i) => r.time - q[i].time).sort((a, b) => a - b);
+  return g.length >= 2 && g[Math.floor(g.length / 2)] > 140 * 86400 ? 2 : 4;
+}
 /** The next scheduled report (first future row without eps), if the provider gives one. */
 export function nextReport(rows, now = Date.now() / 1000) {
   const f = (rows || []).filter(r => r.eps == null && r.time > now - 86400).sort((a, b) => a.time - b.time);
@@ -14,12 +22,12 @@ const growth = (a, b) => a == null || b == null || !isFinite(a) || !isFinite(b) 
 
 /** Adds ttm (sum of the last 4 quarters), yoy (vs the same quarter a year earlier), surprise and sales growth. */
 export function enrich(rows) {
-  const q = reported(rows);
+  const q = reported(rows), k = perYear(q);
   return q.map((r, i) => ({
     ...r,
-    ttm: i >= 3 ? q[i].eps + q[i - 1].eps + q[i - 2].eps + q[i - 3].eps : null,
-    yoy: i >= 4 ? growth(r.eps, q[i - 4].eps) : null,
-    revYoy: i >= 4 && r.rev && q[i - 4].rev ? growth(r.rev, q[i - 4].rev) : null,
+    ttm: i >= k - 1 ? q.slice(i - k + 1, i + 1).reduce((s, x) => s + x.eps, 0) : null,
+    yoy: i >= k ? growth(r.eps, q[i - k].eps) : null,
+    revYoy: i >= k && r.rev && q[i - k].rev ? growth(r.rev, q[i - k].rev) : null,
     surprise: r.est != null && r.est !== 0 ? (r.eps - r.est) / Math.abs(r.est) : null,
   }));
 }
@@ -28,8 +36,13 @@ export function enrich(rows) {
  * Points of the EPS line at each report date. mode 'ttm' (4-quarter EPS) or 'q'.
  */
 export function epsPoints(rows, mode = 'ttm') {
-  return enrich(rows).map(r => ({ time: r.time, value: mode === 'ttm' ? r.ttm : r.eps, yoy: r.yoy, eps: r.eps, period: r.period }))
+  const pts = enrich(rows).map(r => ({ time: r.time, value: mode === 'ttm' ? r.ttm : r.eps, yoy: r.yoy, eps: r.eps, period: r.period }))
     .filter(p => p.value != null);
+  // yearly EPS fills the years before the quarterly (or half-year) figures start, or replaces them when there are too few
+  const y = yearly(rows); if (!y.length || mode !== 'ttm' && pts.length >= 2) return pts;
+  const first = pts.length ? pts[0].time : Infinity;
+  const yp = y.filter(r => r.time < first - 60 * 86400).map((r, i, a) => ({ time: r.time, value: r.eps, eps: r.eps, yoy: i ? growth(r.eps, a[i - 1].eps) : null, period: r.period, annual: true }));
+  return [...yp, ...pts].sort((a, b) => a.time - b.time);
 }
 
 /**

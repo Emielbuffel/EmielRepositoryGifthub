@@ -197,7 +197,7 @@ export class StockChart {
     if (S.eps && this.epsPts && this.epsPts.length) {
       const t0 = S.tf === 'D' ? x.time : (x.last || x.time); let pt = null;
       for (const p of this.epsPts) if (p.time <= t0) pt = p;
-      if (pt && S.eps) h += `<span style="color:var(--eps)">EPS ${S.eps.mode === 'ttm' ? '(4Q)' : '(qtr)'} <b style="color:var(--eps)">${f2(pt.value)}</b>${pt.yoy != null ? ' ' + pc(pt.yoy, 0) + ' y/y' : ''}${narrow ? '' : ' · ' + fD(pt.time)}</span>`;
+      if (pt && S.eps) h += `<span style="color:var(--eps)">EPS ${pt.annual ? '(year)' : S.eps.mode === 'ttm' ? '(12 m)' : '(period)'} <b style="color:var(--eps)">${f2(pt.value)}</b>${pt.yoy != null ? ' ' + pc(pt.yoy, 0) + ' y/y' : ''}${narrow ? '' : ' · ' + fD(pt.time)}</span>`;
     }
     if (this.cmpPerf) this.cmpPerf.forEach(c => { h += `<span style="color:${c.color}">${narrow ? c.name.slice(0, 14) : c.name} <b style="color:${c.color}">${pc(c.idx, 1)}</b> vs ${narrow ? 'stock' : S.sym} ${pc(c.stock, 1)}</span>`; });
     this.legendEl.innerHTML = h;

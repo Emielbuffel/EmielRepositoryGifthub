@@ -20,7 +20,7 @@ import { daily, benchmarkFor, indexSeries, compareOptions, defaultBenchmark, ear
 import { isApp } from '../data/net.js';
 import { splitSym, snapshotMeta, yahooIntraday } from '../data/providers.js';
 import { stockNews, lastSeen, markSeen, newsSettings } from '../data/news.js';
-import { enrich, epsPoints, nextReport, canslimCA, adGrade } from '../core/earnings.js';
+import { enrich, epsPoints, nextReport, canslimCA, adGrade, yearly } from '../core/earnings.js';
 import { analyseIndex, STATUS, EXPOSURE } from '../core/market.js';
 import * as store from '../data/store.js';
 import { App, on, openStock, saveWatch, rememberName, rememberQuote, go, useList } from '../app.js';
@@ -406,13 +406,16 @@ function earnCard() {
   const cls = x => x == null ? '' : x >= 0.2 ? 't-ok' : x < 0 ? 't-bad' : 't-warn';
   const ttm = q.filter(r => r.ttm != null);
   const row = r => html`<tr><td>${fDs(r.time)}${r.period ? html` <span class="muted tiny">${r.period}</span>` : ''}</td><td class="n">${f2(r.eps)}</td><td class="n ${cls(r.yoy)}">${pc(r.yoy, 0)}</td><td class="n ${r.surprise == null ? '' : r.surprise >= 0 ? 't-ok' : 't-bad'}">${pc(r.surprise, 0)}</td><td class="n ${cls(r.revYoy)}">${pc(r.revYoy, 0)}</td><td class="n">${f2(r.ttm)}</td></tr>`;
-  render(el, html`<div class="card-head"><h2>Earnings · quarter by quarter</h2>${nx ? html`<span class="tag t-blue">Next report ${fDs(nx.time)}${nx.est != null ? ' · est. ' + f2(nx.est) : ''}</span>` : ''}</div>
-    ${last8.length ? html`<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Reported</th><th class="n">EPS</th><th class="n">vs yr ago</th><th class="n">vs est.</th><th class="n">Sales vs yr ago</th><th class="n">4Q EPS</th></tr></thead><tbody>
+  render(el, html`<div class="card-head"><h2>Earnings · report by report</h2>${nx ? html`<span class="tag t-blue">Next report ${fDs(nx.time)}${nx.est != null ? ' · est. ' + f2(nx.est) : ''}</span>` : ''}</div>
+    ${last8.length ? html`<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Reported</th><th class="n">EPS</th><th class="n">vs yr ago</th><th class="n">vs est.</th><th class="n">Sales vs yr ago</th><th class="n">12-m EPS</th></tr></thead><tbody>
       ${[...last8].reverse().map(row)}
     </tbody></table></div>` : html`<p class="muted small" style="margin:0">No reported quarters.</p>`}
-    ${rep.length > 8 ? html`<details class="small"><summary>All ${rep.length} quarters since ${new Date(rep[0].time * 1000).getUTCFullYear()}</summary><div class="tbl-wrap"><table class="tbl"><thead><tr><th>Reported</th><th class="n">EPS</th><th class="n">vs yr ago</th><th class="n">vs est.</th><th class="n">Sales vs yr ago</th><th class="n">4Q EPS</th></tr></thead><tbody>${[...q].reverse().slice(8).filter(r => r.eps != null).map(row)}</tbody></table></div></details>` : ''}
-    ${ttm.length >= 2 ? html`<p class="small" style="margin:0">4-quarter EPS ${f2(ttm[ttm.length - 1].ttm)}, ${ttm.length >= 5 ? pc(ttm[ttm.length - 1].ttm / ttm[ttm.length - 5].ttm - 1, 0) + ' vs a year ago' : ''}. On the chart, the <b style="color:var(--eps)">EPS line</b> uses the left axis; dots mark each report (green = EPS up 20%+ y/y, orange = up less, red = down).</p>` : ''}
-    <p class="muted tiny" style="margin:0">Source: ${isDemoSym(V.sym) ? 'fictional demo figures' : src === 'sec' ? 'SEC EDGAR filings (10-Q / 10-K): GAAP diluted EPS, adjusted for stock splits; Q4 = full year minus the first three quarters; dates are filing dates (results are usually announced a few days earlier). Switch to adjusted EPS in the EPS menu where available.' : src === 'yahoo' ? 'free fundamentals feed: reported diluted EPS of the last quarters; report dates estimated (quarter end + 6 weeks).' : src === 'adjusted' ? 'built-in data: adjusted EPS (the analyst basis) with the real report dates.' : provider().name + '. EPS as the provider reports it (usually adjusted/non-GAAP for estimates).'}</p>`);
+    ${rep.length > 8 ? html`<details class="small"><summary>All ${rep.length} quarters since ${new Date(rep[0].time * 1000).getUTCFullYear()}</summary><div class="tbl-wrap"><table class="tbl"><thead><tr><th>Reported</th><th class="n">EPS</th><th class="n">vs yr ago</th><th class="n">vs est.</th><th class="n">Sales vs yr ago</th><th class="n">12-m EPS</th></tr></thead><tbody>${[...q].reverse().slice(8).filter(r => r.eps != null).map(row)}</tbody></table></div></details>` : ''}
+    ${yearly(V.earn).length ? html`<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Year</th><th class="n">EPS</th><th class="n">vs yr before</th><th class="n">Sales</th></tr></thead><tbody>
+      ${yearly(V.earn).reverse().map((r, i, a) => html`<tr><td>${r.period || fDs(r.time)}</td><td class="n">${f2(r.eps)}</td><td class="n ${cls(a[i + 1] && a[i + 1].eps > 0 ? r.eps / a[i + 1].eps - 1 : null)}">${a[i + 1] && a[i + 1].eps > 0 ? pc(r.eps / a[i + 1].eps - 1, 0) : '—'}</td><td class="n">${r.rev ? bigNum(r.rev, '') : '—'}</td></tr>`)}
+    </tbody></table></div>` : ''}
+    ${ttm.length >= 2 ? html`<p class="small" style="margin:0">12-month EPS ${f2(ttm[ttm.length - 1].ttm)}, ${ttm.length >= 5 ? pc(ttm[ttm.length - 1].ttm / ttm[ttm.length - 5].ttm - 1, 0) + ' vs a year ago' : ''}. On the chart, the <b style="color:var(--eps)">EPS line</b> uses the left axis; dots mark each report (green = EPS up 20%+ y/y, orange = up less, red = down).</p>` : ''}
+    <p class="muted tiny" style="margin:0">Source: ${isDemoSym(V.sym) ? 'fictional demo figures' : src === 'sec' ? 'SEC EDGAR filings (10-Q / 10-K): GAAP diluted EPS, adjusted for stock splits; Q4 = full year minus the first three quarters; dates are filing dates (results are usually announced a few days earlier). Switch to adjusted EPS in the EPS menu where available.' : src === 'yahoo' ? 'Yahoo Finance fundamentals (free): reported EPS (diluted, or net income ÷ shares) per quarter or half year, plus yearly EPS for the earlier years; report dates estimated (period end + 6–8 weeks).' : src === 'adjusted' ? 'built-in data: adjusted EPS (the analyst basis) with the real report dates.' : provider().name + '. EPS as the provider reports it (usually adjusted/non-GAAP for estimates).'}</p>`);
 }
 
 /* ---------- news ---------- */
@@ -554,7 +557,7 @@ function openMenu(id) {
       $('#rsSel', p).onchange = async () => { prefs.rsBench[g] = $('#rsSel', p).value; savePrefs(); V.bench = await benchmarkFor(V.sym, prefs.rsBench[g], { long: true }).catch(() => V.bench); draw(true); cards(); toast('RS line now measured against ' + (V.bench ? V.bench.name : 'the index') + '.'); };
     }
     if (id === 'pEps') {
-      render(p, html`${[['ttm', '4-quarter EPS (trailing 12 months)'], ['q', 'Quarterly EPS'], ['off', 'Hide EPS line']].map(([k, l]) => html`<button data-eps="${k}" class="${prefs.eps === k ? 'on' : ''}">${l}</button>`)}
+      render(p, html`${[['ttm', 'EPS over 12 months (4 quarters or 2 half years; yearly EPS for earlier years)'], ['q', 'EPS per report (quarter or half year)'], ['off', 'Hide EPS line']].map(([k, l]) => html`<button data-eps="${k}" class="${prefs.eps === k ? 'on' : ''}">${l}</button>`)}
         ${provider().id === 'free' && isApp() ? html`<hr>${[['long', 'Longest history (US: SEC filings since ~2009)'], ['adjusted', 'Adjusted EPS only (analyst basis, fewer stocks)']].map(([k, l]) => html`<button data-basis="${k}" class="${settings.epsBasis === k ? 'on' : ''}">${l}</button>`)}` : ''}
         <p class="muted tiny" style="margin:4px 10px 6px">Smooth line on the left axis; a dot marks each report: <b style="color:var(--up)">●</b> EPS up 20%+ y/y, <b style="color:var(--warn)">●</b> up less, <b style="color:var(--down)">●</b> down. ${V.earn ? '' : V.earnErr || 'Earnings data not loaded yet.'}</p>`);
       $$('[data-eps]', p).forEach(x => { x.onclick = () => { prefs.eps = x.dataset.eps; savePrefs(); draw(true); p.hidden = true; }; });

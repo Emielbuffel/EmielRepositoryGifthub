@@ -301,17 +301,47 @@ export async function yahooCalendar(sym) {
   const hist = ((r.earningsHistory && r.earningsHistory.history) || []).filter(h => h.quarter && h.quarter.raw).map(h => ({ end: h.quarter.raw, est: h.epsEstimate ? h.epsEstimate.raw : null, actual: h.epsActual ? h.epsActual.raw : null }));
   return { next, hist };
 }
-/** Quarterly diluted EPS from the free fundamentals feed (mostly the last 4–6 quarters), oldest first. */
+/**
+ * EPS history from the free Yahoo fundamentals feed, for any stock (European and Asian too):
+ * quarterly (or half-yearly) and yearly figures. EPS = diluted EPS, else basic EPS, else net income ÷ average shares.
+ * Falls back to the quote-summary earnings modules (last 4 quarters) when the time series has nothing.
+ * Rows: [{time (report date, estimated when unknown), end, eps, rev, period, src, tentative, annual?}] oldest first.
+ */
 export async function yahooEps(sym) {
-  const now = Math.floor(Date.now() / 1000);
-  const d = await getJSON(`https://query1.finance.yahoo.com/ws/fundamentals-timeseries/v1/finance/timeseries/${encodeURIComponent(sym)}?symbol=${encodeURIComponent(sym)}&type=quarterlyDilutedEPS,quarterlyTotalRevenue&period1=493590046&period2=${now}`);
-  const res = (d && d.timeseries && d.timeseries.result) || [];
-  const series = k => ((res.find(r => r.meta && r.meta.type && r.meta.type[0] === k) || {})[k] || []).filter(Boolean);
-  const rev = new Map(series('quarterlyTotalRevenue').map(x => [x.asOfDate, x.reportedValue && x.reportedValue.raw]));
-  // the feed gives the quarter's end date, not the report date: assume results about 6 weeks later
-  return series('quarterlyDilutedEPS').filter(x => x.reportedValue && x.reportedValue.raw != null).map(x => ({
-    time: dToT(x.asOfDate) + 42 * 86400, end: x.asOfDate, eps: x.reportedValue.raw, rev: rev.get(x.asOfDate) ?? null, period: 'Qtr to ' + x.asOfDate, src: 'yahoo', tentative: true,
-  })).sort((a, b) => a.time - b.time);
+  const now = Math.floor(Date.now() / 1000), y = encodeURIComponent(yahooSym(sym));
+  const F = ['DilutedEPS', 'BasicEPS', 'NetIncomeCommonStockholders', 'NetIncome', 'DilutedAverageShares', 'BasicAverageShares', 'TotalRevenue'];
+  const types = ['quarterly', 'annual'].flatMap(p => F.map(f => p + f)).join(',');
+  let res = [];
+  try {
+    const d = await getJSON(`https://query1.finance.yahoo.com/ws/fundamentals-timeseries/v1/finance/timeseries/${y}?symbol=${y}&type=${types}&period1=493590046&period2=${now}&crumb=__CRUMB__`);
+    res = (d && d.timeseries && d.timeseries.result) || [];
+  } catch (e) { /* try the quote summary below */ }
+  const series = k => { const r = res.find(x => x.meta && x.meta.type && x.meta.type[0] === k); return ((r && r[k]) || []).filter(x => x && x.reportedValue && x.reportedValue.raw != null); };
+  const build = prefix => {
+    const m = new Map(), put = (f, x) => { if (!m.has(x.asOfDate)) m.set(x.asOfDate, { end: x.asOfDate }); m.get(x.asOfDate)[f] = x.reportedValue.raw; };
+    F.forEach(f => series(prefix + f).forEach(x => put(f, x)));
+    return [...m.values()].map(r => {
+      const sh = r.DilutedAverageShares || r.BasicAverageShares, ni = r.NetIncomeCommonStockholders ?? r.NetIncome;
+      const eps = r.DilutedEPS ?? r.BasicEPS ?? (ni != null && sh ? ni / sh : null);
+      return { end: r.end, eps, rev: r.TotalRevenue ?? null };
+    }).filter(r => r.eps != null && isFinite(r.eps)).sort((a, b) => a.end.localeCompare(b.end));
+  };
+  const q = build('quarterly'), a = build('annual');
+  // half-year reporters show up as quarterly rows about six months apart
+  const gaps = q.slice(1).map((r, i) => (dToT(r.end) - dToT(q[i].end)) / 86400).sort((x, z) => x - z), half = gaps.length && gaps[Math.floor(gaps.length / 2)] > 140;
+  const rows = [
+    ...q.map(r => ({ time: dToT(r.end) + (half ? 55 : 42) * 86400, end: r.end, eps: r.eps, rev: r.rev, period: (half ? 'Half year to ' : 'Qtr to ') + r.end, src: 'yahoo', tentative: true, half })),
+    ...a.map(r => ({ time: dToT(r.end) + 70 * 86400, end: r.end, eps: r.eps, rev: r.rev, period: 'Year to ' + r.end, src: 'yahoo', tentative: true, annual: true })),
+  ];
+  if (q.length >= 2) return rows.sort((x, z) => x.time - z.time);
+  // fallback: the quote summary's last four quarters (actual EPS and the quarter's end date)
+  try {
+    const d = await getJSON(`https://query2.finance.yahoo.com/v10/finance/quoteSummary/${y}?modules=earningsHistory,earnings&crumb=__CRUMB__`);
+    const r = d && d.quoteSummary && d.quoteSummary.result && d.quoteSummary.result[0];
+    const hist = ((r && r.earningsHistory && r.earningsHistory.history) || []).filter(h => h.quarter && h.quarter.raw && h.epsActual && h.epsActual.raw != null);
+    hist.forEach(h => { const end = new Date(h.quarter.raw * 1000).toISOString().slice(0, 10); if (!rows.some(x => !x.annual && Math.abs(dToT(x.end) - h.quarter.raw) < 20 * 86400)) rows.push({ time: h.quarter.raw + 42 * 86400, end, eps: h.epsActual.raw, est: h.epsEstimate ? h.epsEstimate.raw : null, rev: null, period: 'Qtr to ' + end, src: 'yahoo', tentative: true }); });
+  } catch (e) { /* nothing more */ }
+  return rows.sort((x, z) => x.time - z.time);
 }
 /** Stock splits of a ticker from the free chart feed ({time, ratio}, ratio 10 = 10-for-1). */
 export async function yahooSplits(sym) {
