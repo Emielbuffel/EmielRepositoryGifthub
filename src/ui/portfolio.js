@@ -28,6 +28,7 @@ export async function initPortfolio(el) {
     <section class="card" id="pTop"></section>
     <section class="card" id="pCash"></section>
     <section class="card" id="pEvo"></section>
+    <section class="card" id="pMonths"></section>
     <section class="card" id="pIncome"></section>
     <section class="card">
       <div class="card-head"><h2>Holdings</h2><div class="toolbar"><select class="input" id="pBase" style="width:auto;padding:6px 10px;font-size:14px" aria-label="Portfolio currency">${['USD', 'EUR', 'GBP', 'CHF', 'JPY', 'CAD', 'AUD'].map(c => html`<option ${c === P.base ? raw('selected') : ''}>${c}</option>`)}</select><button class="btn sm" id="pImp">${raw(ICON.upload)}Import</button><button class="btn sm" id="pStops">${raw(ICON.bell)}Stop alerts</button><button class="btn sm primary" id="pAdd">${raw(ICON.plus)}Add</button></div></div>
@@ -41,7 +42,13 @@ export async function initPortfolio(el) {
     <section class="card" id="pJournal"></section>
     <p class="disclaimer">Educational analysis, not personal investment advice. Values use end-of-day prices and, for other currencies, end-of-day exchange rates. Holdings stay on this device.</p>`);
   $('#pAdd').onclick = () => editHolding();
-  $('#pImp').onclick = () => importSheet(hold => { if (hold) { App.holdings = hold; saveHoldings(); } });
+  const openImport = files => importSheet(hold => { if (hold) { App.holdings = hold; saveHoldings(); } }, files);
+  P.openImport = openImport;
+  $('#pImp').onclick = () => openImport();
+  // drop broker files (several monthly reports at once) anywhere on the Portfolio tab
+  el.addEventListener('dragover', e => { if ([...(e.dataTransfer.items || [])].some(i => i.kind === 'file')) { e.preventDefault(); el.classList.add('dropping'); } });
+  el.addEventListener('dragleave', e => { if (e.target === el) el.classList.remove('dropping'); });
+  el.addEventListener('drop', async e => { const fs = [...(e.dataTransfer.files || [])].filter(f => /\.(csv|txt)$/i.test(f.name)); el.classList.remove('dropping'); if (!fs.length) return; e.preventDefault(); openImport(await Promise.all(fs.map(async f => ({ name: f.name, modified: f.lastModified, text: await f.text() })))); });
   $('#pStops').onclick = async () => {
     const withCost = App.holdings.filter(h => h.cost);
     if (!withCost.length) { toast('Add your average cost to holdings first: stops are set 8% below the cost.'); return; }
@@ -96,7 +103,7 @@ async function analyse() {
     render(top, html`<div class="empty">${raw(ICON.portfolio)}<p><b>No holdings yet.</b><br>Add your positions to see their value, sell signals, risk and hidden correlations. Everything stays on this device.</p><button class="btn primary" id="pFirst">${raw(ICON.plus)}Add a holding</button></div>`);
     $('#pFirst').onclick = () => editHolding();
     ['#pHold', '#pFlags', '#pRisk', '#pCorr', '#pStress'].forEach(id => { $(id).innerHTML = ''; });
-    P.last = [[], { base: P.base, bench: null, perAnalysis: [] }]; drawAccount(...P.last);
+    P.last = [[], { base: P.base, bench: null, perAnalysis: [], openImport: P.openImport }]; drawAccount(...P.last);
     return;
   }
   render(top, html`<div class="empty"><span class="spinner"></span><span>Analysing ${App.holdings.length} holdings…</span></div>`);
@@ -133,7 +140,7 @@ async function analyse() {
   if (refRate) errs.push(`Some values use reference exchange rates of ${refRate} (live rates load in the desktop app)`);
   draw(rows, A, bench, errs);
   checkNewResults([...new Set([...App.holdings.map(h => h.sym), ...((App.lists || []).flatMap(l => l.syms || []))])].filter(s => !/\.DEMO$/.test(s)));
-  P.last = [rows, { base: P.base, bench, perAnalysis: A && !A.error ? A.per : [] }];
+  P.last = [rows, { base: P.base, bench, perAnalysis: A && !A.error ? A.per : [], openImport: P.openImport }];
   drawAccount(...P.last);
 }
 

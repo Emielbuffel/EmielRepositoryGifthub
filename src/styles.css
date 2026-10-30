@@ -481,3 +481,5 @@ table.tbl td.name { max-width: 180px; overflow: hidden; text-overflow: ellipsis;
 .data-panel .phase-steps { gap: 3px; }
 .mini-q { width: 100%; table-layout: fixed; }
 .mini-q th:first-child, .mini-q td:first-child { width: 34%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.view.dropping { outline: 3px dashed var(--blue); outline-offset: -6px; border-radius: 16px; }
+.heatw td, .heatw th { padding: 4px 8px; font-size: 12px; }

@@ -10,6 +10,7 @@ import { currencyOf, snapshotMeta, universe } from '../data/providers.js';
 import { factor } from '../data/fx.js';
 import { cashBalance, setCash, flows, addFlow, deleteFlow, journal, snapshots, saveSnapshots, ledger, clearLedger } from '../data/plans.js';
 import { summarize, KIND_LABEL } from '../core/ledger.js';
+import { monthly, weights } from '../core/months.js';
 import * as store from '../data/store.js';
 import { $, $$, html, raw, render, big, money, tok, sheet, toast } from './dom.js';
 import { fade } from './chart.js';
@@ -42,7 +43,7 @@ async function fxLookup(curs, base) {
 }
 
 /** Called by portfolio.js after every analysis. rows: [{sym, shares, value (base), cur, d: {bars, name}}]. */
-export async function drawAccount(rows, { base, bench, perAnalysis }) {
+export async function drawAccount(rows, { base, bench, perAnalysis, openImport }) {
   const seq = ++A.seq;
   const cash = await cashBalance(), F = await flows(), J = await journal(), snaps = await snapshots(), Lg = await ledger();
   let cashBase = 0, cashFx = 1;
@@ -55,9 +56,9 @@ export async function drawAccount(rows, { base, bench, perAnalysis }) {
     if (u) { try { const f = await factor('EUR', base); unpriced = u * (f ? f.v : 1); } catch (e) { unpriced = u; } }
   }
   const stocks = rows.reduce((s, r) => s + r.value, 0) + unpriced;
-  A.ctx = { rows, base, bench, cash, cashBase, F, J, snaps, Lg, stocks, unpriced, perAnalysis };
+  A.ctx = { rows, base, bench, cash, cashBase, F, J, snaps, Lg, stocks, unpriced, perAnalysis, openImport };
   if (seq !== A.seq) return;
-  cashCard(); flowsList(); incomeCard();
+  cashCard(); flowsList(); incomeCard(); monthsCard();
   if (!rows.length) { ['#pEvo', '#pMix', '#pFactor'].forEach(id => { const e = $(id); if (e) e.innerHTML = ''; }); return; }
   mixCard();
   evoCard();
@@ -144,6 +145,76 @@ function flowsList() {
     </tbody></table></div></details>`);
   delS();
   $$('[data-delf]', el).forEach(b => { b.onclick = async () => { if (confirm('Delete this entry? If it changed your cash balance, that change is undone.')) await deleteFlow(b.dataset.delf); }; });
+}
+
+/* ---------- month by month (from the monthly holdings files) ---------- */
+function monthsChart(M) {
+  const n = M.length, bw = 26, gap = 14, W = Math.max(340, n * (bw + gap) + 90), H = 230, top = 14, bot = 30, l = 56, r = 46;
+  const mx = Math.max(...M.map(m => m.total), 1), cums = M.map(m => m.cum), cmx = Math.max(0.02, ...cums), cmn = Math.min(0, ...cums);
+  const Y = v => top + (1 - v / mx) * (H - top - bot), YC = v => top + (cmx - v) / (cmx - cmn) * (H - top - bot), X = i => l + i * (bw + gap);
+  const cS = tok('--blue'), cC = tok('--teal'), cL = tok('--orange');
+  let g = '';
+  for (let k = 0; k <= 4; k++) { const v = mx * k / 4; g += `<line x1="${l}" x2="${W - r}" y1="${Y(v)}" y2="${Y(v)}" stroke="var(--grid)"/><text x="${l - 6}" y="${Y(v) + 3}" text-anchor="end" font-size="10" fill="var(--muted)">${big(v, 'EUR')}</text>`; }
+  M.forEach((m, i) => {
+    const x = X(i), ys = Y(Math.max(0, m.stocks)), yc = Y(Math.max(0, m.stocks) + Math.max(0, m.cash));
+    g += `<rect x="${x}" y="${ys}" width="${bw}" height="${Y(0) - ys}" rx="3" fill="${cS}"><title>${fDs(m.t)} · stocks ${big(m.stocks, 'EUR')}</title></rect>`;
+    if (m.cash > 0) g += `<rect x="${x}" y="${yc}" width="${bw}" height="${ys - yc}" rx="3" fill="${cC}"><title>${fDs(m.t)} · cash ${big(m.cash, 'EUR')}</title></rect>`;
+    g += `<text x="${x + bw / 2}" y="${H - 10}" text-anchor="middle" font-size="10" fill="var(--muted)">${new Date(m.t * 1000).toLocaleDateString('en-GB', { month: 'short', year: '2-digit', timeZone: 'UTC' })}</text>`;
+  });
+  if (n > 1) g += `<polyline fill="none" stroke="${cL}" stroke-width="2.2" points="${M.map((m, i) => (X(i) + bw / 2) + ',' + YC(m.cum)).join(' ')}"/>` + M.map((m, i) => `<circle cx="${X(i) + bw / 2}" cy="${YC(m.cum)}" r="3" fill="${cL}"><title>${fDs(m.t)} · cumulative return ${pc(m.cum, 1)}</title></circle>`).join('');
+  for (const v of [cmn, 0, cmx]) g += `<text x="${W - r + 6}" y="${YC(v) + 3}" font-size="10" fill="${cL}">${Math.round(v * 100)}%</text>`;
+  return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;max-width:${Math.round(W * 1.5)}px;height:auto;min-width:${Math.min(W, 520)}px" role="img" aria-label="Value per month">${g}</svg>`;
+}
+
+async function monthsCard() {
+  const el = $('#pMonths'); if (!el) return;
+  const { snaps, Lg, F } = A.ctx;
+  const head = html`<div class="card-head"><h2>Month by month</h2><div class="toolbar"><button class="btn sm primary" id="mAdd">Add monthly files</button>${snaps.length >= 2 ? html`<button class="btn sm" id="mCsv">Export CSV</button>` : ''}</div></div>`;
+  if (snaps.length < 2) {
+    render(el, html`${head}<div class="empty"><p><b>${snaps.length ? 'One monthly file so far.' : 'No monthly files yet.'}</b><br>Export your portfolio from your broker at the end of every month (DEGIRO: Portfolio → Export → CSV) and add the files here — several at once, or drag them onto this page. Each file becomes one month: value, stocks and cash, the change and the return, and what you bought and sold.</p></div>`);
+    $('#mAdd').onclick = () => A.ctx.openImport && A.ctx.openImport(); return;
+  }
+  const fx = await fxLookup(Lg.map(l => l.cur), 'EUR');
+  const ledFlows = Lg.filter(l => l.kind === 'deposit' || l.kind === 'withdrawal').map(l => ({ t: l.t, amount: l.amount * fx(l.cur, l.t) }));
+  const eurF = await fxLookup(F.map(f => f.cur), 'EUR');
+  const manual = F.map(f => ({ t: f.t, amount: f.amount * eurF(f.cur, f.t) })).filter(f => !ledFlows.some(x => Math.abs(x.t - f.t) <= 5 * DAY && Math.abs(x.amount - f.amount) <= Math.max(1, Math.abs(f.amount) * 0.01)));
+  const income = Lg.filter(l => ['dividend', 'divtax', 'fee', 'tax', 'interest'].includes(l.kind)).map(l => ({ t: l.t, kind: l.kind, amount: l.amount * fx(l.cur, l.t) }));
+  const M = monthly(snaps.map(x => ({ ...x, cash: x.cash * (x.cashCur && x.cashCur !== 'EUR' ? fx(x.cashCur, x.t) : 1) })), [...ledFlows, ...manual], income);
+  const last = M[M.length - 1], first = M[0], periods = M.slice(1).filter(m => m.ret != null);
+  const best = periods.reduce((a, b) => (!a || b.ret > a.ret ? b : a), null), worst = periods.reduce((a, b) => (!a || b.ret < a.ret ? b : a), null);
+  const netF = M.slice(1).reduce((t, m) => t + m.flow, 0), made = last.total - first.total - netF;
+  const kp = (k, v, sub, cls = '') => html`<div class="kpi"><span class="k">${k}</span><span class="v ${cls}">${v}</span><span class="s">${sub}</span></div>`;
+  const mon = t => new Date(t * 1000).toLocaleDateString('en-GB', { month: 'short', year: 'numeric', timeZone: 'UTC' });
+  const W = weights(M.slice(-12)), WM = M.slice(-12);
+  const moveTxt = m => !m.moves || !m.moves.length ? '—' : m.moves.map(x => `${x.kind === 'new' ? '+ new' : x.kind === 'sold' ? '× sold' : x.kind === 'added' ? '↑' : '↓'} ${x.name}${x.kind === 'added' || x.kind === 'reduced' ? ' ' + Math.round(x.shares) : ''}`).join(', ');
+  render(el, html`${head}
+    <div class="kpis">
+      ${kp('Value now', big(last.total, 'EUR'), `${mon(last.t)} · was ${big(first.total, 'EUR')} in ${mon(first.t)}`)}
+      ${kp('Return since ' + mon(first.t), pc(last.cum, 1), 'deposits and withdrawals left out', last.cum >= 0 ? 'up' : 'down')}
+      ${kp('Money made', (made >= 0 ? '+' : '') + big(made, 'EUR'), 'after costs, incl. dividends', made >= 0 ? 'up' : 'down')}
+      ${kp('Net deposits', (netF >= 0 ? '+' : '') + big(netF, 'EUR'), Lg.length || F.length ? 'from your statement / entries' : 'import your account statement to include them')}
+      ${best ? kp('Best period', pc(best.ret, 1), mon(best.t), 'up') : ''}
+      ${worst ? kp('Worst period', pc(worst.ret, 1), mon(worst.t), worst.ret < 0 ? 'down' : '') : ''}
+    </div>
+    <div class="tbl-wrap">${raw(monthsChart(M))}</div>
+    <div class="legend small"><span><i style="background:${tok('--blue')};height:10px;width:10px;border-radius:3px"></i>Stocks</span><span><i style="background:${tok('--teal')};height:10px;width:10px;border-radius:3px"></i>Cash</span><span><i style="background:${tok('--orange')}"></i>Cumulative return (right axis)</span></div>
+    <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Month</th><th class="n">Total</th><th class="n">Stocks</th><th class="n">Cash</th><th class="n">Change</th><th class="n">Deposits</th><th class="n">Result</th><th class="n">Return</th><th class="n">Cumulative</th><th class="n">Dividends</th><th class="n">Costs</th><th>Bought / sold</th></tr></thead><tbody>
+      ${[...M].reverse().map(m => html`<tr><td><b>${mon(m.t)}</b><div class="muted tiny">${fDs(m.t)}</div></td><td class="n">${big(m.total, 'EUR')}</td><td class="n">${big(m.stocks, 'EUR')}</td><td class="n">${big(m.cash, 'EUR')}</td>
+        <td class="n ${m.change > 0 ? 'up' : m.change < 0 ? 'down' : ''}">${m.change == null ? '—' : (m.change >= 0 ? '+' : '') + big(m.change, 'EUR')}</td><td class="n">${m.flow ? (m.flow > 0 ? '+' : '') + big(m.flow, 'EUR') : '—'}</td>
+        <td class="n ${m.result > 0 ? 'up' : m.result < 0 ? 'down' : ''}">${m.result == null ? '—' : (m.result >= 0 ? '+' : '') + big(m.result, 'EUR')}</td><td class="n ${m.ret > 0 ? 'up' : m.ret < 0 ? 'down' : ''}">${m.ret == null ? '—' : pc(m.ret, 1)}</td>
+        <td class="n">${pc(m.cum, 1)}</td><td class="n">${m.div ? big(m.div, 'EUR') : '—'}</td><td class="n">${m.cost ? big(m.cost, 'EUR') : '—'}</td><td class="small" style="white-space:normal;min-width:180px">${moveTxt(m)}</td></tr>`)}
+    </tbody></table></div>
+    <h3 style="margin:4px 0 0">Positions per month <span class="muted tiny">share of the stocks</span></h3>
+    <div class="tbl-wrap"><table class="tbl heatw"><thead><tr><th>Position</th>${WM.map(m => html`<th class="n">${new Date(m.t * 1000).toLocaleDateString('en-GB', { month: 'short', year: '2-digit', timeZone: 'UTC' })}</th>`)}</tr></thead><tbody>
+      ${W.names.map(k => html`<tr><td class="small" style="max-width:170px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${k}</td>${W.cells[k].map(w => html`<td class="n" style="background:${w ? `color-mix(in srgb, var(--blue) ${Math.round(Math.min(1, w / 0.25) * 70)}%, transparent)` : 'transparent'}">${w ? Math.round(w * 100) + '%' : ''}</td>`)}</tr>`)}
+    </tbody></table></div>
+    <p class="muted tiny" style="margin:0">From your ${M.length} monthly holdings files, amounts in EUR as on the statements. Return per period = result ÷ (start value + half the net deposits) (Modified Dietz), chained into the cumulative return. ${Lg.length ? 'Deposits, dividends and costs come from your account statement.' : 'Import your account statement (Account.csv) to include deposits, dividends and costs; without it every change counts as result.'}</p>`);
+  $('#mAdd').onclick = () => A.ctx.openImport && A.ctx.openImport();
+  $('#mCsv').onclick = () => {
+    const rows = [['month_end', 'total_eur', 'stocks_eur', 'cash_eur', 'change_eur', 'deposits_eur', 'result_eur', 'return', 'cumulative', 'dividends_eur', 'costs_eur', 'bought_sold'], ...M.map(m => [new Date(m.t * 1000).toISOString().slice(0, 10), m.total.toFixed(2), m.stocks.toFixed(2), m.cash.toFixed(2), m.change == null ? '' : m.change.toFixed(2), m.flow == null ? '' : m.flow.toFixed(2), m.result == null ? '' : m.result.toFixed(2), m.ret == null ? '' : m.ret.toFixed(4), m.cum.toFixed(4), (m.div || 0).toFixed(2), (m.cost || 0).toFixed(2), moveTxt(m)])];
+    const csv = rows.map(r => r.map(v => /[",\n;]/.test(String(v)) ? '"' + String(v).replace(/"/g, '""') + '"' : v).join(',')).join('\n');
+    const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' })); a.download = 'portfolio-month-by-month.csv'; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+  };
 }
 
 /* ---------- dividends, costs and taxes (from the account statement) ---------- */

@@ -34,7 +34,7 @@ const noon = s => Math.floor(Date.parse(s + 'T12:00:00Z') / 1000);
 const n0 = x => Math.round(x).toLocaleString('en-US');
 
 /** onDone(newHoldings|null) is called after saving; portfolio.js saves the holdings and re-analyses. */
-export function importSheet(onDone) {
+export function importSheet(onDone, initialFiles) {
   const sh = sheet('Import broker files', html`
     <div class="card" style="gap:10px">
       <p class="small" style="margin:0">Choose one or more CSV files from your broker — you can select several at once:</p>
@@ -110,6 +110,7 @@ export function importSheet(onDone) {
       toast([snaps.length ? `${snaps.length} holdings file${snaps.length > 1 ? 's' : ''} saved` : '', L.length ? `${added} new account lines` : '', hold ? 'current holdings updated' : ''].filter(Boolean).join(' · ') + '.', 4500);
     };
   };
+  if (initialFiles && initialFiles.length) read(initialFiles);
   $('#imFile', sh).onchange = async e => { const fs = [...e.target.files]; if (fs.length) read(await Promise.all(fs.map(async f => ({ name: f.name, modified: f.lastModified, text: await f.text() })))); };
   $('#imRead', sh).onclick = () => { const t = $('#imText', sh).value; if (t.trim()) read([{ name: 'Pasted table', modified: Date.now(), text: t }]); };
 }
