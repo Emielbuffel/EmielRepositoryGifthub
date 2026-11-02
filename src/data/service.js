@@ -5,6 +5,7 @@ import { isApp, isDesktop, relay } from './net.js';
 import { Capacitor } from '@capacitor/core';
 import { snapshotMeta, yahooEps, yahooSplits, yahooCalendar } from './providers.js';
 import { secEarnings } from './sec.js';
+import { mergeBars, fixSpikes } from '../core/bars.js';
 
 let SNAP_IDX = null;
 export const snapshotReady = snapshotMeta().then(m => { SNAP_IDX = new Set(Object.keys(m.indexes)); return m; }).catch(() => null);
@@ -47,17 +48,21 @@ export async function daily(sym, { force = false, long = false, years = YEARS } 
   const P = isDemoSym(sym) ? PROVIDERS.demo : provider();
   if (P.needsKey && !key()) throw new DataError(`Add your ${P.name} API key in Settings, or switch to demo data.`, 'auth');
   long = long && P.id === 'free' && liveFeeds();
-  const ck = P.id + (long ? ':L:' : ':') + sym;
+  // 'v2': price caches from before the source checks are not reused (they could hold a glued-together jump)
+  const ck = P.id + (long ? ':L2:' : ':v2:') + sym;
   const cached = await store.cacheGet(ck);
   if (cached && !force && Date.now() - cached.fetchedAt < FRESH_MS) return { ...cached, cached: true };
   try {
     let bars, meta = {};
     const fromFull = long ? 0 : Date.now() / 1000 - years * 365.25 * 86400;
+    let merged = null;
     if (cached && cached.bars.length > 200 && P.id !== 'demo') {
       const r = await P.daily(sym, key(), cached.bars[cached.bars.length - 1].time - 14 * 86400);
-      const m = new Map(cached.bars.map(b => [b.time, b])); r.bars.forEach(b => m.set(b.time, b));
-      bars = [...m.values()].sort((a, b) => a.time - b.time).filter(b => b.time >= fromFull); meta = r;
-    } else {
+      const mg = mergeBars(cached.bars, r.bars); // refuses to glue prices from two different sources
+      if (mg.ok) { merged = fixSpikes(mg.bars).filter(b => b.time >= fromFull); meta = r; }
+    }
+    if (merged) bars = merged;
+    else {
       const r = await P.daily(sym, key(), P.id === 'fmp' ? fromFull : null, { long });
       bars = r.bars.filter(b => b.time >= fromFull); meta = r;
     }
@@ -155,7 +160,7 @@ export async function earnings(sym) {
 
 /** Stock splits for a ticker: from the chart's full history when loaded, else the free feed (cached 30 days). */
 async function splitsFor(sym) {
-  const d = await store.cacheGet('free:L:' + sym); if (d && d.splits) return d.splits;
+  const d = await store.cacheGet('free:L2:' + sym); if (d && d.splits) return d.splits;
   const ck = 'splits:' + sym, c = await store.cacheGet(ck);
   if (c && Date.now() - c.at < 30 * 864e5) return c.splits;
   const splits = await yahooSplits(sym); await store.cacheSet(ck, { splits, at: Date.now() }); return splits;
@@ -176,6 +181,15 @@ async function freeEarnings(sym, P) {
     // US: SEC filings; others, and US-listed companies without US-GAAP quarterly EPS (e.g. 20-F filers): the free feed
     if (!splitSym(sym).sfx) { try { long = await secEarnings(sym, secAgent(), await splitsFor(sym).catch(() => [])); } catch (e) { err = err || e; } }
     if (!long || long.length < 4) { try { const y = await yahooEps(sym); if (y && y.length > (long || []).length) long = y; } catch (e) { err = err || e; } }
+    // last resort: EPS from the company fundamentals (SEC filings incl. IFRS 20-F, the free feed's yearly figures, FMP)
+    if ((!long || long.length < 2) && !built.some(r => r.eps != null)) {
+      try {
+        const { fundamentals } = await import('./fundamentals.js'), F = await fundamentals(sym);
+        const q = (F.rows || []).filter(r => r.eps != null).map(r => ({ time: Date.parse(r.end) / 1000 + 42 * 86400, end: r.end, eps: r.eps, rev: r.rev ?? null, period: 'Qtr to ' + r.end, src: 'fund', tentative: true }));
+        const a = (F.annual || []).filter(r => r.eps != null).map(r => ({ time: Date.parse(r.end) / 1000 + 70 * 86400, end: r.end, eps: r.eps, rev: r.rev ?? null, period: 'Year to ' + r.end, src: 'fund', tentative: true, annual: true }));
+        if (q.length + a.length > (long || []).length) long = [...q, ...a].sort((x, y) => x.time - y.time);
+      } catch (e) { err = err || e; }
+    }
   }
   const reported = built.filter(r => r.eps != null);
   let rows = reported.length ? built : [];

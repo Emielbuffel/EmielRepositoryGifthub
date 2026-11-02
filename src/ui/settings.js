@@ -29,7 +29,12 @@ export async function initSettings(el) {
       <p class="small" style="margin:0">Your own free website (for example on Cloudflare Pages, connected to your GitHub repository) hosts the newest version of the app. It gives you: the app on your phone (open the address and choose <b>Add to Home Screen</b>), live data there through its built-in data relay, and automatic updates for this ${isDesktop() ? 'desktop app' : 'app'}. Step-by-step guide: docs/PHONE.md in the repository.</p>
       <div class="grid2"><label class="field"><span>Your app website</span><input class="input" id="stSiteUrl" type="url" placeholder="https://base-pattern-desk.pages.dev" value="${settings.site || ''}" autocapitalize="off" spellcheck="false"></label>
       <label class="field"><span>Relay key (the RELAY_KEY you set on the website)</span><input class="input" id="stRelayKey" type="password" value="${settings.relayKey || ''}" autocapitalize="off" spellcheck="false"></label></div>
-      <div class="toolbar"><button class="btn primary" id="stSiteSave">Save and test</button>${isDesktop() ? html`<button class="btn" id="stUpd">Check for updates now</button>` : ''}<span class="small" id="stSiteMsg"></span></div>
+      <div class="toolbar"><button class="btn primary" id="stSiteSave">Save and test</button><span class="small" id="stSiteMsg"></span></div>
+      ${isDesktop() ? html`<div class="upd-box">
+        <h3 style="margin:0">Update the app</h3>
+        <p class="small" style="margin:0">The app checks for a new version at start and every 3 hours, from your website above or — without a website — from GitHub, where every new version is published. For GitHub (your repository is private) paste a <b>read-only token</b> once: github.com → Settings → Developer settings → Fine-grained tokens → Generate, repository <i>EmielRepositoryGifthub</i>, permission <i>Contents: Read-only</i>. It is stored only in the app's folder on this Mac and sent only to GitHub.</p>
+        <div class="row" style="gap:8px;justify-content:flex-start;flex-wrap:wrap"><input class="input" id="stGh" type="password" placeholder="github_pat_…" style="max-width:320px" autocapitalize="off" spellcheck="false"><button class="btn" id="stGhSave">Save token</button><button class="btn primary" id="stUpd">Update now</button><button class="btn" id="stRestart" hidden>Restart to use the new version</button></div>
+      </div>` : ''}
       <p class="muted tiny" style="margin:0" id="stBuild">Version ${VERSION} · build ${__BUILD__}</p>
     </section>
     <section class="card">
@@ -177,8 +182,8 @@ function siteBox(el) {
   const status = async () => {
     if (!isDesktop() || !window.desktop.updateStatus) return;
     const u = await window.desktop.updateStatus();
-    const st = { off: 'add your website to get automatic updates', checking: 'checking…', latest: 'up to date', downloading: 'downloading build ' + u.build + '…', ready: 'build ' + u.build + ' downloaded: restart to use it', shell: u.note, error: 'update check failed: ' + u.note, idle: '' }[u.state] || '';
-    $('#stBuild', el).textContent = `Version ${VERSION} · running build ${u.running || __BUILD__} · desktop shell ${u.shell}${st ? ' · ' + st : ''}`;
+    const st = { off: 'add your website or a GitHub token to get automatic updates', checking: 'checking…', latest: 'up to date', downloading: 'downloading build ' + u.build + '…', ready: 'build ' + u.build + ' downloaded: restart to use it', shell: u.note, error: 'update check failed: ' + u.note, idle: '' }[u.state] || '';
+    $('#stBuild', el).textContent = `Version ${VERSION} · running build ${u.running || __BUILD__} · desktop shell ${u.shell}${u.src ? ' · updates from ' + u.src : ''}${st ? ' · ' + st : ''}`;
   };
   status();
   $('#stSiteSave', el).onclick = async () => {
@@ -194,7 +199,21 @@ function siteBox(el) {
       if (isDesktop()) { await window.desktop.checkUpdate(); status(); }
     } catch (e) { set(isDesktop() ? 'Saved. Could not reach the website: check the address.' : 'Saved. The test could not reach the website from this page (it works once you open the app from the website itself).', 'warn'); }
   };
-  const u = $('#stUpd', el); if (u) u.onclick = async () => { set('Checking…'); await window.desktop.checkUpdate(); await status(); set(''); };
+  const u = $('#stUpd', el);
+  if (u) u.onclick = async () => {
+    u.disabled = true; set('Looking for a new version…');
+    const r = await window.desktop.checkUpdate(); await status(); u.disabled = false;
+    if (r.state === 'ready') { set('New version ' + r.build + ' downloaded.', 'ok'); $('#stRestart', el).hidden = false; }
+    else if (r.state === 'latest') set('You have the newest version.', 'ok');
+    else if (r.state === 'off') set('Add your website or a GitHub token first.', 'warn');
+    else set(r.note || r.state, r.state === 'error' ? 'bad' : 'warn');
+  };
+  const rs = $('#stRestart', el); if (rs) rs.onclick = () => window.desktop.restart();
+  const gs = $('#stGhSave', el);
+  if (gs) {
+    if (!window.desktop.setGithubToken) { gs.disabled = true; $('#stGh', el).placeholder = 'needs the newest desktop app download'; }
+    gs.onclick = async () => { const t = $('#stGh', el).value.trim(); await window.desktop.setGithubToken(t); $('#stGh', el).value = ''; set(t ? 'Token saved. Press Update now.' : 'Token removed.', 'ok'); };
+  }
 }
 
 async function switchProvider() { await loadState(); emit('provider'); emit('watch'); }

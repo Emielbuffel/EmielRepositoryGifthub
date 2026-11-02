@@ -28,6 +28,23 @@ jobs:
       - run: npm ci
       - run: npm test
       - run: npm run build
+      - name: Package the new version for the in-app updater
+        run: |
+          tar -czf web-build.tar.gz -C dist .
+          cp dist/version.json version.json
+      - name: Publish it to the "latest" release (the Mac app's "Update now" downloads it)
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: Latest build
+          prerelease: true
+          body: |
+            Newest version, built automatically from ${{ github.sha }}.
+            The Mac app updates itself from here (Settings → Phone & automatic updates → Update now).
+            Mac app downloads appear here when the workflow is run with "desktop" ticked.
+          files: |
+            web-build.tar.gz
+            version.json
       - name: Remove the old Android file from the release (the app is Apple-only now)
         env: { GH_TOKEN: '${{ github.token }}' }
         run: gh release delete-asset latest Base-Pattern-Desk-android.apk --repo "$GITHUB_REPOSITORY" --yes || true

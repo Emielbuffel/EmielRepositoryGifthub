@@ -2,6 +2,7 @@
 // Tickers inside the app use Yahoo-style suffixes (AAPL, ASML.AS, 7203.T, 005930.KS); each provider maps them.
 // Endpoints follow each provider's public documentation; check them if a provider changes its API.
 import { secCompanies } from './sec.js';
+import { mergeBars, fixSpikes, alignQuote } from '../core/bars.js';
 import { httpGet, isApp } from './net.js';
 import { demoBars, demoEarnings, demoNews, DEMO, DEMO_INDEXES, DEMO_BENCH } from './demo.js';
 
@@ -268,7 +269,8 @@ async function yahoo(sym, fromT, { max = false } = {}) {
   const q = r.indicators.quote[0], off = r.meta.gmtoffset || 0;
   const bars = clean(r.timestamp.map((t, i) => ({ time: Math.floor((t + off) / 86400) * 86400, open: q.open[i], high: q.high[i], low: q.low[i], close: q.close[i], volume: q.volume[i] || 0 })));
   const splits = Object.values((r.events && r.events.splits) || {}).map(x => ({ time: x.date, ratio: x.numerator / x.denominator })).filter(x => x.ratio > 0 && x.ratio !== 1).sort((a, b) => a.time - b.time);
-  return { bars, splits, currency: r.meta.currency, name: r.meta.longName || r.meta.shortName || '', exchange: r.meta.fullExchangeName || r.meta.exchangeName || '' };
+  const quote = { price: r.meta.regularMarketPrice, time: r.meta.regularMarketTime, off };
+  return { bars: fixSpikes(alignQuote(bars, quote)), splits, quote, currency: r.meta.currency, name: r.meta.longName || r.meta.shortName || '', exchange: r.meta.fullExchangeName || r.meta.exchangeName || '' };
 }
 /**
  * Intraday bars from the free Yahoo chart feed (desktop app; browsers block it). range '1d' or '5d'; interval '1m',
@@ -376,8 +378,10 @@ const FREE = {
       // long = the whole history (chart view); otherwise only the days after the built-in data
       const r = long ? await live(sym, null, { max: true }) : await live(sym, snap ? snap.bars[snap.bars.length - 1].time - 10 * 86400 : null);
       if (!snap) return { ...r, live: true };
-      const m = new Map(snap.bars.map(b => [b.time, b])); r.bars.forEach(b => m.set(b.time, b));
-      return { ...snap, name: snap.name || r.name, currency: snap.currency || r.currency, splits: r.splits, bars: [...m.values()].sort((a, b) => a.time - b.time), live: true };
+      const mg = mergeBars(snap.bars, r.bars);
+      // the built-in prices come from another venue or unit than the live feed: use the live history only
+      if (!mg.ok) { const full = long ? r : await live(sym, null); return { ...full, name: full.name || snap.name, live: true, note: 'live prices only (built-in data differed)' }; }
+      return { ...snap, name: snap.name || r.name, currency: snap.currency || r.currency, splits: r.splits, quote: r.quote, bars: fixSpikes(mg.bars), live: true };
     } catch (e) {
       if (snap) return { ...snap, live: false };
       throw new DataError(`${sym} is not in the built-in data${isApp() ? ' and the free feeds did not answer' : '. Other tickers load in the desktop app (browsers block the free feeds)'}.`, 'notfound');
