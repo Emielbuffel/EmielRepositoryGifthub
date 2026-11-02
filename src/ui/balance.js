@@ -61,7 +61,7 @@ function draw() {
     <td class="n"><input class="input cell n" type="number" step="1000" data-a="${i}" data-k="value" value="${a.value}"></td><td><button class="btn sm danger" data-ad="${i}" aria-label="Remove">×</button></td></tr>`;
   render($('#bAssets'), html`<div class="card-head"><h2>Assets</h2><button class="btn sm" id="bAddA">+ Add</button></div>
     <div class="tbl-wrap"><table class="tbl edit"><thead><tr><th>Name</th><th>Type</th><th class="n">Value (EUR)</th><th></th></tr></thead><tbody>
-      <tr class="auto"><td><b>Stock portfolio</b><div class="muted tiny">from the app${pf && pf.base && pf.base !== 'EUR' ? ` (in ${pf.base})` : ''}</div></td><td class="small">Stocks</td><td class="n"><b>${pf ? n0(pf.stocks) : '—'}</b></td><td><button class="btn sm" id="bGoP">Open</button></td></tr>
+      <tr class="auto"><td><b>Stock portfolio</b><div class="muted tiny">${pf ? 'from the app' + (pf.base && pf.base !== 'EUR' ? ` (in ${pf.base})` : '') : 'starting amount from the Plan tab'}</div></td><td class="small">Stocks</td><td class="n"><b>${n0(bs.stocks)}</b></td><td><button class="btn sm" id="bGoP">Open</button></td></tr>
       <tr class="auto"><td><b>Cash at the broker</b><div class="muted tiny">from the app</div></td><td class="small">Cash</td><td class="n"><b>${pf ? n0(Math.max(0, pf.cash)) : '—'}</b></td><td></td></tr>
       ${f.assets.map(row)}
     </tbody></table></div>`);

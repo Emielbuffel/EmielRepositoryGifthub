@@ -19,3 +19,13 @@ test('loans and the family-wealth checks', () => {
   assert.equal(illiquidity({ netWorth: 300000, safe: 10000, illiquid: 50000, monthlyOut: 5000 }).verdict, 'liquidity');
   assert.equal(marginStress(100000, 320000)[4].status, 'likely margin call');
 });
+
+test('payoff extras, mortgage boost and net worth history', async () => {
+  const { payoffExtras, monteCarlo, netWorthHistory } = await import('../src/core/plan.js');
+  const M = 200000 * (0.03 / 12) / (1 - Math.pow(1 + 0.03 / 12, -240));
+  const ex = payoffExtras([{ balance: 200000, rate: 0.03, payment: M }]); assert.equal(ex[0].from, 20);
+  const a = monteCarlo(100000, 0.06, 0.15, 500, 30), b = monteCarlo(100000, 0.06, 0.15, 500, 30, { extras: ex });
+  assert.ok(b.bands[30].p50 > a.bands[30].p50 && Math.abs(b.bands[20].p50 - a.bands[20].p50) < 1e-6);
+  const h = netWorthHistory([{ t: 0, total: 100000 }], { property: 300000, loans: [{ balance: 100000, rate: 0, payment: 1000 }], now: 12 * 30.44 * 86400 });
+  assert.ok(Math.abs(h[0].reEq - 188000) < 1e-6);
+});

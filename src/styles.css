@@ -518,3 +518,17 @@ tr.auto td { background: color-mix(in srgb, var(--blue) 6%, transparent); }
 .tier-bar b { position: absolute; top: -4px; bottom: -4px; width: 3px; background: var(--ink); border-radius: 2px; }
 .bs-viz { display: grid; grid-template-columns: auto 1fr; gap: 18px; align-items: center; }
 @media (max-width: 560px) { .bs-viz { grid-template-columns: 1fr; justify-items: center; } .bs-viz .bs-bars { width: 100%; } }
+.start-row { display: grid; grid-template-columns: minmax(180px, 260px) auto; gap: 12px; align-items: end; }
+@media (max-width: 560px) { .start-row { grid-template-columns: 1fr; } }
+.boost { display: flex; gap: 8px; align-items: flex-start; background: color-mix(in srgb, var(--up) 10%, var(--fill)); border-radius: 10px; padding: 10px 12px; font-size: 13.5px; cursor: pointer; }
+.scen-bar { position: relative; height: 20px; border-radius: 99px; background: var(--fill); overflow: hidden; }
+.scen-bar i { display: block; height: 100%; background: color-mix(in srgb, var(--blue) 45%, transparent); }
+.scen-bar span { position: absolute; inset: 0; display: flex; align-items: center; padding-left: 8px; font-size: 12px; font-weight: 600; }
+#printSheet { display: none; }
+@media print {
+  body.printing > *:not(#printSheet) { display: none !important; }
+  body.printing #printSheet { display: block; color: #000; background: #fff; font: 12pt/1.45 -apple-system, Helvetica, Arial, sans-serif; padding: 0 8mm; }
+  #printSheet h1 { font-size: 20pt; margin: 0 0 4pt; } #printSheet h2 { font-size: 13pt; margin: 14pt 0 4pt; border-bottom: 1px solid #ccc; }
+  #printSheet table { border-collapse: collapse; width: 100%; } #printSheet td, #printSheet th { border-bottom: 1px solid #eee; padding: 4pt 6pt; text-align: left; }
+  #printSheet .ps-chart svg { width: 100%; height: auto; } #printSheet .ps-foot { color: #666; font-size: 9pt; margin-top: 16pt; }
+}

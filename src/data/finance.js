@@ -21,7 +21,7 @@ const DEFAULTS = () => ({
   costs: [{ id: id(), name: 'Living costs (all)', cat: 'Other', monthly: 3000 }],
   plan: {
     targets: [{ years: 10, value: 750000 }, { years: 20, value: 1500000 }, { years: 30, value: 3000000 }],
-    monthly: Math.round(17500 / 12), ret: 0.06, vol: 0.15, infl: 0.02, preset: 'preserve', reserveMonths: 18, illiquidCap: 0.35,
+    start: 208000, startMode: 'auto', monthly: 700, boost: false, ret: 0.06, vol: 0.15, infl: 0.02, preset: 'preserve', reserveMonths: 18, illiquidCap: 0.35,
     withdrawFrom: 30, marginRate: 0.06, other: { pe: 0, ra: 0, hf: 0, fi: 0 },
   },
 });
@@ -41,7 +41,8 @@ export async function portfolioHistory() { return store.get('fin.history', null)
 
 /** The whole balance sheet in one object. */
 export function balanceSheet(f, pf) {
-  const stocks = pf ? pf.stocks : 0, brokerCash = pf ? pf.cash : 0, margin = brokerCash < 0 ? -brokerCash : 0;
+  // without the Portfolio tab's figures, the starting amount entered on the Plan tab counts as the portfolio
+  const stocks = pf ? pf.stocks : (+f.plan.start || 0), brokerCash = pf ? pf.cash : 0, margin = brokerCash < 0 ? -brokerCash : 0;
   const sum = t => f.assets.filter(a => a.type === t).reduce((s, a) => s + (+a.value || 0), 0);
   const re = sum('realestate'), cash = sum('cash') + Math.max(0, brokerCash), pension = sum('pension'), other = sum('other');
   const mort = f.loans.filter(l => l.kind === 'mortgage').reduce((s, l) => s + (+l.balance || 0), 0), otherDebt = f.loans.filter(l => l.kind !== 'mortgage').reduce((s, l) => s + (+l.balance || 0), 0);

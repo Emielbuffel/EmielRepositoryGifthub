@@ -32,17 +32,37 @@ function rng(seed) { let s = seed >>> 0 || 1; return () => { s ^= s << 13; s >>>
  * Monte Carlo of yearly returns (normal on log returns with the given mean and volatility), monthly contributions
  * added through the year. Returns percentiles per year {p10, p50, p90} and P(value ≥ target) for each target.
  */
-export function monteCarlo(start, mu, sigma, c, years, { n = 3000, targets = [], seed = 7 } = {}) {
+export function monteCarlo(start, mu, sigma, c, years, { n = 3000, targets = [], seed = 7, extras = [], shock = 1 } = {}) {
   const R = rng(seed), norm = () => { let u = 0, v = 0; while (!u) u = R(); while (!v) v = R(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v); };
   const m = Math.log(1 + mu) - sigma * sigma / 2, cols = Array.from({ length: years + 1 }, () => new Float64Array(n));
+  const add = y => c + extras.reduce((s, e) => s + (y > e.from ? e.amount : 0), 0); // monthly amount in year y
   for (let k = 0; k < n; k++) {
     let v = start; cols[0][k] = v;
-    for (let y = 1; y <= years; y++) { const g = Math.exp(m + sigma * norm()); v = v * g + c * 12 * (1 + (g - 1) / 2); cols[y][k] = v; }
+    for (let y = 1; y <= years; y++) { const g = Math.exp(m + sigma * norm()) * (y === 1 ? shock : 1); v = v * g + add(y) * 12 * (1 + (g - 1) / 2); cols[y][k] = v; }
   }
   const pct = (a, p) => a[Math.min(a.length - 1, Math.floor(p * a.length))];
   const bands = cols.map((a, y) => { const s = Float64Array.from(a).sort(); return { y, p10: pct(s, 0.1), p50: pct(s, 0.5), p90: pct(s, 0.9) }; });
   const odds = targets.map(({ years: ty, value }) => { if (ty > years) return null; let hit = 0; for (const v of cols[ty]) if (v >= value) hit++; return hit / n; });
   return { bands, odds };
+}
+
+/** When each loan is repaid at its current payment: [{from (years from now), amount (its monthly payment)}]. */
+export function payoffExtras(loans) {
+  return loans.filter(l => +l.balance > 0 && +l.payment > 0).map(l => {
+    let b = +l.balance, i = (+l.rate || 0) / 12, k = 0;
+    while (b > 0 && k < 1200) { b = b * (1 + i) - +l.payment; k++; }
+    return k < 1200 ? { from: Math.ceil(k / 12), amount: +l.payment } : null;
+  }).filter(Boolean);
+}
+
+/** Net worth month by month in the past: portfolio from the monthly statements + property − mortgage (rebuilt
+ * backwards from today's balance with the loan's rate and payment). months: [{t, total}]. */
+export function netWorthHistory(months, { property = 0, loans = [], otherAssets = 0, now = Date.now() / 1000 } = {}) {
+  return months.map(m => {
+    const k = Math.max(0, Math.round((now - m.t) / (30.44 * 86400)));
+    const debt = loans.reduce((s, l) => { let b = +l.balance || 0; const i = (+l.rate || 0) / 12; for (let j = 0; j < k; j++) b = (b + (+l.payment || 0)) / (1 + i); return s + b; }, 0);
+    return { t: m.t, invest: m.total, reEq: property - debt, net: m.total + property - debt + otherAssets };
+  });
 }
 
 /** What a capital can pay out per year: the classic 4% rule and a "keeps its real value forever" amount. */
