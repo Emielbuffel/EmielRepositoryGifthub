@@ -80,7 +80,7 @@ a:hover { text-decoration: underline; }
 @keyframes fade { from { opacity: .4; transform: translateY(3px); } to { opacity: 1; transform: none; } }
 
 .tabbar {
-  position: fixed; left: 0; right: 0; bottom: 0; z-index: 40; display: grid; grid-template-columns: repeat(5, 1fr);
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 40; display: grid; grid-auto-flow: column; grid-auto-columns: minmax(62px, 1fr); overflow-x: auto; scrollbar-width: none;
   padding: 4px var(--safe-r) var(--safe-b) var(--safe-l); min-height: calc(var(--tabbar-h) + var(--safe-b));
   background: color-mix(in srgb, var(--bg2) 85%, transparent); -webkit-backdrop-filter: saturate(180%) blur(20px); backdrop-filter: saturate(180%) blur(20px);
   border-top: .5px solid var(--sep);
@@ -484,3 +484,26 @@ table.tbl td.name { max-width: 180px; overflow: hidden; text-overflow: ellipsis;
 .view.dropping { outline: 3px dashed var(--blue); outline-offset: -6px; border-radius: 16px; }
 .heatw td, .heatw th { padding: 4px 8px; font-size: 12px; }
 .upd-box { display: grid; gap: 8px; background: var(--fill); border-radius: 12px; padding: 12px; }
+.cal { display: grid; gap: 4px; }
+.cal-row { display: grid; grid-template-columns: repeat(24, minmax(0, 1fr)); gap: 3px; }
+.cal-m { position: relative; border: 0; border-radius: 6px; padding: 6px 0; font-size: 10.5px; font-weight: 700; cursor: default; background: var(--fill); color: var(--muted); }
+.cal-m.ok { background: color-mix(in srgb, var(--up) 30%, var(--fill)); color: var(--ink); }
+.cal-m.miss { background: color-mix(in srgb, var(--warn) 30%, var(--fill)); color: var(--ink); cursor: pointer; }
+.cal-m i { position: absolute; bottom: 2px; left: 50%; width: 4px; height: 4px; margin-left: -2px; border-radius: 50%; background: var(--blue); }
+.proj { display: grid; gap: 8px; }
+
+/* ---------- balance sheet, cash flow and plan ---------- */
+.bs-bars { display: grid; gap: 8px; }
+.bs-row { display: grid; grid-template-columns: 60px 1fr auto; gap: 10px; align-items: center; font-size: 13px; }
+.bs-row b { font-variant-numeric: tabular-nums; }
+.bs-track { display: flex; height: 16px; border-radius: 99px; overflow: hidden; background: var(--fill); gap: 2px; }
+.bs-track i { display: block; height: 100%; min-width: 2px; }
+.tbl.edit td { padding: 4px 6px; }
+.input.cell { padding: 5px 8px; font-size: 13.5px; min-width: 0; width: 100%; }
+.input.cell.n { text-align: right; }
+tr.auto td { background: color-mix(in srgb, var(--blue) 6%, transparent); }
+.plan-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; }
+.goal-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; }
+.goal { background: var(--fill); border-radius: 12px; padding: 12px; display: grid; gap: 8px; }
+.goal .input.cell { width: 56px; display: inline-block; }
+.kv.dense.mg { margin-top: 6px; }

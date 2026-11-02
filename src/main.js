@@ -10,6 +10,8 @@ import { initMarket } from './ui/market.js';
 import { initScreener } from './ui/screener.js';
 import { initPortfolio } from './ui/portfolio.js';
 import { initFundTab } from './ui/fundtab.js';
+import { initBalance } from './ui/balance.js';
+import { initPlan } from './ui/plan.js';
 import { initLearn } from './ui/learn.js';
 import { initSettings, applyTheme, VERSION } from './ui/settings.js';
 import { openSearch } from './ui/search.js';
@@ -20,8 +22,8 @@ import { useList } from './app.js';
 import './data/plans.js'; // registers buying-plan checks with the alerts
 import { toast } from './ui/dom.js';
 
-const INIT = { chart: initStock, market: initMarket, screener: initScreener, fund: initFundTab, portfolio: initPortfolio, learn: initLearn, settings: initSettings };
-const TITLES = { chart: 'Chart', market: 'Market', screener: 'Screener', fund: 'Fundamentals', portfolio: 'Portfolio', learn: 'Learn', settings: 'Settings' };
+const INIT = { chart: initStock, market: initMarket, screener: initScreener, fund: initFundTab, portfolio: initPortfolio, balance: initBalance, plan: initPlan, learn: initLearn, settings: initSettings };
+const TITLES = { chart: 'Chart', market: 'Market', screener: 'Screener', fund: 'Fundamentals', portfolio: 'Portfolio', balance: 'Balance sheet & cash flow', plan: 'Financial plan', learn: 'Learn', settings: 'Settings' };
 const started = new Set();
 
 async function show(view) {

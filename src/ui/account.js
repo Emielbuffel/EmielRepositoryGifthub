@@ -11,6 +11,7 @@ import { factor } from '../data/fx.js';
 import { cashBalance, setCash, flows, addFlow, deleteFlow, journal, snapshots, saveSnapshots, ledger, clearLedger } from '../data/plans.js';
 import { summarize, KIND_LABEL } from '../core/ledger.js';
 import { monthly, weights } from '../core/months.js';
+import { fv } from '../core/plan.js';
 import * as store from '../data/store.js';
 import { $, $$, html, raw, render, big, money, tok, sheet, toast } from './dom.js';
 import { fade } from './chart.js';
@@ -57,6 +58,7 @@ export async function drawAccount(rows, { base, bench, perAnalysis, openImport }
   }
   const stocks = rows.reduce((s, r) => s + r.value, 0) + unpriced;
   A.ctx = { rows, base, bench, cash, cashBase, F, J, snaps, Lg, stocks, unpriced, perAnalysis, openImport };
+  if (rows.length || cash) store.set('fin.portfolio', { stocks, cash: cashBase, base, at: Date.now(), positions: rows.length });
   if (seq !== A.seq) return;
   cashCard(); flowsList(); incomeCard(); monthsCard();
   if (!rows.length) { ['#pEvo', '#pMix', '#pFactor'].forEach(id => { const e = $(id); if (e) e.innerHTML = ''; }); return; }
@@ -166,6 +168,44 @@ function monthsChart(M) {
   return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;max-width:${Math.round(W * 1.5)}px;height:auto;min-width:${Math.min(W, 520)}px" role="img" aria-label="Value per month">${g}</svg>`;
 }
 
+/** The last 24 months: which have a holdings file (✓), are covered by the account statement only, or are missing. */
+function statementCalendar(snaps, Lg) {
+  const now = new Date(), months = [];
+  for (let k = 23; k >= 0; k--) { const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - k, 1)); months.push(d); }
+  const has = new Set(snaps.map(x => { const d = new Date(x.t * 1000); return d.getUTCFullYear() * 12 + d.getUTCMonth(); }));
+  const t0 = Lg.length ? Lg[0].t : Infinity, t1 = Lg.length ? Lg[Lg.length - 1].t : -Infinity;
+  const first = snaps.length ? Math.min(...snaps.map(x => x.t)) : Infinity;
+  return html`<div class="cal"><span class="muted tiny">Statements, last 24 months:</span><div class="cal-row">${months.map(d => {
+    const k = d.getUTCFullYear() * 12 + d.getUTCMonth(), ms = d.getTime() / 1000, ok = has.has(k), acc = ms + 28 * DAY >= t0 && ms <= t1;
+    const before = ms + 31 * DAY < first;
+    const cls = ok ? 'ok' : before ? 'pre' : 'miss';
+    return html`<button class="cal-m ${cls}" ${cls === 'miss' ? raw('data-miss="1"') : ''} title="${d.toLocaleDateString('en-GB', { month: 'long', year: 'numeric', timeZone: 'UTC' })}: ${ok ? 'holdings file' : before ? 'before your first file' : 'no holdings file yet — click to add'}${acc ? ' · in the account statement' : ''}">${d.toLocaleDateString('en-GB', { month: 'narrow', timeZone: 'UTC' })}${acc ? html`<i></i>` : ''}</button>`;
+  })}</div><span class="muted tiny">green = holdings file · orange = missing (click to add) · dot = covered by the account statement</span></div>`;
+}
+
+/** Projection from the history: value after 10, 20 and 30 years at the historical return (and ±3 points). */
+function projectionBlock(start, ann, yrs, avgDep) {
+  // less than a year of history says little: start from a long-run 7% then (you can change it)
+  const r0 = ann == null || yrs < 1 ? 0.07 : Math.max(-0.05, Math.min(0.15, ann));
+  return html`<div class="proj"><h3 style="margin:4px 0 0">Projection <span class="muted tiny">if the future looked like your history</span></h3>
+    <div class="row" style="gap:10px;justify-content:flex-start;flex-wrap:wrap">
+      <label class="chk">Yearly return <input class="input" type="number" id="pjR" step="0.5" value="${(r0 * 100).toFixed(1)}" style="width:80px">%</label>
+      <label class="chk">Added per month <input class="input" type="number" id="pjC" step="100" value="${Math.max(0, Math.round(avgDep / 50) * 50)}" style="width:100px">EUR</label>
+      <label class="chk">Inflation <input class="input" type="number" id="pjI" step="0.5" value="2" style="width:64px">%</label>
+    </div>
+    <div id="pjOut"></div>
+    <p class="muted tiny" style="margin:0">${ann == null ? 'Too little history for a yearly return yet: 7% is used.' : `Your history: ${(ann * 100).toFixed(1)}% a year over ${yrs < 1 ? Math.round(yrs * 12) + ' months' : yrs.toFixed(1) + ' years'}${yrs < 1 ? ' — less than a year, so the projection starts from 7%' : Math.abs(ann - r0) > 1e-9 ? ' (capped between −5% and 15% for the projection)' : ''}. Short histories say little about the next 30 years — long-run world equities returned about 5% a year above inflation (Dimson–Marsh–Staunton). The Plan tab adds targets and the odds of reaching them.`}</p></div>`;
+}
+function wireProjection(el, start, ann, avgDep) {
+  const out = $('#pjOut', el); if (!out) return;
+  const go = () => {
+    const r = (+$('#pjR', el).value || 0) / 100, c = +$('#pjC', el).value || 0, inf = (+$('#pjI', el).value || 0) / 100;
+    const cells = [10, 20, 30].map(y => ({ y, lo: fv(start, r - 0.03, c, y * 12), mid: fv(start, r, c, y * 12), hi: fv(start, r + 0.03, c, y * 12), real: fv(start, r, c, y * 12) / Math.pow(1 + inf, y) }));
+    render(out, html`<div class="kpis">${cells.map(x => html`<div class="kpi"><span class="k">In ${x.y} years</span><span class="v">${big(x.mid, 'EUR')}</span><span class="s">${big(x.real, 'EUR')} in today's money · range ${big(x.lo, 'EUR')}–${big(x.hi, 'EUR')}</span></div>`)}</div>`);
+  };
+  ['#pjR', '#pjC', '#pjI'].forEach(id => { $(id, el).oninput = go; }); go();
+}
+
 async function monthsCard() {
   const el = $('#pMonths'); if (!el) return;
   const { snaps, Lg, F } = A.ctx;
@@ -181,6 +221,10 @@ async function monthsCard() {
   const income = Lg.filter(l => ['dividend', 'divtax', 'fee', 'tax', 'interest'].includes(l.kind)).map(l => ({ t: l.t, kind: l.kind, amount: l.amount * fx(l.cur, l.t) }));
   const M = monthly(snaps.map(x => ({ ...x, cash: x.cash * (x.cashCur && x.cashCur !== 'EUR' ? fx(x.cashCur, x.t) : 1) })), [...ledFlows, ...manual], income);
   const last = M[M.length - 1], first = M[0], periods = M.slice(1).filter(m => m.ret != null);
+  // yearly return from the history so far (used for the projection and the Plan tab)
+  const yrs = (last.t - first.t) / (365.25 * DAY), ann = yrs > 0.15 ? Math.pow(1 + last.cum, 1 / yrs) - 1 : null;
+  const avgDep = yrs > 0 ? M.slice(1).reduce((t, m) => t + m.flow, 0) / (yrs * 12) : 0;
+  store.set('fin.history', { ann, yrs, avgDep, months: M.map(m => ({ t: m.t, total: m.total, stocks: m.stocks, cash: m.cash, ret: m.ret, cum: m.cum })) });
   const best = periods.reduce((a, b) => (!a || b.ret > a.ret ? b : a), null), worst = periods.reduce((a, b) => (!a || b.ret < a.ret ? b : a), null);
   const netF = M.slice(1).reduce((t, m) => t + m.flow, 0), made = last.total - first.total - netF;
   const kp = (k, v, sub, cls = '') => html`<div class="kpi"><span class="k">${k}</span><span class="v ${cls}">${v}</span><span class="s">${sub}</span></div>`;
@@ -196,6 +240,7 @@ async function monthsCard() {
       ${best ? kp('Best period', pc(best.ret, 1), mon(best.t), 'up') : ''}
       ${worst ? kp('Worst period', pc(worst.ret, 1), mon(worst.t), worst.ret < 0 ? 'down' : '') : ''}
     </div>
+    ${statementCalendar(snaps, Lg)}
     <div class="tbl-wrap">${raw(monthsChart(M))}</div>
     <div class="legend small"><span><i style="background:${tok('--blue')};height:10px;width:10px;border-radius:3px"></i>Stocks</span><span><i style="background:${tok('--teal')};height:10px;width:10px;border-radius:3px"></i>Cash</span><span><i style="background:${tok('--orange')}"></i>Cumulative return (right axis)</span></div>
     <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Month</th><th class="n">Total</th><th class="n">Stocks</th><th class="n">Cash</th><th class="n">Change</th><th class="n">Deposits</th><th class="n">Result</th><th class="n">Return</th><th class="n">Cumulative</th><th class="n">Dividends</th><th class="n">Costs</th><th>Bought / sold</th></tr></thead><tbody>
@@ -204,12 +249,15 @@ async function monthsCard() {
         <td class="n ${m.result > 0 ? 'up' : m.result < 0 ? 'down' : ''}">${m.result == null ? '—' : (m.result >= 0 ? '+' : '') + big(m.result, 'EUR')}</td><td class="n ${m.ret > 0 ? 'up' : m.ret < 0 ? 'down' : ''}">${m.ret == null ? '—' : pc(m.ret, 1)}</td>
         <td class="n">${pc(m.cum, 1)}</td><td class="n">${m.div ? big(m.div, 'EUR') : '—'}</td><td class="n">${m.cost ? big(m.cost, 'EUR') : '—'}</td><td class="small" style="white-space:normal;min-width:180px">${moveTxt(m)}</td></tr>`)}
     </tbody></table></div>
+    ${projectionBlock(last.total, ann, yrs, avgDep)}
     <h3 style="margin:4px 0 0">Positions per month <span class="muted tiny">share of the stocks</span></h3>
     <div class="tbl-wrap"><table class="tbl heatw"><thead><tr><th>Position</th>${WM.map(m => html`<th class="n">${new Date(m.t * 1000).toLocaleDateString('en-GB', { month: 'short', year: '2-digit', timeZone: 'UTC' })}</th>`)}</tr></thead><tbody>
       ${W.names.map(k => html`<tr><td class="small" style="max-width:170px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${k}</td>${W.cells[k].map(w => html`<td class="n" style="background:${w ? `color-mix(in srgb, var(--blue) ${Math.round(Math.min(1, w / 0.25) * 70)}%, transparent)` : 'transparent'}">${w ? Math.round(w * 100) + '%' : ''}</td>`)}</tr>`)}
     </tbody></table></div>
     <p class="muted tiny" style="margin:0">From your ${M.length} monthly holdings files, amounts in EUR as on the statements. Return per period = result ÷ (start value + half the net deposits) (Modified Dietz), chained into the cumulative return. ${Lg.length ? 'Deposits, dividends and costs come from your account statement.' : 'Import your account statement (Account.csv) to include deposits, dividends and costs; without it every change counts as result.'}</p>`);
   $('#mAdd').onclick = () => A.ctx.openImport && A.ctx.openImport();
+  $$('[data-miss]', el).forEach(b => { b.onclick = () => A.ctx.openImport && A.ctx.openImport(); });
+  wireProjection(el, last.total, ann, avgDep);
   $('#mCsv').onclick = () => {
     const rows = [['month_end', 'total_eur', 'stocks_eur', 'cash_eur', 'change_eur', 'deposits_eur', 'result_eur', 'return', 'cumulative', 'dividends_eur', 'costs_eur', 'bought_sold'], ...M.map(m => [new Date(m.t * 1000).toISOString().slice(0, 10), m.total.toFixed(2), m.stocks.toFixed(2), m.cash.toFixed(2), m.change == null ? '' : m.change.toFixed(2), m.flow == null ? '' : m.flow.toFixed(2), m.result == null ? '' : m.result.toFixed(2), m.ret == null ? '' : m.ret.toFixed(4), m.cum.toFixed(4), (m.div || 0).toFixed(2), (m.cost || 0).toFixed(2), moveTxt(m)])];
     const csv = rows.map(r => r.map(v => /[",\n;]/.test(String(v)) ? '"' + String(v).replace(/"/g, '""') + '"' : v).join(',')).join('\n');

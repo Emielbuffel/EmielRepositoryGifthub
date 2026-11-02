@@ -8,6 +8,8 @@ export const VIEWS = [
   { id: 'screener', label: 'Screener', icon: 'screener' },
   { id: 'fund', label: 'Fundamentals', icon: 'fund' },
   { id: 'portfolio', label: 'Portfolio', icon: 'portfolio' },
+  { id: 'balance', label: 'Balance', icon: 'balance' },
+  { id: 'plan', label: 'Plan', icon: 'plan' },
   { id: 'learn', label: 'Learn', icon: 'learn' },
 ];
 
