@@ -6,6 +6,7 @@ import { monthsLeft, illiquidity, marginStress } from '../core/plan.js';
 import * as store from '../data/store.js';
 import { App, on, go } from '../app.js';
 import { $, $$, html, raw, render, big, tok, ago, toast } from './dom.js';
+import { donut, flowDiagram, chart, legend } from './viz.js';
 
 const B = { f: null, pf: null };
 const eur = x => big(x, 'EUR');
@@ -46,11 +47,13 @@ function draw() {
       ${kp('Left each month', (cf.left >= 0 ? '+' : '') + eur(cf.left), cf.inc ? 'income − all outgoings' : 'add your income below', cf.left >= 0 ? 'up' : 'down')}
       ${cf.rate != null ? kp('Savings rate', pct(cf.rate), 'of net income', cf.rate >= 0.2 ? 'up' : cf.rate < 0.1 ? 'down' : '') : ''}
     </div>
+    <div class="bs-viz"><div>${raw(donut(parts.map(p => ({ label: p[0], value: p[1], color: p[2] })), { size: 150, center: eur(bs.gross), sub: 'assets' }))}</div>
     <div class="bs-bars">
       <div class="bs-row"><span>Assets</span><div class="bs-track">${parts.map(p => html`<i style="width:${(p[1] / W * 100).toFixed(2)}%;background:${tok(p[2])}" title="${p[0]} ${eur(p[1])}"></i>`)}</div><b>${eur(bs.gross)}</b></div>
       <div class="bs-row"><span>Debts</span><div class="bs-track">${dParts.map(p => html`<i style="width:${(p[1] / W * 100).toFixed(2)}%;background:${tok(p[2])}" title="${p[0]} ${eur(p[1])}"></i>`)}</div><b>${eur(bs.debt)}</b></div>
       <div class="legend small">${[...parts, ...dParts].map(p => html`<span><i style="background:${tok(p[2])};height:10px;width:10px;border-radius:3px"></i>${p[0]} ${eur(p[1])}</span>`)}</div>
-    </div>`);
+      <div class="bs-row"><span>Net</span><div class="bs-track"><i style="width:${(Math.max(0, bs.net) / W * 100).toFixed(2)}%;background:${tok('--up')}"></i></div><b>${eur(bs.net)}</b></div>
+    </div></div>`);
 
   // ---- assets
   const row = (a, i) => html`<tr><td><input class="input cell" data-a="${i}" data-k="name" value="${a.name}"></td>
@@ -77,6 +80,7 @@ function draw() {
       ${f.loans.map(lrow)}
       ${bs.margin ? html`<tr class="auto"><td><b>Margin loan</b><div class="muted tiny">negative broker cash, from the app</div></td><td class="n"><b>${n0(bs.margin)}</b></td><td class="n"><input class="input cell n" type="number" step="0.25" id="bMr" value="${(f.plan.marginRate * 100).toFixed(2)}" style="width:72px"></td><td class="n">${n0(cf.marginInt)}</td><td class="small">callable</td><td></td></tr>` : ''}
     </tbody></table></div>
+    ${payoff(f.loans)}
     <p class="muted tiny" style="margin:0">Months left are worked out from the balance, rate and payment (annuity loan). Put the current outstanding balance from your bank's table.</p>`);
 
   // ---- cash flow
@@ -85,7 +89,8 @@ function draw() {
   const cats = [...byCat].sort((a, b) => b[1] - a[1]), CW = Math.max(cf.inc, cf.out, 1);
   const PAL = ['--red', '--orange', '--warn', '--pink', '--purple', '--indigo', '--teal', '--blue', '--green', '--muted', '--ink'];
   render($('#bFlow'), html`<div class="card-head"><h2>Cash flow · per month</h2><span class="muted tiny">what comes in and what goes out</span></div>
-    <div class="bs-bars">
+    ${cf.inc ? raw(flowDiagram(cf.inc, cats.map(([k, v], i) => ({ label: k, value: v, color: PAL[i % PAL.length] })), cf.left, x => eur(x))) : ''}
+    <div class="bs-bars" ${cf.inc ? raw('hidden') : ''}>
       <div class="bs-row"><span>In</span><div class="bs-track"><i style="width:${(cf.inc / CW * 100).toFixed(2)}%;background:${tok('--up')}"></i></div><b>${eur(cf.inc)}</b></div>
       <div class="bs-row"><span>Out</span><div class="bs-track">${cats.map(([k, v], i) => html`<i style="width:${(v / CW * 100).toFixed(2)}%;background:${tok(PAL[i % PAL.length])}" title="${k} ${eur(v)}"></i>`)}</div><b>${eur(cf.out)}</b></div>
       <div class="legend small">${cats.map(([k, v], i) => html`<span><i style="background:${tok(PAL[i % PAL.length])};height:10px;width:10px;border-radius:3px"></i>${k} ${eur(v)}${cf.inc ? ' · ' + pct(v / cf.inc) : ''}</span>`)}</div>
@@ -101,6 +106,20 @@ function draw() {
     <p class="muted tiny" style="margin:0">Tip: split "Living costs" into categories (housing, food, transport…) for sharper ideas below. Use net monthly amounts; yearly bills ÷ 12.</p>`);
   ideas(bs, cf);
   wire();
+}
+
+/** Outstanding balance of every loan over the years until it is repaid. */
+function payoff(loans) {
+  const L = loans.filter(l => +l.balance > 0 && +l.payment > 0); if (!L.length) return '';
+  const st = L.map(l => ({ b: +l.balance, i: (+l.rate || 0) / 12, m: +l.payment })), series = L.map((l, k) => ({ label: l.name, color: ['--red', '--orange', '--pink', '--purple'][k % 4], pts: [] }));
+  let interest = 0;
+  for (let y = 0; y <= 35; y++) {
+    st.forEach((x, k) => series[k].pts.push([y, x.b]));
+    if (st.every(x => x.b <= 0)) break;
+    for (let mth = 0; mth < 12; mth++) st.forEach(x => { if (x.b > 0) { const int = x.b * x.i; interest += int; x.b = Math.max(0, x.b + int - x.m); } });
+  }
+  return html`<h3 style="margin:4px 0 0">Debt paid off over time</h3>${raw(chart(series, { W: 440, stacked: true, H: 190, fmt: v => eur(v), xLabel: x => (x ? '+' + x + 'y' : 'now') }))}${raw(legend(series))}
+    <p class="small" style="margin:0">Interest still to pay at the current rates: <b>${eur(interest)}</b>.</p>`;
 }
 
 /** Plain-language ideas from the numbers: savings rate, safety reserve, expensive debt, margin, costs per category. */

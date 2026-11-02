@@ -507,3 +507,14 @@ tr.auto td { background: color-mix(in srgb, var(--blue) 6%, transparent); }
 .goal { background: var(--fill); border-radius: 12px; padding: 12px; display: grid; gap: 8px; }
 .goal .input.cell { width: 56px; display: inline-block; }
 .kv.dense.mg { margin-top: 6px; }
+.goal-top { display: grid; grid-template-columns: auto 1fr; gap: 12px; align-items: center; }
+.goal-bar { position: relative; height: 18px; border-radius: 99px; background: var(--bg2); overflow: hidden; }
+.goal-bar i { display: block; height: 100%; background: color-mix(in srgb, var(--blue) 45%, transparent); }
+.goal-bar span { position: absolute; inset: 0; display: grid; place-items: center; font-size: 11px; font-weight: 600; }
+.tier { display: grid; gap: 6px; }
+.tier-bar { position: relative; display: flex; height: 18px; border-radius: 99px; overflow: visible; background: var(--fill); }
+.tier-bar i { display: block; height: 100%; }
+.tier-bar i:first-child { border-radius: 99px 0 0 99px; } .tier-bar i:nth-child(3) { border-radius: 0 99px 99px 0; }
+.tier-bar b { position: absolute; top: -4px; bottom: -4px; width: 3px; background: var(--ink); border-radius: 2px; }
+.bs-viz { display: grid; grid-template-columns: auto 1fr; gap: 18px; align-items: center; }
+@media (max-width: 560px) { .bs-viz { grid-template-columns: 1fr; justify-items: center; } .bs-viz .bs-bars { width: 100%; } }

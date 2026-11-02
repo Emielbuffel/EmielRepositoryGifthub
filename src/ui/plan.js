@@ -6,6 +6,7 @@ import { finance, saveFinance, portfolioNow, portfolioHistory, balanceSheet, cas
 import { fv, path, requiredMonthly, requiredReturn, monteCarlo, withdrawals, CLASSES, PRESETS, drift, illiquidity, marginStress, ASSETS } from '../core/plan.js';
 import { App, on, go } from '../app.js';
 import { $, $$, html, raw, render, big, tok } from './dom.js';
+import { ring, donut, pairedBars, chart, legend } from './viz.js';
 
 const P = { f: null, pf: null, hist: null };
 const eur = x => big(x, 'EUR');
@@ -15,6 +16,7 @@ export async function initPlan(el) {
   render(el, html`
     <section class="card" id="plSet"></section>
     <section class="card" id="plGoals"></section>
+    <section class="card" id="plNW"></section>
     <div class="grid2"><section class="card" id="plAlloc"></section><section class="card" id="plLiq"></section></div>
     <section class="card" id="plCross"></section>
     <p class="disclaimer">Planning analysis, not investment, tax or legal advice. Projections use assumptions you can change; markets do not follow averages. The method follows the household endowment framework (multi-generation preservation) from your earlier family-wealth dashboard.</p>`);
@@ -62,22 +64,33 @@ function draw() {
     return { ...t, med, need, rr, p, real: fv(investable, pl.ret, pl.monthly, t.years * 12) / Math.pow(1 + pl.infl, t.years), wd: withdrawals(med, pl.ret, pl.infl) };
   });
   const tone = p => p >= 0.75 ? 'up' : p >= 0.5 ? 't-warn' : 'down';
-  render($('#plGoals'), html`<div class="card-head"><h2>Targets</h2><span class="muted tiny">investable wealth (stocks, cash and other investments, minus margin)</span></div>
+  // what if you add more (or less) each month: the chance of each target
+  const steps = [0, 0.5, 1, 1.5, 2, 3].map(k => Math.round(Math.max(pl.monthly, 250) * k / 50) * 50);
+  const sens = T.map((t, i) => ({ label: `${t.years} yr target`, color: ['--blue', '--orange', '--purple'][i % 3], pts: steps.map(m => [m, monteCarlo(investable, pl.ret, pl.vol, m, t.years, { n: 800, targets: [{ years: t.years, value: t.value }] }).odds[0]]) }));
+  render($('#plGoals'), html`<div class="card-head"><h2>Targets</h2><label class="chk small"><input type="checkbox" id="plPay" ${pl.showPayout ? raw('checked') : ''}> Show payouts</label></div>
+    <p class="muted tiny" style="margin:0">Investable wealth: stocks, cash and other investments, minus margin.</p>
     <div class="goal-grid">${res.map((t, i) => html`<div class="goal">
-      <div class="row" style="justify-content:space-between"><b>In <input class="input cell n" type="number" min="1" max="60" data-ty="${i}" value="${t.years}" style="width:56px"> years</b><span class="pill ${t.p >= 0.75 ? 't-ok' : t.p >= 0.5 ? 't-warn' : 't-bad'}">${pct(t.p)} chance</span></div>
-      <label class="field"><span>Target (EUR)</span><input class="input" type="number" step="50000" data-tv="${i}" value="${t.value}"></label>
+      <div class="goal-top">${raw(ring(t.p, { size: 84, sub: 'chance' }))}<div style="display:grid;gap:6px;min-width:0">
+        <b>In <input class="input cell n" type="number" min="1" max="60" data-ty="${i}" value="${t.years}" style="width:56px"> years</b>
+        <label class="field"><span>Target (EUR)</span><input class="input" type="number" step="50000" data-tv="${i}" value="${t.value}"></label></div></div>
+      <div class="goal-bar" title="Investable wealth today vs this target"><i style="width:${Math.min(100, investable / t.value * 100).toFixed(1)}%"></i><span>${pct(investable / t.value)} there today</span></div>
       <div class="kv dense">
         <div><span>Expected (median)</span><b class="${tone(t.p)}">${eur(t.med)}</b></div>
         <div><span>In today's money</span><b>${eur(t.real)}</b></div>
         <div><span>Monthly needed at ${pct(pl.ret, 1)}</span><b>${t.need <= pl.monthly ? 'on track' : eur(t.need)}</b></div>
         <div><span>Return needed at ${eur(pl.monthly)}/mo</span><b>${t.rr == null ? '> 40%' : pct(t.rr, 1)}</b></div>
-        <div><span>Could pay out (4% rule)</span><b>${eur(t.wd.rule4 / 12)}/mo</b></div>
-        <div><span>Forever, keeping real value</span><b>${eur(t.wd.perpetual / 12)}/mo</b></div>
+        ${pl.showPayout ? html`<div><span>Could pay out (4% rule)</span><b>${eur(t.wd.rule4 / 12)}/mo</b></div>
+        <div><span>Forever, keeping real value</span><b>${eur(t.wd.perpetual / 12)}/mo</b></div>` : ''}
       </div></div>`)}</div>
     <svg viewBox="0 0 ${W} ${H}" class="fchart" role="img" aria-label="Projection with targets">${raw(g)}</svg>
     <div class="legend small"><span><i style="background:${tok('--blue')}"></i>Median outcome</span><span><i style="background:${tok('--blue')};opacity:.3;height:10px"></i>80% of outcomes (3,000 simulations)</span><span><i style="background:${tok('--muted')}"></i>Expected, in today's money</span><span><i style="background:${tok('--orange')};height:10px;width:10px;border-radius:50%"></i>Your targets</span></div>
+    <h3 style="margin:6px 0 0">What if you add more each month?</h3>
+    ${raw(chart(sens, { H: 200, yMax: 1, xTicks: steps, fmt: v => Math.round(v * 100) + '%', xLabel: x => '€' + (x >= 1000 ? (x / 1000).toFixed(x % 1000 ? 1 : 0) + 'k' : x) }))}
+    ${raw(legend(sens))}
+    <p class="muted tiny" style="margin:0">Chance of each target (vertical) for different monthly amounts (horizontal); you now add ${eur(pl.monthly)}.</p>
     ${multiGen(investable, pl)}
-    <p class="muted tiny" style="margin:0">Chance = share of 3,000 simulated paths (yearly returns around ${pct(pl.ret, 1)} with ${pct(pl.vol)} volatility) that end at or above the target. "4% rule" = a withdrawal that historically lasted about 30 years (Bengen, Trinity study); "forever" = return minus inflation, so the capital keeps its real value for the next generation.</p>`);
+    <p class="muted tiny" style="margin:0">Chance = share of 3,000 simulated paths (yearly returns around ${pct(pl.ret, 1)} with ${pct(pl.vol)} volatility) that end at or above the target.${pl.showPayout ? ' "4% rule" = a withdrawal that historically lasted about 30 years (Bengen, Trinity study); "forever" = return minus inflation, so the capital keeps its real value for the next generation.' : ''}</p>`);
+  netWorthCard(investable, bs, mc, maxY, T);
 
   // ---- allocation (family-wealth framework)
   const gross = bs.stocks + Math.max(0, bs.cash) + bs.re + (pl.other.fi || 0) + (pl.other.pe || 0) + (pl.other.ra || 0) + (pl.other.hf || 0);
@@ -85,10 +98,15 @@ function draw() {
   const pre = PRESETS[pl.preset] || PRESETS.preserve, D = drift(w, pre.t);
   const netEq = bs.stocks - bs.margin, netRe = bs.re - bs.mort, netTot = Math.max(1, bs.net);
   render($('#plAlloc'), html`<div class="card-head"><h2>Allocation</h2><select class="input" id="plPreset" style="width:auto;padding:6px 10px;font-size:14px">${Object.entries(PRESETS).map(([k, p]) => html`<option value="${k}" ${pl.preset === k ? raw('selected') : ''}>${p.name}</option>`)}</select></div>
+    ${raw(pairedBars(D.map(x => ({ label: x.name.replace(' (gold, commodities, infrastructure)', ''), now: x.w, target: x.t, breach: x.breach }))))}
+    <div class="legend small"><span><i style="background:${tok('--blue')};height:10px;width:10px;border-radius:3px"></i>now (orange/red = outside the band)</span><span><i style="border:1px dashed var(--muted);height:8px;width:14px"></i>target</span></div>
+    <div class="row" style="gap:14px;justify-content:flex-start;align-items:center;flex-wrap:wrap">${raw(donut([{ label: 'Stocks (net of margin)', value: Math.max(0, netEq), color: '--blue' }, { label: 'Real-estate equity', value: Math.max(0, netRe), color: '--orange' }, { label: 'Cash', value: Math.max(0, bs.cash), color: '--teal' }, { label: 'Other', value: (pl.other.fi || 0) + (pl.other.ra || 0) + (pl.other.pe || 0) + (pl.other.hf || 0) + bs.pension + bs.other, color: '--purple' }], { size: 130, center: eur(bs.net), sub: 'net worth' }))}
+      <div class="small" style="flex:1;min-width:180px"><b>What you own after debts:</b> stocks ${pct(netEq / netTot)}, real-estate equity ${pct(netRe / netTot)}, cash ${pct(Math.max(0, bs.cash) / netTot)}.</div></div>
+    <details class="small"><summary>Table and actions</summary>
     <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Asset class</th><th class="n">Now</th><th class="n">Target</th><th class="n">Drift</th><th>Action</th></tr></thead><tbody>
       ${D.map(x => html`<tr><td>${x.name}</td><td class="n">${x.w.toFixed(0)}%</td><td class="n">${x.t}%</td><td class="n ${x.breach ? (x.d > 0 ? 't-warn' : 't-bad') : ''}">${x.d >= 0 ? '+' : ''}${x.d.toFixed(0)}</td>
         <td class="small" style="white-space:normal;min-width:150px">${!x.breach ? 'within band' : x.k === 're' && x.d > 0 ? 'locked overweight: don\'t add, pay down the mortgage' : x.d > 0 ? 'overweight: new money elsewhere first' : x.k === 'fi' ? 'underweight: build the safe tier first' : 'underweight: candidate for new money'}</td></tr>`)}
-    </tbody></table></div>
+    </tbody></table></div></details>
     <p class="small" style="margin:0"><b>Net of debt:</b> stocks ${pct(netEq / netTot)} · real-estate equity ${pct(netRe / netTot)} · cash ${pct(Math.max(0, bs.cash) / netTot)} of net worth. ${bs.margin || bs.mort ? 'Leverage changes the picture: gross weights look property-heavy, net weights show what you really own.' : ''}</p>
     <div class="plan-grid">${[['fi', 'Bonds held elsewhere'], ['ra', 'Gold / commodities / infra'], ['pe', 'Private equity'], ['hf', 'Alternatives']].map(([k, lbl]) => html`<label class="field"><span>${lbl} (EUR)</span><input class="input" type="number" step="1000" data-oth="${k}" value="${pl.other[k] || 0}"></label>`)}</div>
     <p class="muted tiny" style="margin:0">Bands: a breach when the drift is more than 5 points or 25% of the target. Illiquid overweights (real estate) are never sold to a band — new money goes to underweights instead.</p>`);
@@ -98,6 +116,7 @@ function draw() {
   const il = illiquidity({ netWorth: bs.net, safe, illiquid: Math.max(0, netRe) + (pl.other.pe || 0), monthlyOut: cf.out || 1, reserveMonths: pl.reserveMonths, cap: pl.illiquidCap });
   const ms = bs.margin ? marginStress(bs.margin, bs.stocks) : null;
   render($('#plLiq'), html`<div class="card-head"><h2>Liquidity</h2><span class="muted tiny">illiquidity budget${ms ? ' and margin stress' : ''}</span></div>
+    ${liqBar(il, bs, pl)}
     <div class="kv dense">
       <div><span>Monthly outgoings</span><b>${eur(cf.out)}</b></div>
       <div><span>Safe reserve needed (${pl.reserveMonths} months)</span><b>${eur(il.need)}</b></div>
@@ -129,6 +148,38 @@ function draw() {
   wire();
 }
 
+/** Safe / at-risk / illiquid tiers as one bar, with the safe reserve needed as a marker. */
+function liqBar(il, bs, pl) {
+  const safe = il.safe, risk = Math.max(0, bs.stocks - bs.margin) + (pl.other.hf || 0), ill = il.illiquid, tot = Math.max(1, safe + risk + ill);
+  const need = Math.min(1, il.need / tot) * 100;
+  return html`<div class="tier"><div class="tier-bar"><i style="width:${(safe / tot * 100).toFixed(1)}%;background:${tok('--teal')}" title="Safe liquid ${eur(safe)}"></i><i style="width:${(risk / tot * 100).toFixed(1)}%;background:${tok('--blue')}" title="At-risk liquid ${eur(risk)}"></i><i style="width:${(ill / tot * 100).toFixed(1)}%;background:${tok('--orange')}" title="Illiquid ${eur(ill)}"></i><b style="left:${need.toFixed(1)}%" title="Safe reserve needed ${eur(il.need)}"></b></div>
+    ${raw(legend([{ label: 'Safe liquid ' + eur(safe), color: '--teal' }, { label: 'At-risk liquid (stocks) ' + eur(risk), color: '--blue' }, { label: 'Illiquid ' + eur(ill), color: '--orange' }]))}<span class="muted tiny">The black mark = safe reserve needed (${pl.reserveMonths} months).</span></div>`;
+}
+
+/** Net worth over the years: investments (median simulation) plus real-estate equity as the mortgage is paid off. */
+function netWorthCard(investable, bs, mc, maxY, T) {
+  const el = $('#plNW'); if (!el) return;
+  const pl = P.f.plan, g = pl.reGrowth ?? 0.02;
+  const loans = P.f.loans.map(l => ({ b: +l.balance || 0, i: (+l.rate || 0) / 12, m: +l.payment || 0 }));
+  const debt = [], re = [];
+  for (let y = 0; y <= maxY; y++) {
+    debt.push([y, loans.reduce((s, l) => s + l.b, 0)]); re.push([y, bs.re * Math.pow(1 + g, y)]);
+    for (let k = 0; k < 12; k++) loans.forEach(l => { if (l.b > 0) l.b = Math.max(0, l.b * (1 + l.i) - l.m); });
+  }
+  const inv = mc.bands.map(b => [b.y, b.p50]), reEq = re.map((p, i) => [p[0], Math.max(0, p[1] - debt[i][1])]);
+  const free = debt.findIndex(d => d[1] <= 0);
+  const nw = inv.map((p, i) => p[1] + reEq[i][1]);
+  render(el, html`<div class="card-head"><h2>Net worth over time</h2><label class="chk small">Property grows <input class="input cell n" type="number" step="0.5" id="plReG" value="${(g * 100).toFixed(1)}" style="width:64px">% a year</label></div>
+    <div class="kpis"><div class="kpi"><span class="k">Net worth now</span><span class="v">${eur(bs.net)}</span><span class="s">investments + property equity</span></div>
+      <div class="kpi"><span class="k">In 10 years</span><span class="v">${eur(nw[Math.min(10, maxY)])}</span><span class="s">median</span></div>
+      <div class="kpi"><span class="k">In 30 years</span><span class="v">${eur(nw[Math.min(30, maxY)])}</span><span class="s">median</span></div>
+      <div class="kpi"><span class="k">Mortgage-free</span><span class="v">${free < 0 ? 'later' : free === 0 ? 'now' : 'in ' + free + ' yr'}</span><span class="s">at the current payments</span></div></div>
+    ${raw(chart([{ label: 'Investments (median)', color: '--blue', pts: inv }, { label: 'Real-estate equity', color: '--orange', pts: reEq }], { stacked: true, fmt: v => eur(v), xLabel: x => (x ? '+' + x + 'y' : 'now')}))}
+    ${raw(legend([{ label: 'Investments (median outcome)', color: '--blue' }, { label: 'Real-estate equity (property − mortgage)', color: '--orange' }]))}
+    <p class="muted tiny" style="margin:0">Mortgages are paid off at their current monthly payments and rates (from the Balance tab); the property grows ${pct(g, 1)} a year. After the mortgage is gone, its monthly payment could be added to your investments — not included here.</p>`);
+  const i = $('#plReG', el); if (i) i.onchange = () => { pl.reGrowth = (+i.value || 0) / 100; save(); };
+}
+
 /** Real value after one and two generations (25 and 50 years), with and without withdrawals afterwards. */
 function multiGen(start, pl) {
   const at = y => fv(start, pl.ret, pl.monthly, y * 12) / Math.pow(1 + pl.infl, y);
@@ -148,6 +199,7 @@ function wire() {
   $$('[data-ty]', el).forEach(i => { i.onchange = () => { pl.targets[+i.dataset.ty].years = Math.max(1, Math.min(60, Math.round(+i.value || 10))); save(); }; });
   $$('[data-tv]', el).forEach(i => { i.onchange = () => { pl.targets[+i.dataset.tv].value = Math.max(0, +i.value || 0); save(); }; });
   $$('[data-oth]', el).forEach(i => { i.onchange = () => { pl.other[i.dataset.oth] = Math.max(0, +i.value || 0); save(); }; });
+  const pay = $('#plPay', el); if (pay) pay.onchange = () => { pl.showPayout = pay.checked; save(); };
   const pr = $('#plPreset', el); if (pr) pr.onchange = () => { pl.preset = pr.value; save(); };
   const g5 = $('#plGoal50', el); if (g5) g5.onchange = () => { pl.goal50 = Math.max(0, +g5.value || 0); save(); };
 }
