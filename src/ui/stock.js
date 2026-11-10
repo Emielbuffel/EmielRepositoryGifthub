@@ -3,6 +3,7 @@
 import { fundCard } from './fundui.js';
 import { phaseTag, phaseStrip } from './phase.js';
 import { renderPanel } from './panel.js';
+import { setCoachStock, openCoach } from './coachui.js';
 import { drawIntraday } from './intraday.js';
 import { companyCard, fundsItem } from './companyui.js';
 import { companyInfo } from '../data/company.js';
@@ -13,9 +14,9 @@ import { listMenu } from './lists.js';
 import { alertSheet } from './alertsui.js';
 import { planSheet } from './plansui.js';
 import { planFor, tradesFor, strategy } from '../data/plans.js';
-import { pyramid } from '../core/strategy.js';
+import { pyramid, sharesFor, DEFAULT_PLAN } from '../core/strategy.js';
 import { sellPoints, SELL_LABEL } from '../core/sells.js';
-import { checkBars, activeFor, onAlerts, describe as describeAlert } from '../data/alerts.js';
+import { checkBars, activeFor, onAlerts, addAlert, describe as describeAlert } from '../data/alerts.js';
 import { daily, benchmarkFor, indexSeries, compareOptions, defaultBenchmark, earnings, isIndexSym, provider, isDemo, isDemoSym, DataError, settings, saveSettings } from '../data/service.js';
 import { isApp } from '../data/net.js';
 import { splitSym, snapshotMeta, yahooIntraday } from '../data/providers.js';
@@ -30,7 +31,7 @@ import { $, $$, html, raw, render, esc, money, ICON, toast, ago } from './dom.js
 
 const V = { chart: null, S: null, data: null, bench: null, R: null, seq: 0, tool: null, pending: null, poly: null, drawingsAll: {}, earn: null, earnErr: null, news: null, newsSeen: 0, newsTag: 'all', cmp: [], mkt: null };
 const LINE_DEFS = [['l1', '10-day', '--ma1', '2-week'], ['l2', '21-day EMA', '--ma2', '4-week EMA'], ['l3', '50-day', '--ma3', '10-week'], ['l4', '200-day', '--ma4', '40-week'], ['rs', 'RS line', '--rs'], ['bb', 'Bollinger bands', '--muted']];
-let prefs = { tf: 'D', style: 'candles', lines: { l1: false, l2: false, l3: true, l4: true, rs: true, bb: false }, patMode: 'all', sells: true, log: true, panes: { rsi: false, macd: false }, eps: 'ttm', cmp: {}, rsBench: {} };
+let prefs = { tf: 'D', style: 'candles', ms: false, tradePlan: true, lines: { l1: false, l2: false, l3: true, l4: true, rs: true, bb: false }, patMode: 'all', sells: true, log: true, panes: { rsi: false, macd: false }, eps: 'ttm', cmp: {}, rsBench: {} };
 // comparison choices and the RS benchmark are remembered per market (US, .DE, .T …)
 const group = sym => isDemoSym(sym) ? 'demo' : splitSym(sym).sfx || 'US';
 
@@ -50,6 +51,7 @@ export async function initStock(el) {
         <button class="btn" id="sAlert" aria-label="Set an alert"></button>
         <button class="btn" id="sPlan" aria-label="Buying plan"></button>
         <button class="btn" id="sRefresh" aria-label="Refresh prices">${raw(ICON.refresh)}<span>Refresh</span></button>
+        <button class="btn" id="sCoach" aria-label="Ask the O'Neil Coach">${raw(ICON.coach)}<span>Coach</span></button>
       </div>
     </div>
     <div class="row" style="gap:8px;justify-content:flex-start"><select class="input list-pick" id="sList" aria-label="Watchlist"></select><div class="chips" id="sChips" aria-label="Watchlist" style="flex:1;min-width:0"></div></div>
@@ -168,7 +170,7 @@ const shortName = n => n.replace(/\s*\(.*\)\s*/, '').replace(' (fictional index)
 async function loadPlan(sym, seq) {
   const [plan, trades, S] = await Promise.all([planFor(sym), tradesFor(sym), strategy()]);
   if (seq !== V.seq) return;
-  V.plan = plan; V.trades = trades;
+  V.plan = plan; V.trades = trades; V.strategy = S;
   if (plan && plan.pivot) { const py = pyramid(S, plan.pivot); V.planLv = { pivot: plan.pivot, add2: py.steps[1] && py.steps[1].from, add3: py.steps[2] && py.steps[2].from, stop: plan.lastStep && plan.lastStep.stop ? plan.lastStep.stop : py.stop, done: plan.buys.length }; } else V.planLv = null;
   const st = plan && plan.lastStep;
   render($('#sPlan'), html`${raw(ICON.layers)}<span>${plan ? (st ? st.title : 'Plan') : 'Plan'}</span>`);
@@ -284,10 +286,30 @@ function chips() {
   $$('.chip', el).forEach(b => { b.onclick = () => openStock(b.dataset.s); });
 }
 
+/** Leaderboard-style levels for the current (or just broken-out) base, from the buying-plan settings. */
+function autoPlan() {
+  if (!V.data || !V.R) return null;
+  const B = baseState(V.R, V.data.bars), p = B.p && B.p.pivot ? B.p : null;
+  if (!p) return null;
+  const S = V.strategy || DEFAULT_PLAN, piv = p.pivot;
+  return { pivot: piv, stop: piv * (1 - S.stop), stopPct: S.stop, add2: piv * (1 + S.add2[0]), add3: piv * (1 + S.add3[0]), t20: piv * 1.2, t25: piv * 1.25 };
+}
+/** Snaps a tapped price to the bar's high or low when the tap is close to it (easier drawing). */
+function snapPrice(time, price) {
+  if (!V.data) return price;
+  const b = V.data.bars, i = V.chart.idxAt(time), bar = b[Math.min(i, b.length - 1)];
+  if (!bar) return price;
+  const tol = Math.abs(price) * 0.012 + (bar.high - bar.low) * 0.25;
+  if (Math.abs(price - bar.high) <= tol) return bar.high;
+  if (Math.abs(price - bar.low) <= tol) return bar.low;
+  return price;
+}
+
 function chartState() {
   return {
     sym: V.sym, daily: V.data.bars, bench: V.bench ? V.bench.bars : null, R: V.R, tf: prefs.tf, lines: prefs.lines, patMode: prefs.patMode, log: prefs.log !== false,
     drawings: drawings(), cur: V.data.currency, pending: V.pending, poly: V.poly, mkt: V.mkt, compare: V.cmp, trades: V.trades || [], plan: V.planLv || null, sells: prefs.sells !== false && !V.mkt ? V.sells || [] : [],
+    ms: !!prefs.ms, autoPlan: prefs.tradePlan !== false && !V.mkt ? autoPlan() : null,
     eps: prefs.eps !== 'off' && V.earn ? { mode: prefs.eps, points: epsPoints(V.earn, prefs.eps) } : null,
   };
 }
@@ -366,7 +388,9 @@ function cards() {
     ${C.facts.length ? html`<div class="facts">${C.facts.map(([k, v]) => html`<div class="fact"><div class="k">${k}</div><div class="v">${v}</div></div>`)}</div>` : ''}
     ${C.plan.length ? html`<ol class="plan">${C.plan.map(x => html`<li>${raw(x)}</li>`)}</ol>` : ''}
     ${C.notes.length ? html`<ul class="notes">${C.notes.map(([k, t]) => html`<li class="${k}">${t}</li>`)}</ul>` : ''}
-    ${C.also ? html`<p class="muted small" style="margin:0">${C.also}</p>` : ''}`);
+    ${C.also ? html`<p class="muted small" style="margin:0">${C.also}</p>` : ''}
+    ${tradePlanBlock(B)}`);
+  const tp = $('#tpStart'); if (tp) tp.onclick = () => $('#sPlan').click();
   const sigTone = S.sig === 'BUY' ? 'ok' : S.sig === 'SELL' ? 'bad' : S.sig === 'WATCH' ? 'blue' : 'warn';
   render($('#cSig'), html`
     <div class="card-head"><h2>Signal</h2><span class="muted tiny">Recalculated on every price update</span></div>
@@ -467,6 +491,28 @@ function histCard() {
   });
 }
 
+/* Leaderboard-style trade strategy for the current base: concrete amounts from the buying-plan settings. */
+function tradePlanBlock(B) {
+  const p = B.p && B.p.pivot ? B.p : null;
+  if (!p || V.mkt || isDemoSym(V.sym)) return '';
+  const S = V.strategy || DEFAULT_PLAN, py = pyramid(S, p.pivot), cur = V.data.currency;
+  const n0 = x => Math.round(x).toLocaleString('en-US');
+  const sh = amt => Math.max(1, Math.floor(amt / p.pivot));
+  const open = V.plan && !V.plan.closed;
+  return html`<div class="tplan">
+    <div class="card-head" style="margin-top:4px"><h3 style="margin:0">Trade strategy at the buy point</h3><span class="muted tiny">${n0(py.target)} ${S.ccy} per position · max 8 stocks</span></div>
+    <ol class="plan">
+      <li><b>Buy 1 — ${Math.round(S.tranches[0] * 100)}%</b> (${n0(py.steps[0].amount)} ${S.ccy} ≈ ${sh(py.steps[0].amount)} shares): on the breakout above <b>${fp(p.pivot)}</b>, closing above it on volume at least 1.4× the 50-day average (40–50% above it). Weak volume → half size or wait.</li>
+      ${py.steps[1] ? html`<li><b>Add 2 — ${Math.round(S.tranches[1] * 100)}%</b> (${n0(py.steps[1].amount)} ${S.ccy}): at +${Math.round(S.add2[0] * 100)}–${Math.round(S.add2[1] * 100)}% above the buy point (${fp(p.pivot * (1 + S.add2[0]))}).</li>` : ''}
+      ${py.steps[2] ? html`<li><b>Add 3 — ${Math.round(S.tranches[2] * 100)}%</b> (${n0(py.steps[2].amount)} ${S.ccy}): at +${Math.round(S.add3[0] * 100)}–${Math.round(S.zone * 100)}% (${fp(p.pivot * (1 + S.add3[0]))}). Above +5% the stock is extended: no new buys.</li>` : ''}
+      <li><b>Stop:</b> ${fp(py.stop)} (−${Math.round(S.stop * 100)}%), no exceptions. Raise it to just below the buy point at +15%, to breakeven at +20%.</li>
+      <li><b>Take profits:</b> most at +20–25% (${fp(p.pivot * 1.2)}–${fp(p.pivot * 1.25)}) — unless it gains 20% within 3 weeks: then hold at least 8 weeks.</li>
+      <li><b>Before you buy:</b> market in an uptrend, RS 80+, no earnings in the next ${S.earningsDays} days.</li>
+    </ol>
+    <div class="toolbar">${open ? html`<span class="small t-ok">Plan open: ${V.plan.buys.length} buy${V.plan.buys.length === 1 ? '' : 's'} recorded.</span>` : html`<button class="btn sm primary" id="tpStart">Start this plan (alerts at every step)</button>`}<span class="muted tiny">Levels are drawn on the chart (Patterns → Trade plan levels).</span></div>
+  </div>`;
+}
+
 /* ---------- growth checklist ---------- */
 function renderCanslim() {
   const el = $('#cCanslim'); if (!el || !V.sig) return;
@@ -489,13 +535,13 @@ const addDrawing = d => saveDrawings([...drawings(), { ...d, id: Date.now().toSt
 function drawList() {
   const el = $('#cDraw'), list = drawings(), lt = V.data.bars[V.data.bars.length - 1].time;
   render(el, html`<div class="card-head"><h2>Your drawings</h2><button class="btn sm" id="dAdd">${raw(ICON.pen)}Draw</button></div>
-    ${list.length ? html`<div class="list">${list.map(d => html`<div class="row small"><span class="num">${d.type === 'trend' ? `Trend line ${fDs(d.t1)} → ${fDs(d.t2)} · today ${f2(lineVal(d, lt))}` : d.type === 'hline' ? `Level ${f2(d.p1)}` : d.type === 'zone' ? `Zone ${f2(Math.min(d.p1, d.p2))}–${f2(Math.max(d.p1, d.p2))}` : d.type === 'cup' ? `${d.label} from ${fDs(d.pts[0][0])} · buy point ${f2(cupPivot(d))}` : `Note “${d.label}” ${fDs(d.t1)}`}</span><button class="btn sm danger" data-del="${d.id}" aria-label="Delete drawing">${raw(ICON.trash)}</button></div>`)}</div>`
+    ${list.length ? html`<div class="list">${list.map(d => html`<div class="row small"><span class="num">${d.type === 'trend' ? `Trend line ${fDs(d.t1)} → ${fDs(d.t2)} · today ${f2(lineVal(d, lt))}` : d.type === 'bp' ? `Your buy point ${f2(d.p1)} · zone to ${f2(d.p1 * 1.05)}` : d.type === 'hline' ? `Level ${f2(d.p1)}` : d.type === 'zone' ? `Zone ${f2(Math.min(d.p1, d.p2))}–${f2(Math.max(d.p1, d.p2))}` : d.type === 'cup' ? `${d.label} from ${fDs(d.pts[0][0])} · buy point ${f2(cupPivot(d))}` : `Note “${d.label}” ${fDs(d.t1)}`}</span><button class="btn sm danger" data-del="${d.id}" aria-label="Delete drawing">${raw(ICON.trash)}</button></div>`)}</div>`
       : html`<p class="muted small" style="margin:0">None yet. Use Draw on the chart to add trend lines, levels, zones, your own cup or notes. The flags watch them for you.</p>`}`);
   $$('[data-del]', el).forEach(b => { b.onclick = () => saveDrawings(drawings().filter(x => x.id !== b.dataset.del)); });
   $('#dAdd').onclick = e => { e.stopPropagation(); $('#sChartWrap').scrollIntoView({ behavior: 'smooth', block: 'center' }); openMenu('pDraw'); };
 }
 
-const HINTS = { trend: 'Trend line: tap the first point, then the second. It extends to today.', hline: 'Level: tap the price to mark.', zone: 'Zone: tap the top, then the bottom.', note: 'Note: tap a bar, then type your note.', cup: 'Cup: tap the left-side high, the bottom, then the right-side high. Optional: handle low and handle end.' };
+const HINTS = { bp: 'Buy point: tap the pivot high (taps snap to the bar high). Draws the line and the +5% zone and sets a breakout alert.', trend: 'Trend line: tap the first point, then the second. It extends to today. Taps snap to bar highs/lows.', hline: 'Level: tap the price to mark.', zone: 'Zone: tap the top, then the bottom.', note: 'Note: tap a bar, then type your note.', cup: 'Cup: tap the left-side high, the bottom, then the right-side high. Optional: handle low and handle end.' };
 function setTool(t) {
   V.tool = V.tool === t ? null : t; V.pending = null; V.poly = V.tool === 'cup' ? [] : null;
   const h = $('#sHint'); if (!h) return;
@@ -509,8 +555,15 @@ function setTool(t) {
 function finishCup() { const pts = V.poly.slice(); V.poly = null; V.tool = null; $('#sHint').hidden = true; addDrawing({ type: 'cup', pts, label: pts.length >= 4 ? 'Your cup with handle' : 'Your cup' }); toast('Cup saved. Its buy point is now watched in the flags.'); }
 function onChartClick({ time, price }) {
   if (!V.tool) return;
+  price = snapPrice(time, price); // taps near a bar's high or low snap to it
   const done = msg => { V.tool = null; V.pending = null; $('#sHint').hidden = true; toast(msg || 'Saved.'); };
-  if (V.tool === 'hline') { addDrawing({ type: 'hline', p1: price }); return done('Level saved at ' + price + '.'); }
+  if (V.tool === 'hline') { addDrawing({ type: 'hline', p1: price }); return done('Level saved at ' + f2(price) + '.'); }
+  if (V.tool === 'bp') {
+    const lvl = +price.toFixed(4);
+    addDrawing({ type: 'bp', t1: time, p1: lvl });
+    addAlert({ sym: V.sym, type: 'breakout', level: lvl, name: V.data.name || '' });
+    return done('Buy point saved at ' + f2(lvl) + '. You get an alert when the price breaks above it.');
+  }
   if (V.tool === 'note') {
     const label = (prompt('Note text (max 40 characters)') || '').trim().slice(0, 40);
     if (label) { addDrawing({ type: 'note', t1: time, label }); done('Note saved.'); }
@@ -538,8 +591,10 @@ function openMenu(id) {
     if (id === 'pLines') render(p, html`${LINE_DEFS.map(([k, l, c, w]) => html`<label><input type="checkbox" data-line="${k}" ${prefs.lines[k] ? raw('checked') : ''}><span class="sw" style="background:var(${c})"></span>${prefs.tf === 'W' && w ? w : l}</label>`)}<hr>
       <label><input type="checkbox" data-pane="rsi" ${prefs.panes.rsi ? raw('checked') : ''}>RSI pane</label><label><input type="checkbox" data-pane="macd" ${prefs.panes.macd ? raw('checked') : ''}>MACD pane</label><hr>
       <button data-style="candles" class="${prefs.style === 'candles' ? 'on' : ''}">Candles</button><button data-style="bars" class="${prefs.style === 'bars' ? 'on' : ''}">OHLC bars</button><hr>
-      <label><input type="checkbox" id="lnLog" ${prefs.log !== false ? raw('checked') : ''}>Logarithmic price scale (the book's choice: equal steps are equal % moves)</label>`);
+      <label><input type="checkbox" id="lnLog" ${prefs.log !== false ? raw('checked') : ''}>Logarithmic price scale (the book's choice: equal steps are equal % moves)</label>
+      <label><input type="checkbox" id="lnMs" ${prefs.ms ? raw('checked') : ''}>MarketSurge look: price bars, blue up / magenta down</label>`);
     if (id === 'pLines' && $('#lnLog', p)) $('#lnLog', p).onchange = e => { prefs.log = e.target.checked; savePrefs(); draw(true); };
+    if (id === 'pLines' && $('#lnMs', p)) $('#lnMs', p).onchange = e => { prefs.ms = e.target.checked; prefs.style = prefs.ms ? 'bars' : 'candles'; savePrefs(); V.chart.setStyle(prefs.style); draw(true); };
     if (id === 'pCmp') {
       const opts = compareOptions(V.sym), g = group(V.sym), sel = prefs.cmp[g] || [], rs = prefs.rsBench[g] || defaultBenchmark(V.sym);
       const custom = sel.filter(x => !opts.some(o => o.id === x));
@@ -566,9 +621,11 @@ function openMenu(id) {
     if (id === 'pPat') render(p, html`${[['all', 'Current + all past patterns'], ['cur', 'Current base only'], ['off', 'Hide patterns']].map(([k, l]) => html`<button data-pm="${k}" class="${prefs.patMode === k ? 'on' : ''}">${l}</button>`)}<hr>
       <div class="pat-legend" style="padding:6px 10px">${Object.entries(PAT_LABEL).map(([k, l]) => html`<span><i style="background:${patColor(k)}"></i>${l}</span>`)}</div><hr>
       <label><input type="checkbox" id="pmSells" ${prefs.sells !== false ? raw('checked') : ''}><span>Show sell signals (book rules)</span></label>
+      <label><input type="checkbox" id="pmTrade" ${prefs.tradePlan !== false ? raw('checked') : ''}><span>Trade plan levels (stop, adds, +20–25% targets)</span></label>
       <p class="muted tiny" style="margin:4px 10px 6px">For each breakout, bought at the buy point: the first sell signal (stop 8% under the buy price, raised stop at +15%, breakeven after +20%, climax top, 70% over the 200-day, heavy-volume 50-day break, profit at +20–25% with the 8-week rule). Open breakouts show the current sell line and targets.</p>`);
     if (id === 'pPat' && $('#pmSells', p)) $('#pmSells', p).onchange = e => { prefs.sells = e.target.checked; savePrefs(); draw(true); };
-    if (id === 'pDraw') render(p, html`${[['trend', 'Trend line'], ['hline', 'Level'], ['zone', 'Zone'], ['cup', 'Cup ◡ (your own base)'], ['note', 'Note']].map(([k, l]) => html`<button data-tool="${k}">${l}</button>`)}<hr><button data-undo>Undo last drawing</button>`);
+    if (id === 'pPat' && $('#pmTrade', p)) $('#pmTrade', p).onchange = e => { prefs.tradePlan = e.target.checked; savePrefs(); draw(true); };
+    if (id === 'pDraw') render(p, html`${[['bp', 'Buy point ⌖ (line + 5% zone + alert)'], ['trend', 'Trend line'], ['hline', 'Level'], ['zone', 'Zone'], ['cup', 'Cup ◡ (your own base)'], ['note', 'Note']].map(([k, l]) => html`<button data-tool="${k}">${l}</button>`)}<hr><button data-undo>Undo last drawing</button>`);
     $$('[data-line]', p).forEach(x => { x.onchange = () => { prefs.lines[x.dataset.line] = x.checked; savePrefs(); draw(true); }; });
     $$('[data-pane]', p).forEach(x => { x.onchange = () => { prefs.panes[x.dataset.pane] = x.checked; savePrefs(); V.chart.setPanes(prefs.panes); }; });
     $$('[data-style]', p).forEach(x => { x.onclick = () => { prefs.style = x.dataset.style; savePrefs(); V.chart.setStyle(prefs.style); p.hidden = true; }; });
@@ -600,6 +657,26 @@ function wireTools() {
   });
   $$('#sSpan [data-span]').forEach(b => { b.onclick = () => { const m = +b.dataset.span; V.chart.span(m); $$('#sSpan [data-span]').forEach(x => x.classList.toggle('on', x === b)); }; });
   $('#sRefresh').onclick = () => { if (App.sym) load(App.sym, true); };
+  $('#sCoach').onclick = () => openCoach();
+  // what the coach knows about the stock on screen
+  setCoachStock(() => {
+    if (!V.data || V.mkt || isDemoSym(V.sym)) return null;
+    const d = V.data.bars, n = d.length - 1, B = baseState(V.R, d), p = B.p && B.p.pivot ? B.p : null;
+    const q = enrich(V.earn || []), z = q[q.length - 1], nx = nextReport(V.earn || []);
+    const S = V.sig || {};
+    return {
+      sym: V.sym, name: V.data.name, price: +d[n].close.toFixed(2), currency: V.data.currency,
+      dayChange: pc(d[n].close / d[n - 1].close - 1, 2),
+      call: B.st, phase: V.phase ? V.phase.label + (V.phase.stage ? ' (stage ' + V.phase.stage + ')' : '') : null,
+      base: p ? `${p.name}, ${Math.round(p.weeks)} wk, −${Math.round((p.depth || 0) * 100)}% deep${p.faulty ? ', FAULTY' : ''}` : null,
+      pivot: p ? +p.pivot.toFixed(2) : null, zoneTop: p ? +(p.pivot * 1.05).toFixed(2) : null,
+      distance: p ? pc(d[n].close / p.pivot - 1) + ' vs the buy point' : null,
+      rs: V.rs, setupScore: V.score ? V.score.score : null,
+      signals: (S.flags || []).slice(0, 5).map(f => f[1]),
+      fundamentals: z ? `latest EPS ${z.eps} (${z.yoy != null ? pc(z.yoy, 0) + ' y/y' : 'y/y unknown'})${z.revYoy != null ? ', sales ' + pc(z.revYoy, 0) + ' y/y' : ''}` : null,
+      nextEarnings: nx ? fD(nx.time) : null,
+    };
+  });
   $('#sWatch').onclick = () => { if (V.sym) listMenu(V.sym); };
   $('#sPlan').onclick = () => {
     if (!V.data) return;

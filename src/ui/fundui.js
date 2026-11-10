@@ -97,7 +97,13 @@ function draw(el, sym, F) {
       <div class="seg" id="fRange"><button data-r="5Y" class="${U.range === '5Y' ? 'on' : ''}">5Y</button><button data-r="All" class="${U.range === 'All' ? 'on' : ''}">All</button></div></div></div>`;
   if (!rows.length) { render(el, html`${head}<p class="muted small" style="margin:0">Not enough reported periods yet.</p>`); wire(el, sym, F); return; }
   const lastQ = F.rows[F.rows.length - 1];
-  render(el, html`${head}
+  // five-year evolution in one line: revenue and EPS growth per year, margin then vs now
+  const yrs5 = (F.annual || []).filter(r => r.rev != null || r.eps != null).slice(-6);
+  const cagr = (a, b, n) => a > 0 && b > 0 && n > 0 ? Math.pow(b / a, 1 / n) - 1 : null;
+  const n5 = yrs5.length - 1, rC = n5 > 0 ? cagr(yrs5[0].rev, yrs5[n5].rev, n5) : null, eC = n5 > 0 ? cagr(yrs5[0].eps, yrs5[n5].eps, n5) : null;
+  const m0 = n5 > 0 ? margins(yrs5[0]).net : null, m1 = n5 > 0 ? margins(yrs5[n5]).net : null;
+  const evo5 = n5 >= 2 ? html`<p class="small evo5" style="margin:0"><b>${n5}-year evolution:</b> revenue ${rC != null ? sgn(rC, 1) + ' a year (' + amt(yrs5[0].rev, cur) + ' → ' + amt(yrs5[n5].rev, cur) + ')' : '—'} · EPS ${eC != null ? sgn(eC, 1) + ' a year' : '—'}${m0 != null && m1 != null ? ` · net margin ${pct(m0, 1)} → ${pct(m1, 1)}` : ''}.</p>` : '';
+  render(el, html`${head}${evo5}
     <div class="kpis">
       ${kp(mode === 'y' ? 'Revenue (year)' : 'Revenue (last quarter)', amt(mode === 'y' ? z.rev : lastQ.rev, cur), g != null && mode !== 'y' ? sgn(g) + ' vs a year ago' : '', g > 0 ? 'up' : g < 0 ? 'down' : '')}
       ${kp('Net profit growth', sgn(gn), 'last quarter vs a year ago', gn > 0 ? 'up' : gn < 0 ? 'down' : '')}

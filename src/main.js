@@ -45,6 +45,7 @@ function nav() {
   $('#alertBtn').innerHTML = ICON.bell + '<span class="badge" id="alertBadge" hidden></span>'; $('#alertBtn').onclick = async () => { await alertsCenter(); badge(); };
   $('#sideEdit').onclick = manageLists;
   $('#sideList').onchange = () => useList($('#sideList').value);
+  $('#coachBtn').innerHTML = ICON.coach; $('#coachBtn').onclick = () => import('./ui/coachui.js').then(m => m.openCoach());
   $('#settingsBtn').innerHTML = ICON.settings; $('#settingsBtn').onclick = () => go('settings');
   render($('#sideFoot'), html`Version ${VERSION} · Not investment advice`);
 }

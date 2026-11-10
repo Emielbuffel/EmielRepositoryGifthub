@@ -1,3 +1,5 @@
+> Buy points use IBD's updated rule: the exact high of the pivot area, with no +$0.10 added.
+
 # The base detector
 
 `src/core/pat.js` is the O'Neil base detector from the original Base Pattern Desk (`scripts/pat.js` / the page's `PAT` block). Its rules are unchanged except for one bug fix, described below.
@@ -12,10 +14,10 @@
 
 | Base | Coded as |
 |---|---|
-| Flat base | ≥30 days (book: 6–7+ weeks; 30–34 days flagged as the minimum), depth ≤15%, prior advance ≥20% (under 30% flagged). Buy point = base high + 0.10 |
-| Cup with handle | 20+ days (under 30 → faulty, 30–34 → warning), 12–50% deep (over 33% flagged), prior advance ≥25% (under 30% flagged), right side ≥88% of the left high, handle 2–30 days (<5 → faulty), ≤15% deep, in the upper part of the base (lower half → faulty), handle low below the 200-day line → faulty. Buy point = handle high + 0.10 |
-| Cup without handle | Right side ≥90% of the left high. Buy point = left-side high + 0.10 |
-| Double bottom | Second low undercuts the first by ≤8%; middle peak ≥40% up the base. Buy point = middle peak + 0.10 |
+| Flat base | ≥30 days (book: 6–7+ weeks; 30–34 days flagged as the minimum), depth ≤15%, prior advance ≥20% (under 30% flagged). Buy point = the base high (exact, per IBD's updated rule) |
+| Cup with handle | 20+ days (under 30 → faulty, 30–34 → warning), 12–50% deep (over 33% flagged), prior advance ≥25% (under 30% flagged), right side ≥88% of the left high, handle 2–30 days (<5 → faulty), ≤15% deep, in the upper part of the base (lower half → faulty), handle low below the 200-day line → faulty. Buy point = the handle high (exact) |
+| Cup without handle | Right side ≥90% of the left high. Buy point = the left-side high (exact) |
+| Double bottom | Second low undercuts the first by ≤8%; middle peak ≥40% up the base. Buy point = the middle peak (exact) |
 | Ascending base | Three 8–25% pullbacks with rising highs and lows over 40–80 days (from later editions of the book) |
 | High tight flag | ≥100% gain in 3–9 weeks, then a 10–30-day flag ≤20% deep (book: +100–120% in 4–8 weeks, 3–5 weeks, 10–20%) |
 | Three weeks tight | Three weekly closes within 1.5%, within 15% of the 52-week high, above the 50-day line (from later editions) |

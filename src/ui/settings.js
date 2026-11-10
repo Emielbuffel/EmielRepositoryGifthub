@@ -8,6 +8,7 @@ import { NEWS_SOURCES, newsSettings } from '../data/news.js';
 import { $, $$, html, raw, render, toast } from './dom.js';
 import { strategy, saveStrategy } from '../data/plans.js';
 import { DEFAULT_PLAN, pyramid } from '../core/strategy.js';
+import { COACH_MODELS } from '../data/coach.js';
 
 export const VERSION = '1.0.0';
 
@@ -55,6 +56,13 @@ export async function initSettings(el) {
       </form>
     </section>
     <section class="card">
+      <h2>O'Neil Coach (AI)</h2>
+      <p class="small" style="margin:0">The Coach button answers "what would O'Neil do?" from your playbook and the app's live numbers. Without a key it gives rule-based answers. With your own Anthropic API key it holds full conversations with Claude; the key is stored only on this device and sent only to api.anthropic.com (you pay Anthropic per use, typically a few cents per question at most). Get a key at console.anthropic.com → API keys.</p>
+      <div class="grid2"><label class="field"><span>Anthropic API key</span><input class="input" id="stAnth" type="password" placeholder="sk-ant-…" value="${settings.keys.anthropic || ''}" autocapitalize="off" spellcheck="false"></label>
+      <label class="field"><span>Model</span><select class="input" id="stAnthModel">${COACH_MODELS.map(([k, l]) => html`<option value="${k}" ${(settings.coachModel || 'claude-opus-5-5') === k ? raw('selected') : ''}>${l}</option>`)}</select></label></div>
+      <div class="toolbar"><button class="btn primary" id="stAnthSave">Save</button><span class="small" id="stAnthMsg"></span></div>
+    </section>
+    <section class="card">
       <h2>News sources</h2>
       <p class="small" style="margin:0">The app checks these free sources every time you open a stock or the Market tab. Only headlines and links are shown; articles open on the publisher's site.</p>
       <div class="list" id="stNews">${Object.entries(NEWS_SOURCES).map(([k, x]) => html`<label class="row" style="cursor:pointer"><span><b class="small">${x.name}</b><br><span class="muted tiny">${x.about}</span></span><input type="checkbox" class="switch" data-src="${k}" ${newsSettings().sources[k] ? raw('checked') : ''}></label>`)}
@@ -90,6 +98,10 @@ export async function initSettings(el) {
     </section>`);
   keyBox();
   siteBox(el);
+  $('#stAnthSave', el).onclick = async () => {
+    settings.keys.anthropic = $('#stAnth', el).value.trim(); settings.coachModel = $('#stAnthModel', el).value; await saveSettings();
+    const m = $('#stAnthMsg', el); m.className = 'small t-ok'; m.textContent = settings.keys.anthropic ? 'Saved. The Coach now answers with Claude.' : 'Key removed: the Coach gives offline answers.';
+  };
   const ex = () => { const p = pyramid(S, 100); $('#stPlanEx', el).textContent = `Example: ${Math.round(S.capital).toLocaleString('en-US')} ${S.ccy} → ${p.target.toLocaleString('en-US')} ${S.ccy} per position, bought as ${p.steps.map(x => x.amount.toLocaleString('en-US')).join(' + ')} ${S.ccy}; stop ${Math.round(S.stop * 100)}% below ${S.stopFrom === 'pivot' ? 'the buy point' : 'your average purchase price'}, raised to just below the buy point at +15% and to breakeven at +20%.`; };
   ex();
   $('#stPlan', el).onsubmit = async e => {

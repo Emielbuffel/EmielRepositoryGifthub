@@ -229,7 +229,7 @@ export function signal(R, d, bench, fp, mkt, drawings = []) {
 export const lineVal = (d, t) => d.p1 + (d.p2 - d.p1) * (t - d.t1) / (d.t2 - d.t1);
 export function cupPivot(dr) {
   const [a, , r] = dr.pts; const H = Math.max(a[1], r[1]);
-  return (dr.pts.length >= 4 ? Math.max(r[1], ...dr.pts.slice(3).map(x => x[1])) : H) + 0.10;
+  return dr.pts.length >= 4 ? Math.max(r[1], ...dr.pts.slice(3).map(x => x[1])) : H; // exact high (IBD's updated rule)
 }
 
 /** Summary row for one stock (used by the screener and the portfolio). Port of scripts/screener.js. */

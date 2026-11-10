@@ -2,7 +2,7 @@
 
 /* O'Neil base-pattern detector. Input: daily bars ascending {time,open,high,low,close,volume}. */
 const PAT=(function(){
-const TICK=0.10;
+const TICK=0; // IBD's updated rule: the buy point is the exact high of the pivot area (no +$0.10)
 function argmax(b,f,t,k){let bi=f;for(let i=f+1;i<=t;i++)if(b[i][k]>b[bi][k])bi=i;return bi;}
 function argmin(b,f,t,k){let bi=f;for(let i=f+1;i<=t;i++)if(b[i][k]<b[bi][k])bi=i;return bi;}
 function maxClose(b,f,t){let m=-Infinity;for(let i=f;i<=t;i++)m=Math.max(m,b[i].close);return m;}

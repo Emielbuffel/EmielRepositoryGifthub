@@ -19,3 +19,10 @@ test('spikes that revert are removed; last close follows the live quote', () => 
   const q = alignQuote(mk(0, [100, 101]), { price: 102, time: D + 3600 });
   assert.equal(q[1].close, 102);
 });
+
+test('a live quote on a new day becomes its own bar (correct day change)', () => {
+  const b = mk(0, [100, 101]);
+  const out = alignQuote(b, { price: 103, time: 2 * D + 3600 });
+  assert.equal(out.length, 3); assert.equal(out[2].close, 103); assert.ok(out[2].liveBar);
+  assert.equal(alignQuote(b, { price: 300, time: 2 * D }).length, 2); // implausible jump: ignored
+});

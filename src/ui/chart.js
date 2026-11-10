@@ -155,7 +155,8 @@ export class StockChart {
     while (this.future.length < (S.tf === 'D' ? 25 : 12)) { t += S.tf === 'D' ? 86400 : 7 * 86400; const wd = new Date(t * 1000).getUTCDay(); if (S.tf === 'W' || (wd !== 0 && wd !== 6)) this.future.push(t); }
     const withF = a => a.concat(this.future.map(time => ({ time })));
     const ser = v => b.map((x, i) => v[i] == null || !isFinite(v[i]) ? { time: x.time } : { time: x.time, value: v[i] });
-    const up = tok('--up'), dn = tok('--down'), col = i => b[i].close >= b[i].open ? up : dn;
+    // MarketSurge look: blue up bars and magenta down bars, as in O'Neil's charts
+    const up = S.ms ? '#1565d8' : tok('--up'), dn = S.ms ? '#d6188f' : tok('--down'), col = i => b[i].close >= b[i].open ? up : dn;
     this.ps.setData(withF(b.map((x, i) => { const c = col(i); return { time: x.time, open: x.open, high: x.high, low: x.low, close: x.close, color: c, borderColor: c, wickColor: c }; })));
     this.ps.applyOptions({ priceFormat: { type: 'price', precision: S.cur === 'KRW' || S.cur === 'JPY' ? 0 : 2, minMove: S.cur === 'KRW' || S.cur === 'JPY' ? 1 : 0.01 } });
     this.volS.setData(withF(b.map((x, i) => ({ time: x.time, value: x.volume, color: col(i) + 'B0' }))));
@@ -326,6 +327,10 @@ export class StockChart {
         const pv = cupPivot(dr); this.addLine([[dr.pts[dr.pts.length - 1][0], pv], [futureT, pv]], { color: col, lineWidth: 1, lineStyle: LineStyle.Dashed });
         this.addPL({ price: pv, color: col, lineStyle: LineStyle.Dashed, title: 'Your buy point' });
         markers.push({ time: this.snapT(dr.pts[0][0]), position: 'aboveBar', shape: 'arrowDown', color: col, text: dr.label || 'Your cup' });
+      } else if (dr.type === 'bp') {
+        this.addPL({ price: dr.p1, color: col, lineWidth: 2, title: 'Your buy point' });
+        this.addPL({ price: dr.p1 * 1.05, color: col, lineStyle: LineStyle.Dotted, title: '+5% zone top' });
+        markers.push({ time: this.snapT(dr.t1), position: 'aboveBar', shape: 'arrowDown', color: col, text: 'Buy point ' + (Math.round(dr.p1 * 100) / 100) });
       } else if (dr.type === 'note') markers.push({ time: this.snapT(dr.t1), position: 'aboveBar', shape: 'arrowDown', color: col, text: dr.label || 'Note' });
     }
     // sell signals by the book's rules for the breakouts on the chart
@@ -336,6 +341,15 @@ export class StockChart {
       const same = markers.find(m => m.sell && m.time === tm); // two breakouts selling on the same day: one marker
       if (same) { if (!same.text.includes(SELL_LABEL[x.sell.code])) same.text += ' / ' + txt; else same.text += ' / ' + txt.split(' ').pop(); }
       else markers.push({ sell: true, minor: true, time: tm, position: 'aboveBar', shape: 'arrowDown', color: x.sell.ret >= 0 ? tok('--orange') : bad, text: 'Sell: ' + txt });
+    }
+    // automatic trade plan (Leaderboard-style): levels for the current base when no plan is open yet
+    if (S.autoPlan && !S.plan) {
+      const a = S.autoPlan, blue = tok('--blue');
+      this.addPL({ price: a.stop, color: bad, lineStyle: LineStyle.Dashed, title: `Stop −${Math.round(a.stopPct * 100)}%` });
+      if (a.add2) this.addPL({ price: a.add2, color: blue, lineStyle: LineStyle.Dotted, title: 'Add 2' });
+      if (a.add3) this.addPL({ price: a.add3, color: blue, lineStyle: LineStyle.Dotted, title: 'Add 3' });
+      this.addPL({ price: a.t20, color: tok('--up'), lineStyle: LineStyle.Dotted, title: '+20% target' });
+      this.addPL({ price: a.t25, color: tok('--up'), lineStyle: LineStyle.Dotted, title: '+25%' });
     }
     // buying plan levels and the trades in the journal
     if (S.plan) {

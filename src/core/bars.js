@@ -39,8 +39,11 @@ export function fixSpikes(bars) {
 /** Sets the last bar's close to the feed's live quote when they are the same day but differ (stale or partial bar). */
 export function alignQuote(bars, quote) {
   if (!bars.length || !quote || !(quote.price > 0) || !quote.time) return bars;
-  const last = bars[bars.length - 1], day = t => Math.floor(t / 86400);
-  if (day(quote.time + (quote.off || 0)) !== day(last.time) || Math.abs(quote.price / last.close - 1) < 0.005) return bars;
-  const c = quote.price;
+  const last = bars[bars.length - 1], day = t => Math.floor(t / 86400), qd = day(quote.time + (quote.off || 0)), c = quote.price;
+  // a new session has started but the feed gave no bar for it yet: add one, so the day change is vs yesterday's close
+  if (qd > day(last.time) && qd - day(last.time) <= 5 && Math.abs(c / last.close - 1) < 0.25) {
+    return [...bars, { time: qd * 86400, open: c, high: c, low: c, close: c, volume: 0, liveBar: true }];
+  }
+  if (qd !== day(last.time) || Math.abs(c / last.close - 1) < 0.005) return bars;
   return [...bars.slice(0, -1), { ...last, close: c, high: Math.max(last.high, c), low: Math.min(last.low, c) }];
 }

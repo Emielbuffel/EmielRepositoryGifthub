@@ -395,6 +395,18 @@ const FREE = {
   },
   async search(q) {
     const Q = q.toUpperCase().trim(), m = await snapshotMeta(), have = new Set(m.stocks.map(x => x.s));
+    // an ISIN (e.g. BE0003739530): look it up in the built-in lists, then ask the free feed
+    if (/^[A-Z]{2}[A-Z0-9]{9}\d$/.test(Q)) {
+      const U0 = await universe();
+      const hit = [...m.directory.filter(r => (r[2] || '').toUpperCase() === Q).map(r => ({ symbol: r[0], name: r[1], exchange: r[3] || '' })),
+        ...U0.items.filter(r => (r[4] || '').toUpperCase() === Q).map(r => ({ symbol: r[0], name: r[1], exchange: r[2] })) ];
+      if (!isApp()) return hit;
+      try {
+        const d = await getJSON(`https://query2.finance.yahoo.com/v1/finance/search?${new URLSearchParams({ q: Q, quotesCount: 6, newsCount: 0 })}`);
+        (d.quotes || []).forEach(x => { if (x.symbol && !hit.some(h => h.symbol === x.symbol)) hit.push({ symbol: x.symbol, name: x.longname || x.shortname, exchange: x.exchDisp || x.exchange }); });
+      } catch (e) { /* built-in matches only */ }
+      return hit;
+    }
     const fold = t => String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase();
     const score = (s, n) => (s === Q || s.split('.')[0] === Q ? 100 : s.startsWith(Q) ? 40 : 0) + (fold(n).startsWith(Q) ? 60 : fold(n).includes(' ' + Q) ? 35 : fold(n).includes(Q) ? 20 : 0);
     const U = await universe(), known = new Set([...have, ...m.directory.map(r => r[0])]);
@@ -409,11 +421,11 @@ const FREE = {
       const hits = sec.map(x => [score(x.s, x.n), x]).filter(x => x[0] >= 35).sort((a, b) => b[0] - a[0]).slice(0, 8).map(([, x]) => ({ symbol: x.s, name: x.n, exchange: x.x }));
       local.push(...hits); local.sort((a, b) => score(b.symbol, b.name) - score(a.symbol, a.name));
     } catch (e) { /* SEC list unavailable */ }
-    if (local.length >= 8) return local.slice(0, 14);
+    // always also ask the free feed's search, so every listed stock worldwide can be found
     try {
-      const d = await getJSON(`https://query2.finance.yahoo.com/v1/finance/search?${new URLSearchParams({ q, quotesCount: 10, newsCount: 0 })}`);
+      const d = await getJSON(`https://query2.finance.yahoo.com/v1/finance/search?${new URLSearchParams({ q, quotesCount: 12, newsCount: 0 })}`);
       const extra = (d.quotes || []).filter(x => x.symbol && /EQUITY|ETF|INDEX/.test(x.quoteType || '') && !local.some(l => l.symbol === x.symbol)).map(x => ({ symbol: x.symbol, name: x.longname || x.shortname, exchange: x.exchDisp || x.exchange }));
-      return [...local, ...extra].slice(0, 14);
+      return [...local, ...extra].slice(0, 16);
     } catch (e) { return local; }
   },
   async fx(pair) { const [a, b] = pair.split('/'); return yahoo(a + b + '=X'); },
