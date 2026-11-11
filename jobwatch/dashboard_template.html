@@ -1,0 +1,365 @@
+<title>Duty Station Watch</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;700;800&family=Public+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@500&display=swap">
+<style>
+/* Layout: a sticky filter rail beside a dense vacancy list; the rail folds above the list on phones. */
+:root {
+  --bg: #f3f6f8;
+  --surface: #ffffff;
+  --line: #d9e1e7;
+  --ink: #15222c;
+  --muted: #5b6b78;
+  --accent: #1d6fb0;          /* UN-blue family, used for links and active filters */
+  --accent-soft: #e3eef8;
+  --new: #b4580e;             /* amber for "new since" */
+  --new-soft: #fbeedd;
+  --good: #1f7a4d;
+  --good-soft: #e1f2e9;
+  --warn: #b3261e;
+  --warn-soft: #fbe5e3;
+  --display: "Archivo", "Helvetica Neue", Arial, sans-serif;
+  --body: "Public Sans", "Segoe UI", system-ui, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0e151b; --surface: #152029; --line: #26343f; --ink: #e5edf2; --muted: #97a8b5;
+    --accent: #6db3ec; --accent-soft: #1a3247; --new: #f0a35c; --new-soft: #3a2816;
+    --good: #6fd19f; --good-soft: #163428; --warn: #ff8a80; --warn-soft: #3d1c1a; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0e151b; --surface: #152029; --line: #26343f; --ink: #e5edf2; --muted: #97a8b5;
+  --accent: #6db3ec; --accent-soft: #1a3247; --new: #f0a35c; --new-soft: #3a2816;
+  --good: #6fd19f; --good-soft: #163428; --warn: #ff8a80; --warn-soft: #3d1c1a; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--ink); font-family: var(--body); font-size: 15px; line-height: 1.45; }
+a { color: var(--accent); }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.wrap { max-width: 1240px; margin: 0 auto; padding-block: 20px 48px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+
+header.top { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px 24px; padding-bottom: 16px; border-bottom: 1px solid var(--line); }
+h1 { font-family: var(--display); font-weight: 800; font-size: clamp(1.6rem, 3.4vw, 2.2rem); letter-spacing: -0.01em; margin: 0; text-wrap: balance; }
+.sub { color: var(--muted); margin: 4px 0 0; }
+.stamp { font-family: var(--mono); font-size: 12.5px; color: var(--muted); text-align: right; }
+
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin: 16px 0; }
+.stat { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; }
+.stat b { display: block; font-family: var(--display); font-size: 1.5rem; font-variant-numeric: tabular-nums; }
+.stat span { color: var(--muted); font-size: 13px; }
+
+.layout { display: grid; grid-template-columns: 270px minmax(0, 1fr); gap: 22px; align-items: start; }
+@media (max-width: 860px) { .layout { grid-template-columns: minmax(0, 1fr); } }
+aside.filters { position: sticky; top: calc(env(safe-area-inset-top, 0px) + 12px); display: flex; flex-direction: column; gap: 16px; }
+@media (max-width: 860px) { aside.filters { position: static; } }
+.fgroup { display: flex; flex-direction: column; gap: 6px; }
+.fgroup > label, .fgroup > .lbl { font-size: 11.5px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+input[type="search"], select { width: 100%; font: inherit; padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); color: var(--ink); }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { font: inherit; font-size: 13px; padding: 4px 9px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); cursor: pointer; display: inline-flex; gap: 6px; align-items: center; }
+.chip small { color: var(--muted); font-variant-numeric: tabular-nums; }
+.chip[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--bg); }
+.chip[aria-pressed="true"] small { color: var(--bg); opacity: 0.8; }
+.row2 { display: flex; gap: 8px; }
+.row2 > * { flex: 1; min-width: 0; }
+.check { display: flex; gap: 8px; align-items: center; font-size: 14px; }
+.linkbtn { font: inherit; font-size: 13px; background: none; border: 0; padding: 0; color: var(--accent); cursor: pointer; text-decoration: underline; text-align: left; }
+
+.listhead { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 10px; }
+.listhead h2 { font-family: var(--display); font-size: 1.05rem; margin: 0; font-weight: 700; }
+.listhead .muted { color: var(--muted); font-size: 13px; }
+
+ol.jobs { list-style: none; margin: 0; padding: 0; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; }
+.job { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 16px; padding: 12px 14px; border-top: 1px solid var(--line); }
+.job:first-child { border-top: 0; }
+.job.is-new { box-shadow: inset 3px 0 0 var(--new); }
+.jt { font-weight: 600; font-size: 15.5px; text-decoration: none; color: var(--ink); overflow-wrap: anywhere; }
+.jt:hover { color: var(--accent); text-decoration: underline; }
+.meta { color: var(--muted); font-size: 13.5px; display: flex; flex-wrap: wrap; gap: 2px 10px; }
+.meta .org { color: var(--ink); }
+.tags { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 4px; }
+.tag { font-size: 12px; padding: 1px 7px; border-radius: 4px; background: var(--accent-soft); color: var(--ink); }
+.tag.mono { font-family: var(--mono); }
+.tag.new { background: var(--new-soft); color: var(--new); font-weight: 600; }
+.tag.hit { background: var(--good-soft); color: var(--good); }
+.side { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; text-align: right; }
+.score { font-family: var(--mono); font-size: 12.5px; color: var(--muted); display: flex; align-items: center; gap: 6px; }
+.meter { width: 64px; height: 6px; border-radius: 3px; background: var(--line); overflow: hidden; }
+.meter i { display: block; height: 100%; background: var(--good); }
+.dl { font-family: var(--mono); font-size: 12.5px; padding: 1px 6px; border-radius: 4px; white-space: nowrap; }
+.dl.soon { background: var(--warn-soft); color: var(--warn); }
+.star { font: inherit; background: none; border: 1px solid var(--line); border-radius: 6px; color: var(--muted); cursor: pointer; padding: 2px 8px; font-size: 13px; }
+.star[aria-pressed="true"] { color: var(--new); border-color: var(--new); }
+@media (max-width: 560px) {
+  .job { grid-template-columns: minmax(0, 1fr); }
+  .side { flex-direction: row; flex-wrap: wrap; align-items: center; justify-content: flex-start; text-align: left; }
+}
+.more { display: block; margin: 14px auto 0; font: inherit; padding: 8px 16px; border-radius: 6px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); cursor: pointer; }
+.empty { padding: 28px 16px; text-align: center; color: var(--muted); }
+.sources { margin-top: 28px; font-size: 13px; color: var(--muted); }
+.sources ul { display: flex; flex-wrap: wrap; gap: 6px 14px; list-style: none; padding: 0; margin: 6px 0 0; }
+.ok::before { content: "● "; color: var(--good); }
+.bad::before { content: "● "; color: var(--warn); }
+@media (prefers-reduced-motion: no-preference) { .chip, .star { transition: background-color .12s, color .12s; } }
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <div>
+      <h1>Duty Station Watch</h1>
+      <p class="sub">UN and NGO vacancies, matched to your CV: evaluation, GIS, research, forests and food systems.</p>
+    </div>
+    <div class="stamp" id="stamp">Loading…</div>
+  </header>
+
+  <section class="stats" id="stats" aria-label="Summary"></section>
+
+  <div class="layout">
+    <aside class="filters" aria-label="Filters">
+      <div class="fgroup">
+        <label for="q">Search</label>
+        <input type="search" id="q" placeholder="e.g. evaluation, GIS, FAO, P-3">
+      </div>
+      <div class="fgroup">
+        <span class="lbl">Place</span>
+        <div class="chips" id="placeChips"></div>
+        <button class="linkbtn" id="placeAlert" type="button">Only my alert places</button>
+      </div>
+      <div class="fgroup">
+        <span class="lbl">Job type</span>
+        <div class="chips" id="typeChips"></div>
+      </div>
+      <div class="fgroup">
+        <label for="org">Organisation</label>
+        <select id="org"><option value="">All organisations</option></select>
+      </div>
+      <div class="row2">
+        <div class="fgroup">
+          <label for="match">CV match</label>
+          <select id="match">
+            <option value="0">Any</option>
+            <option value="4" selected>Some match</option>
+            <option value="10">Strong match</option>
+          </select>
+        </div>
+        <div class="fgroup">
+          <label for="age">Added</label>
+          <select id="age">
+            <option value="0">Any time</option>
+            <option value="1">Last 24 hours</option>
+            <option value="3">Last 3 days</option>
+            <option value="7">Last 7 days</option>
+          </select>
+        </div>
+      </div>
+      <div class="fgroup">
+        <label for="sort">Sort by</label>
+        <select id="sort">
+          <option value="new">Newest first</option>
+          <option value="score">Best CV match</option>
+          <option value="deadline">Deadline soonest</option>
+        </select>
+      </div>
+      <label class="check"><input type="checkbox" id="hideEx" checked> Hide jobs outside my level (drivers, directors, interns…)</label>
+      <label class="check"><input type="checkbox" id="starOnly"> Only my starred jobs</label>
+      <button class="linkbtn" id="reset" type="button">Reset filters</button>
+    </aside>
+
+    <main>
+      <div class="listhead">
+        <h2 id="count">Vacancies</h2>
+        <span class="muted" id="newNote"></span>
+      </div>
+      <ol class="jobs" id="list"></ol>
+      <button class="more" id="more" type="button" hidden>Show more</button>
+      <div class="sources" id="sources"></div>
+    </main>
+  </div>
+</div>
+
+<script>
+window.JOBWATCH = /*__JOBWATCH_DATA__*/null;
+(function () {
+  const D = window.JOBWATCH || { jobs: [], notify_locations: [], sources: {}, generated: null, min_score: 4 };
+  const $ = (id) => document.getElementById(id);
+  const store = {
+    get(k, d) { try { const v = localStorage.getItem("dsw:" + k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
+    set(k, v) { try { localStorage.setItem("dsw:" + k, JSON.stringify(v)); } catch (e) {} },
+  };
+  const now = Date.now();
+  const DAY = 864e5;
+  const lastVisit = store.get("lastVisit", null);
+  store.set("lastVisit", now);
+  const stars = new Set(store.get("stars", []));
+
+  const jobs = D.jobs.map((j, i) => {
+    const seen = Date.parse(j.first_seen || j.posted || 0) || 0;
+    const dl = j.deadline ? Date.parse(j.deadline + "T23:59:00Z") : null;
+    const places = j.regions && j.regions.length ? j.regions : ["Elsewhere"];
+    const text = [j.title, j.org, j.location, j.level, j.type, j.category, (j.hits || []).join(" "), (j.sources || []).join(" ")].join(" ").toLowerCase();
+    return { ...j, i, seen, dl, places, text, key: j.url };
+  });
+
+  const alertPlaces = D.notify_locations || [];
+  const placeOrder = [...alertPlaces];
+  jobs.forEach(j => j.places.forEach(p => { if (!placeOrder.includes(p)) placeOrder.push(p); }));
+  const typeOrder = ["International staff", "National officer", "Consultancy / contract", "JPO", "UN Volunteer", "Staff (grade not stated)", "Support staff", "Internship", "Not stated"];
+  jobs.forEach(j => { if (!typeOrder.includes(j.type)) typeOrder.push(j.type); });
+
+  const defaults = { q: "", places: alertPlaces.slice(), types: [], org: "", match: "4", age: "0", sort: "new", hideEx: true, starOnly: false };
+  let st = Object.assign({}, defaults, store.get("filters", {}));
+  let limit = 120;
+
+  function chip(container, label, count, pressed, onClick) {
+    const b = document.createElement("button");
+    b.type = "button"; b.className = "chip"; b.setAttribute("aria-pressed", pressed ? "true" : "false");
+    b.textContent = label;
+    const s = document.createElement("small"); s.textContent = count; b.appendChild(s);
+    b.addEventListener("click", onClick);
+    container.appendChild(b);
+  }
+
+  function base(j, skip) {
+    if (st.hideEx && j.excluded) return false;
+    if (st.starOnly && !stars.has(j.key)) return false;
+    if (skip !== "match" && j.score < +st.match) return false;
+    if (skip !== "age" && +st.age && now - j.seen > +st.age * DAY) return false;
+    if (skip !== "org" && st.org && j.org !== st.org) return false;
+    if (st.q) { for (const w of st.q.toLowerCase().split(/\s+/).filter(Boolean)) if (!j.text.includes(w)) return false; }
+    if (skip !== "places" && st.places.length && !j.places.some(p => st.places.includes(p))) return false;
+    if (skip !== "types" && st.types.length && !st.types.includes(j.type)) return false;
+    return true;
+  }
+
+  function fmtDate(ms) { return new Date(ms).toLocaleDateString(undefined, { day: "numeric", month: "short" }); }
+  function ago(ms) {
+    const h = Math.round((now - ms) / 36e5);
+    if (h < 1) return "just now"; if (h < 24) return h + " h ago";
+    const d = Math.round(h / 24); return d === 1 ? "yesterday" : d + " days ago";
+  }
+
+  function render() {
+    store.set("filters", st);
+    $("q").value = st.q; $("org").value = st.org; $("match").value = st.match; $("age").value = st.age;
+    $("sort").value = st.sort; $("hideEx").checked = st.hideEx; $("starOnly").checked = st.starOnly;
+
+    const pc = $("placeChips"); pc.textContent = "";
+    const forPlaces = jobs.filter(j => base(j, "places"));
+    placeOrder.forEach(p => {
+      const n = forPlaces.filter(j => j.places.includes(p)).length;
+      if (!n && !st.places.includes(p) && !alertPlaces.includes(p)) return;
+      chip(pc, p, n, st.places.includes(p), () => { st.places = st.places.includes(p) ? st.places.filter(x => x !== p) : [...st.places, p]; limit = 120; render(); });
+    });
+    const tc = $("typeChips"); tc.textContent = "";
+    const forTypes = jobs.filter(j => base(j, "types"));
+    typeOrder.forEach(t => {
+      const n = forTypes.filter(j => j.type === t).length;
+      if (!n && !st.types.includes(t)) return;
+      chip(tc, t, n, st.types.includes(t), () => { st.types = st.types.includes(t) ? st.types.filter(x => x !== t) : [...st.types, t]; limit = 120; render(); });
+    });
+
+    let list = jobs.filter(j => base(j));
+    if (st.sort === "score") list.sort((a, b) => b.score - a.score || b.seen - a.seen);
+    else if (st.sort === "deadline") list.sort((a, b) => (a.dl || 9e15) - (b.dl || 9e15));
+    else list.sort((a, b) => b.seen - a.seen || b.score - a.score);
+    list = list.filter(j => !j.dl || j.dl >= now - DAY);
+
+    $("count").textContent = list.length.toLocaleString() + (list.length === 1 ? " vacancy" : " vacancies");
+    const fresh = lastVisit ? list.filter(j => j.seen > lastVisit).length : 0;
+    $("newNote").textContent = lastVisit ? fresh + " new since your last visit (" + ago(lastVisit) + ")" : "";
+
+    const ol = $("list"); ol.textContent = "";
+    if (!list.length) {
+      const li = document.createElement("li"); li.className = "empty";
+      li.textContent = jobs.length ? "No vacancies match these filters. Try more places or a lower CV match." : "No data yet. The first scheduled run fills this page.";
+      ol.appendChild(li);
+    }
+    list.slice(0, limit).forEach(j => ol.appendChild(row(j)));
+    $("more").hidden = list.length <= limit;
+    $("more").textContent = "Show more (" + (list.length - limit) + " left)";
+  }
+
+  function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
+
+  function row(j) {
+    const li = el("li", "job");
+    const isNew = now - j.seen < DAY || (lastVisit && j.seen > lastVisit);
+    if (isNew) li.classList.add("is-new");
+    const main = el("div");
+    const a = el("a", "jt", j.title); a.href = j.url; a.target = "_blank"; a.rel = "noopener";
+    main.appendChild(a);
+    const meta = el("div", "meta");
+    meta.appendChild(el("span", "org", j.org || j.source));
+    if (j.location) meta.appendChild(el("span", "", j.location));
+    meta.appendChild(el("span", "", "added " + ago(j.seen)));
+    main.appendChild(meta);
+    const tags = el("div", "tags");
+    if (isNew) tags.appendChild(el("span", "tag new", "New"));
+    if (j.level) tags.appendChild(el("span", "tag mono", j.level));
+    tags.appendChild(el("span", "tag", j.type));
+    (j.hits || []).slice(0, 4).forEach(h => tags.appendChild(el("span", "tag hit", h)));
+    main.appendChild(tags);
+    li.appendChild(main);
+
+    const side = el("div", "side");
+    const sc = el("div", "score"); sc.title = "CV match score";
+    const m = el("span", "meter"); const fill = el("i"); fill.style.width = Math.min(100, j.score * 5) + "%"; m.appendChild(fill);
+    sc.appendChild(m); sc.appendChild(el("span", "", "match " + j.score));
+    side.appendChild(sc);
+    if (j.dl) {
+      const left = Math.ceil((j.dl - now) / DAY);
+      const d = el("span", "dl" + (left <= 5 ? " soon" : ""), "closes " + fmtDate(j.dl) + (left >= 0 ? " · " + left + "d" : ""));
+      side.appendChild(d);
+    }
+    const s = el("button", "star", stars.has(j.key) ? "★ Starred" : "☆ Star");
+    s.type = "button"; s.setAttribute("aria-pressed", stars.has(j.key) ? "true" : "false");
+    s.addEventListener("click", () => {
+      stars.has(j.key) ? stars.delete(j.key) : stars.add(j.key);
+      store.set("stars", [...stars]);
+      s.textContent = stars.has(j.key) ? "★ Starred" : "☆ Star"; s.setAttribute("aria-pressed", stars.has(j.key) ? "true" : "false");
+    });
+    side.appendChild(s);
+    li.appendChild(side);
+    return li;
+  }
+
+  // static parts
+  const gen = D.generated ? Date.parse(D.generated) : null;
+  $("stamp").textContent = gen ? "Updated " + new Date(gen).toLocaleString(undefined, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) + " · " + ago(gen) : "Not updated yet";
+  const inPlaces = jobs.filter(j => j.places.some(p => alertPlaces.includes(p)) && !j.excluded);
+  const stats = [
+    [jobs.length, "open vacancies tracked"],
+    [inPlaces.length, "in your alert places"],
+    [inPlaces.filter(j => j.score >= (D.min_score || 4)).length, "of those match your CV"],
+    [jobs.filter(j => now - j.seen < DAY).length, "added in the last 24 h"],
+  ];
+  stats.forEach(([n, l]) => { const d = el("div", "stat"); d.appendChild(el("b", "", n.toLocaleString())); d.appendChild(el("span", "", l)); $("stats").appendChild(d); });
+
+  const orgs = {}; jobs.forEach(j => { if (j.org) orgs[j.org] = (orgs[j.org] || 0) + 1; });
+  Object.entries(orgs).sort((a, b) => b[1] - a[1]).forEach(([o, n]) => { const op = el("option", "", o + " (" + n + ")"); op.value = o; $("org").appendChild(op); });
+
+  const srcs = Object.entries(D.sources || {});
+  if (srcs.length) {
+    const box = $("sources"); box.appendChild(el("div", "", "Sources checked in the last run:"));
+    const ul = el("ul");
+    srcs.sort().forEach(([n, r]) => { const li = el("li", r.ok ? "ok" : "bad", n + " " + (r.ok ? r.count : "(failed)")); if (!r.ok) li.title = r.error || ""; ul.appendChild(li); });
+    box.appendChild(ul);
+  }
+
+  let qt;
+  $("q").addEventListener("input", e => { clearTimeout(qt); qt = setTimeout(() => { st.q = e.target.value; limit = 120; render(); }, 150); });
+  $("org").addEventListener("change", e => { st.org = e.target.value; render(); });
+  $("match").addEventListener("change", e => { st.match = e.target.value; render(); });
+  $("age").addEventListener("change", e => { st.age = e.target.value; render(); });
+  $("sort").addEventListener("change", e => { st.sort = e.target.value; render(); });
+  $("hideEx").addEventListener("change", e => { st.hideEx = e.target.checked; render(); });
+  $("starOnly").addEventListener("change", e => { st.starOnly = e.target.checked; render(); });
+  $("placeAlert").addEventListener("click", () => { st.places = alertPlaces.slice(); render(); });
+  $("reset").addEventListener("click", () => { st = Object.assign({}, defaults); render(); });
+  $("more").addEventListener("click", () => { limit += 200; render(); });
+  render();
+})();
+</script>

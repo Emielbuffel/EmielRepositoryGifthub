@@ -1,0 +1,57 @@
+name: Job watch
+
+on:
+  schedule:
+    - cron: "17 * * * *"   # every hour (GitHub may start it a few minutes late)
+  workflow_dispatch:         # "Run workflow" button on the Actions tab
+  push:
+    branches: ["claude/brave-cori-4frb82"]
+    paths:
+      - "jobwatch/*.py"
+      - "jobwatch/profile.json"
+      - "jobwatch/dashboard_template.html"
+      - ".github/workflows/jobwatch.yml"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: jobwatch
+  cancel-in-progress: false
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Look for new vacancies and send alerts
+        env:
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+          RELIEFWEB_APPNAME: ${{ secrets.RELIEFWEB_APPNAME }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          ALERT_EMAIL_TO: ${{ secrets.ALERT_EMAIL_TO }}
+          DASHBOARD_URL: ${{ vars.DASHBOARD_URL }}
+        run: python3 jobwatch/jobwatch.py
+
+      - name: Save the list of seen vacancies and the dashboard
+        run: |
+          git config user.name "jobwatch-bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add jobwatch/data/jobs.json jobwatch/dashboard.html
+          if git diff --cached --quiet; then echo "Nothing changed"; exit 0; fi
+          git commit -q -m "Job watch: update vacancies [skip ci]"
+          for i in 1 2 3 4; do
+            git pull -q --rebase origin "${GITHUB_REF_NAME}" && git push -q origin "HEAD:${GITHUB_REF_NAME}" && exit 0
+            sleep $((i * 5))
+          done
+          echo "Could not push the update" && exit 1
+
+      - name: Keep the dashboard as a download
+        uses: actions/upload-artifact@v4
+        with:
+          name: dashboard
+          path: jobwatch/dashboard.html
+          retention-days: 3
