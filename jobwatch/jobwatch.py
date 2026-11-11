@@ -46,6 +46,9 @@ class Profile:
         self.notify_locations = set(raw.get("notify_locations", []))
         self.keywords = [(k.rstrip("*"), word_re(k, plural=True), w) for k, w in raw["keywords"].items()]
         self.interests = {g: [word_re(w, plural=True) for w in words] for g, words in raw.get("interests", {}).items()}
+        aa = raw.get("always_alert") or {}
+        self.always_label = aa.get("label", "")
+        self.always_pats = [word_re(w, plural=True) for w in aa.get("words", [])]
         self.un_bonus = raw.get("un_bonus", 0)
         orgs = raw.get("un_organisations", [])
         self.un_re = re.compile(r"(?<![A-Za-z])(" + "|".join(re.escape(o) for o in orgs) + r")(?![A-Za-z])") if orgs else None
@@ -59,6 +62,8 @@ class Profile:
         """3 = top match, 2 = priority place, 1 = normal match, 0 = no alert."""
         if j["excluded"]:
             return 0
+        if self.always_label and self.always_label in (j.get("interests") or []):
+            return 3 if j["score"] >= self.top_score else 2
         in_places = bool(set(j["regions"]) & self.notify_locations)
         if j["score"] >= self.top_score and (in_places or self.top_anywhere):
             return 3
@@ -98,7 +103,13 @@ class Profile:
         found = [g for g, pats in self.interests.items() if any(p.search(text) for p in pats)]
         if self.is_un(j):
             found.append("UN")
+        if self.always_label and self.always_alert(j):
+            found.append(self.always_label)
         return found
+
+    def always_alert(self, j):
+        text = f"{j['org']} {j['title']} {j['summary']}".lower()
+        return any(p.search(text) for p in self.always_pats)
 
     def excluded(self, j):
         t = j["title"].lower()
@@ -265,7 +276,7 @@ def build_dashboard(state, profile):
         "min_score": profile.min_score,
         "top_score": profile.top_score,
         "priority_locations": sorted(profile.priority_locations),
-        "interests": list(profile.interests) + ["UN"],
+        "interests": list(profile.interests) + ["UN"] + ([profile.always_label] if profile.always_label else []),
         "sources": state.get("last_sources", {}),
         "jobs": jobs,
     }

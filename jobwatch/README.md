@@ -16,6 +16,9 @@ It runs for free on GitHub Actions, so your computer does not need to be on.
 | [WFP](https://wfp.wd3.myworkdayjobs.com/job_openings) and [UNHCR](https://unhcr.wd3.myworkdayjobs.com/External) | Their own job boards |
 | [Impactpool](https://www.impactpool.org) | Searches for evaluation, GIS, geospatial, M&E, remote sensing, research analyst |
 | Save the Children, NRC, World Vision, Global Fund | Their own job boards |
+| [FPS Foreign Affairs](https://diplomatie.belgium.be/nl/werken-voor-fod-buitenlandse-zaken/vacatures) | Belgian diplomacy vacancies |
+| [Vlaanderen.be vacatures](https://www.vlaanderen.be/werken-voor-vlaanderen/vacatures) | Flemish government jobs, incl. Flanders Investment & Trade and the Flemish Department of Foreign Affairs |
+| [Enabel](https://jobs.enabel.be) | Belgian development agency |
 | [ReliefWeb](https://reliefweb.int/jobs) | Off until you add a free app name (see below) |
 
 The list of places is in `profile.json`: Geneva, Brussels, Rome, Bhutan, Nepal, the Philippines, Fiji, New Zealand, Australia, Indonesia, Japan and the Pacific islands, plus "home-based" jobs.
@@ -44,6 +47,7 @@ Edit `profile.json` on GitHub (open the file, click the pencil, then "Commit cha
 - `top_score_anywhere`: set to true to also get top-score jobs outside your places.
 - `locations`: the place names and city names that are recognised.
 - `keywords`: words from your CV with a weight. A word in the job title counts double.
+- `always_alert`: words for Belgian and Flemish diplomacy (FIT, Foreign Affairs, attaché, economisch vertegenwoordiger …). These jobs always send a high-priority alert, wherever they are.
 - `interests`: your interest groups (Environment, Forest, Diplomacy, GIS, Evaluation). Each job is labelled with the groups it matches; the dashboard has an Interest filter. Jobs at UN organisations get the label UN and `un_bonus` extra points.
 - `min_score_to_notify`: raise it (for example to 8) for fewer, stronger alerts.
 - `exclude_title`: jobs with these words in the title never send an alert.

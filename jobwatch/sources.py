@@ -404,6 +404,44 @@ def belgian_foreign_affairs():
     return out
 
 
+# ---------------------------------------------------------------- Flemish government (vlaanderen.be, incl. FIT and Flemish diplomacy)
+FLEMISH_KEEP = re.compile(r"flanders investment|\bfit\b|buitenland|foreign affairs|buitenlandse|diplomat|diplomaa|attach[eé]|"
+                          r"vertegenwoordig|ambassade|embassy|internationa|kanselarij|europe|europ[ae]", re.I)
+
+
+def flemish_government(max_pages=30):
+    out = []
+    api = "https://www.vlaanderen.be/api/overview-search"
+    for page in range(max_pages):
+        data = json.loads(fetch(api, {"page": {"offset": page, "limit": 100}, "filter": {"contentType": {"IN": ["Job"]}},
+                                      "resolverContext": {"language": "nl"}}))
+        items = data.get("items") or []
+        for it in items:
+            ident = it.get("identifier") or it.get("link", "")
+            org = it.get("hiringOrganization") or ""
+            title = it.get("displayTitle") or ""
+            desc = (it.get("description") or {}).get("raw", "")
+            # the list also carries thousands of VDAB jobs (schools, shops): keep the Flemish government's own
+            # vacancies and anything international or diplomatic
+            if not (str(ident).startswith("cornerstone") or FLEMISH_KEEP.search(f"{org} {title}")):
+                continue
+            cities = sorted({(l.get("address") or {}).get("city") or "" for l in it.get("embeddedLocations") or []} - {""})
+            vt = str(it.get("validThroughDate") or "")
+            deadline = None
+            if vt.isdigit() and len(vt) >= 12:
+                deadline = datetime.fromtimestamp(int(vt) / 1000, timezone.utc).date()
+            elif vt and vt != "-1":
+                deadline = parse_date(vt[:10])
+            out.append(job("Flemish government", ident, title, "https://www.vlaanderen.be" + it.get("link", ""),
+                           org=org or "Vlaamse overheid", location=(", ".join(cities) + ", Belgium") if cities else "Belgium",
+                           level=((it.get("degreeLevel") or {}).get("name") or ""), category=it.get("domain") or "",
+                           deadline=deadline, summary=desc))
+        if not items or data.get("isLastPage"):
+            break
+        time.sleep(0.3)
+    return out
+
+
 def all_sources(profile, reliefweb_appname=""):
     """Return {source name: callable}."""
     pages = {k: tuple(v) for k, v in profile.get("unjobs_pages", {}).items()}
@@ -422,6 +460,7 @@ def all_sources(profile, reliefweb_appname=""):
         "World Vision": lambda: workday("World Vision", "worldvision.wd1.myworkdayjobs.com", "worldvision", "WorldVisionInternational", "World Vision International"),
         "Global Fund": lambda: workday("Global Fund", "theglobalfund.wd1.myworkdayjobs.com", "theglobalfund", "External", "The Global Fund"),
         "Belgian Foreign Affairs": belgian_foreign_affairs,
+        "Flemish government": flemish_government,
         "Enabel": lambda: successfactors("Enabel", "https://jobs.enabel.be", "Enabel (Belgian development agency)"),
         "Impactpool": lambda: impactpool(profile.get("impactpool_queries", [])),
         "ReliefWeb": lambda: reliefweb(reliefweb_appname),
