@@ -287,13 +287,22 @@ IMPACT_CARD = re.compile(r"<div class='job'>.*?</a></div>", re.S)
 
 
 def impactpool(queries, pages=2):
-    out, seen, budget = [], set(), Budget(260)
+    out, seen, budget, refused = [], set(), Budget(260), 0
     for q in queries:
         if budget.over():
             break
         for p in range(1, pages + 1):
             url = "https://www.impactpool.org/search?" + urllib.parse.urlencode({"q": q, "page": p})
-            body = fetch(url)
+            try:
+                body = fetch(url)
+                refused = 0
+            except Exception as e:  # one refused search must not lose the others
+                print(f"   Impactpool '{q}': {e}")
+                refused += 1
+                if refused >= 3:
+                    print("   Impactpool: refused 3 times in a row, rest next hour")
+                    return out
+                break
             cards = IMPACT_CARD.findall(body)
             for c in cards:
                 m = re.search(r'href="/jobs/(\d+)"', c)
