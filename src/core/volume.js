@@ -52,7 +52,7 @@ export function volStats(bars, { quote = null, now = Date.now() / 1000 } = {}) {
   return {
     vol, avg50, pct: vol / avg50 - 1, up: t.close >= prev.close,
     open, elapsed, pace, pacePct: pace ? pace / avg50 - 1 : null,
-    week: cur ? { vol: cur.vol, days: cur.days, up: weekUp, perDayPct: cur.vol / cur.days / avg50 - 1, vsAvgWeek: avgWeek ? cur.vol / avgWeek - 1 : null } : null,
+    week: cur ? { vol: cur.vol, days: cur.days, up: weekUp, perDayPct: (cur.vol - (pace ? vol - pace : 0)) / cur.days / avg50 - 1, vsAvgWeek: avgWeek ? cur.vol / avgWeek - 1 : null } : null,
     avgWeek, lastWeek, lastWeekPct: avgWeek && lastWeek != null ? lastWeek / avgWeek - 1 : null,
     udRatio: dn > 0 ? up / dn : null, since, avgValue: dv / dn50,
     breakoutNeed: avg50 * 1.4,

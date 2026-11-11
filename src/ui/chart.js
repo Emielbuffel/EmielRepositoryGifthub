@@ -294,6 +294,7 @@ export class StockChart {
   }
 
   drawAll() {
+    this.boLevels = false; // an open breakout already shows its sell line and targets
     this.drawn.forEach(o => { try { o.s ? this.chart.removeSeries(o.s) : this.ps.removePriceLine(o.p); } catch (e) { /* gone */ } });
     this.drawn = [];
     const S = this.S, d = S.daily, markers = [], piv = tok('--pivot'), bad = tok('--bad');
@@ -317,6 +318,7 @@ export class StockChart {
         if (kind === 'bo') {
           const so = (S.sells || []).find(x => x.h === p);
           if (so && so.open) { // the position from this breakout is still open: its current sell line and targets
+            this.boLevels = true;
             this.addPL({ price: so.open.line, color: bad, lineStyle: LineStyle.Dotted, title: so.open.line >= p.pivot ? 'Sell line (breakeven)' : so.open.line > p.pivot * 0.95 ? 'Sell line (raised)' : 'Sell line −8%' });
             this.addPL({ price: so.open.t20, color: tok('--up'), lineStyle: LineStyle.Dotted, title: '+20% target' });
             this.addPL({ price: so.open.t25, color: tok('--up'), lineStyle: LineStyle.Dotted, title: '+25%' });
@@ -362,11 +364,13 @@ export class StockChart {
     // automatic trade plan (Leaderboard-style): levels for the current base when no plan is open yet
     if (S.autoPlan && !S.plan) {
       const a = S.autoPlan, blue = tok('--blue');
-      this.addPL({ price: a.stop, color: bad, lineStyle: LineStyle.Dashed, title: `Stop −${Math.round(a.stopPct * 100)}%` });
+      if (!this.boLevels) this.addPL({ price: a.stop, color: bad, lineStyle: LineStyle.Dashed, title: `Stop −${Math.round(a.stopPct * 100)}%` });
       if (a.add2) this.addPL({ price: a.add2, color: blue, lineStyle: LineStyle.Dotted, title: 'Add 2' });
       if (a.add3) this.addPL({ price: a.add3, color: blue, lineStyle: LineStyle.Dotted, title: 'Add 3' });
-      this.addPL({ price: a.t20, color: tok('--up'), lineStyle: LineStyle.Dotted, title: '+20% target' });
-      this.addPL({ price: a.t25, color: tok('--up'), lineStyle: LineStyle.Dotted, title: '+25%' });
+      if (!this.boLevels) {
+        this.addPL({ price: a.t20, color: tok('--up'), lineStyle: LineStyle.Dotted, title: '+20% target' });
+        this.addPL({ price: a.t25, color: tok('--up'), lineStyle: LineStyle.Dotted, title: '+25%' });
+      }
     }
     // buying plan levels and the trades in the journal
     if (S.plan) {

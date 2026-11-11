@@ -46,3 +46,14 @@ test('EPS from two sources: the same quarter is never listed twice (built-in lis
   const newer = mergeEarnings(built, [...long, { time: T + 3 * Q + 20 * D, eps: 2.6 }]);
   assert.ok(newer.some(r => r.eps === 2.6)); // a quarter newer than the built-in data is added
 });
+
+test('an empty day in the daily data is rebuilt from hourly bars (open, high, low, last close, summed volume)', async () => {
+  const { barsFromIntraday } = await import('../src/core/bars.js');
+  const day = 20402, h = k => day * D + (8 + k) * 3600;
+  const rows = [{ time: h(0), open: 297.8, high: 298.4, low: 297.1, close: 297.8, volume: 0 }, { time: h(1), open: 297.8, high: 299.5, low: 297.5, close: 298.9, volume: 7335 },
+    { time: h(2), open: null, high: null, low: null, close: null, volume: null }, { time: h(8), open: 297.1, high: 297.6, low: 294.1, close: 294.5, volume: 187684 },
+    { time: h(30), open: 295, high: 296, low: 294, close: 295.2, volume: 6000 }]; // next day: not asked for
+  const [b, ...rest] = barsFromIntraday(rows, new Set([day]));
+  assert.equal(rest.length, 0);
+  assert.deepEqual([b.time, b.open, b.high, b.low, b.close, b.volume, b.rebuilt], [day * D, 297.8, 299.5, 294.1, 294.5, 195019, true]);
+});

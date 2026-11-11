@@ -52,3 +52,19 @@ export function alignQuote(bars, quote) {
   if (Math.abs(c / last.close - 1) < 0.005) return volume === last.volume ? bars : [...bars.slice(0, -1), { ...last, volume }];
   return [...bars.slice(0, -1), { ...last, close: c, high: Math.max(last.high, c), low: Math.min(last.low, c), volume }];
 }
+
+/**
+ * Daily bars rebuilt from intraday rows ({time (exchange clock), open, high, low, close, volume}) for the given days
+ * (day numbers since 1970). Used when the feed's daily data leaves a recent day empty but its hourly data has it.
+ */
+export function barsFromIntraday(rows, days) {
+  const by = new Map();
+  for (const r of rows) {
+    if (r.close == null || !isFinite(r.close)) continue;
+    const d = Math.floor(r.time / 86400); if (!days.has(d)) continue;
+    const b = by.get(d);
+    if (!b) by.set(d, { time: d * 86400, open: r.open ?? r.close, high: r.high ?? r.close, low: r.low ?? r.close, close: r.close, volume: r.volume || 0, last: r.time });
+    else { b.high = Math.max(b.high, r.high ?? r.close); b.low = Math.min(b.low, r.low ?? r.close); if (r.time >= b.last) { b.close = r.close; b.last = r.time; } b.volume += r.volume || 0; }
+  }
+  return [...by.values()].map(({ last, ...b }) => ({ ...b, rebuilt: true })).sort((a, b) => a.time - b.time);
+}

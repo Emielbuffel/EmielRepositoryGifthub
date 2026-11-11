@@ -45,7 +45,7 @@ export async function initStock(el) {
     <div class="stock-head">
       <div class="stock-id">
         <div class="sym"><b id="sSym">—</b><span id="sName"></span><span id="sTags" class="row" style="gap:6px"></span></div>
-        <div class="px"><span class="p" id="sPx">—</span><span class="ch" id="sCh"></span><span class="ext" id="sExt" hidden></span></div>
+        <div class="px"><span class="p" id="sPx">—</span><span class="ch" id="sCh"></span><span class="ext" id="sExt" hidden></span><span class="ext t-warn" id="sChk" hidden></span></div>
         <div class="vol-line" id="sVol" hidden></div>
         <div class="status"><span class="dot" id="sDot"></span><span id="sStatus">Loading…</span></div>
       </div>
@@ -145,7 +145,7 @@ async function load(sym, force = false) {
     if (d.stale) status(`Showing saved prices through ${dt}: ${d.error ? d.error.message : 'refresh failed'}`, 'warn');
     else if ((Date.now() / 1000 - d.bars[n].time) / 86400 > 5 && !isDemoSym(sym)) status(`Prices end on ${dt}: ${Math.floor((Date.now() / 1000 - d.bars[n].time) / 86400)} days old. ${d.builtIn ? 'Built-in data; live prices load in the desktop app.' : 'Tap Refresh.'}`, 'warn');
     else if (d.builtIn) status(`Built-in data through ${dt}. Live prices and the full history load in the desktop app.`, 'ok');
-    else status(`${provider().id === 'free' ? 'Live · free public feeds' : src} · daily data through ${dt}${d.cached && !isDemoSym(sym) ? ' · updated ' + ago(d.fetchedAt) : ''}`, isDemoSym(sym) ? 'demo' : 'ok');
+    else status(liveStatus(d, src), isDemoSym(sym) ? 'demo' : 'ok');
     checkBars(sym, d.bars, d.name).then(h => { if (h.length) { toast(describeAlert(h[0], d.name), 6000); head(); } loadPlan(sym, seq); });
     loadCompare(sym, seq);
     if (!V.mkt) loadEarnings(sym, seq); else earnCard();
@@ -258,6 +258,10 @@ function head() {
   $('#sPx').textContent = fp(p);
   const e = $('#sCh'); e.textContent = (ch >= 0 ? '+' : '−') + money(Math.abs(ch), V.data.currency).replace(/^[^\d]*/, '') + ' (' + pc(ch / d[n - 1].close, 2) + ')';
   e.className = 'ch ' + (ch >= 0 ? 'up' : 'down');
+  // cross-check with Yahoo's own day change (only once today's session has traded, as Yahoo resets it before that)
+  const q = V.data.quote, chk = $('#sChk');
+  const bad = q && q.chgPct != null && q.session && q.time >= q.session.start && Math.abs(ch / d[n - 1].close - q.chgPct) > 0.003;
+  chk.hidden = !bad; if (bad) { chk.textContent = `Yahoo shows ${pc(q.chgPct, 2)} today: a day may be missing in the history. Tap Refresh.`; chk.title = 'The app compares its own day change with the one Yahoo Finance publishes.'; }
   volLine();
   tags();
   const inLists = App.lists.filter(l => l.syms.includes(V.sym));
@@ -286,6 +290,19 @@ function volLine() {
     ${vs.since ? html`<span class="t-warn">Most volume in ${vs.since.days} days</span>` : ''}`);
 }
 
+/* Status line: the source, and for a live quote the time of the last trade in the exchange's own clock (Yahoo's free
+   quotes for European exchanges run about 15 minutes behind). */
+function liveStatus(d, src) {
+  const n = d.bars.length - 1, dt = fD(d.bars[n].time), q = d.quote;
+  let s = `${provider().id === 'free' ? 'Live · Yahoo Finance' : src} · daily data through ${dt}`;
+  if (q && q.time) {
+    const t = new Date((q.time + (q.off || 0)) * 1000), hm = t.toISOString().slice(11, 16), now = Date.now() / 1000, ss = q.session;
+    s += ` · last trade ${Math.floor((q.time + (q.off || 0)) / 86400) === Math.floor(d.bars[n].time / 86400) ? '' : fD(q.time) + ' '}${hm} exchange time`;
+    if (ss && now >= ss.start && now < ss.end) s += Math.floor((ss.start + (q.off || 0)) / 86400) > Math.floor((q.time + (q.off || 0)) / 86400) ? ' · market open, waiting for today\'s first (delayed) trade' : ' · market open, refreshing every minute';
+  } else if (d.cached && !isDemoSym(V.sym)) s += ' · updated ' + ago(d.fetchedAt);
+  return s;
+}
+
 /* While the market is open, refresh today's price and volume about every minute (desktop app, live feed only). */
 async function liveTick() {
   const d = V.data, q = d && d.quote, s = q && q.session, now = Date.now() / 1000;
@@ -297,7 +314,7 @@ async function liveTick() {
   V.data = nd; V.R = PAT.scan(nd.bars); V.phase = isIndexSym(sym) ? null : patternPhase(V.R, nd.bars); V.sells = sellPoints(nd.bars, V.R);
   const n = nd.bars.length - 1;
   { const v = volStats(nd.bars); await rememberQuote(sym, nd.bars[n].close, nd.bars[n].close / nd.bars[n - 1].close - 1, { ...(V.phase ? { ph: V.phase.label, pt: V.phase.tone } : {}), ...(v ? { vp: v.pct } : {}) }); }
-  head(); draw(true); renderPanel(V);
+  head(); draw(true); renderPanel(V); status(liveStatus(nd, ''), 'ok');
 }
 
 /* RS rank (1-99 within the built-in universe, from the latest scan when there is one) and sector */

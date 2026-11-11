@@ -2,7 +2,7 @@
 // Tickers inside the app use Yahoo-style suffixes (AAPL, ASML.AS, 7203.T, 005930.KS); each provider maps them.
 // Endpoints follow each provider's public documentation; check them if a provider changes its API.
 import { secCompanies } from './sec.js';
-import { mergeBars, fixSpikes, alignQuote } from '../core/bars.js';
+import { mergeBars, fixSpikes, alignQuote, barsFromIntraday } from '../core/bars.js';
 import { httpGet, isApp } from './net.js';
 import { demoBars, demoEarnings, demoNews, DEMO, DEMO_INDEXES, DEMO_BENCH } from './demo.js';
 
@@ -268,15 +268,39 @@ async function yahoo(sym, fromT, { max = false } = {}) {
   const r = d && d.chart && d.chart.result && d.chart.result[0];
   if (!r || !r.timestamp) throw new DataError((d && d.chart && d.chart.error && d.chart.error.description) || 'No data for ' + sym + '.', 'notfound');
   if (r.meta.dataGranularity && r.meta.dataGranularity !== '1d') throw new DataError(`The feed sent ${r.meta.dataGranularity} bars instead of daily bars for ${sym}.`, 'data');
-  const q = r.indicators.quote[0], off = r.meta.gmtoffset || 0;
-  const bars = clean(r.timestamp.map((t, i) => ({ time: Math.floor((t + off) / 86400) * 86400, open: q.open[i], high: q.high[i], low: q.low[i], close: q.close[i], volume: q.volume[i] || 0 })));
+  const q = r.indicators.quote[0], m = r.meta, off = m.gmtoffset || 0;
+  let rows = r.timestamp.map((t, i) => ({ time: Math.floor((t + off) / 86400) * 86400, open: q.open[i], high: q.high[i], low: q.low[i], close: q.close[i], volume: q.volume[i] || 0 }));
+  // Yahoo sometimes leaves a recent day empty in its daily data (European listings especially) while its hourly data
+  // has it. Rebuild such days from the hourly bars, so the day change is measured against the right close.
+  const qDay = Math.floor(((m.regularMarketTime || now) + off) / 86400);
+  const empty = new Set(r.timestamp.filter((t, i) => q.close[i] == null).map(t => Math.floor((t + off) / 86400)).filter(x => x < qDay && x >= qDay - 30));
+  if (empty.size) {
+    try {
+      const h = await getJSON(`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(yahooSym(sym))}?range=1mo&interval=60m&includePrePost=false`);
+      const hr = h && h.chart && h.chart.result && h.chart.result[0], hq = hr && hr.indicators.quote[0];
+      if (hr && hr.timestamp) rows = rows.concat(barsFromIntraday(hr.timestamp.map((t, i) => ({ time: t + off, open: hq.open[i], high: hq.high[i], low: hq.low[i], close: hq.close[i], volume: hq.volume[i] })), empty));
+    } catch (e) { /* keep the daily data as it is */ }
+    // the hourly bars miss the closing auction: for the day just before the latest session, use the official
+    // previous close that comes with Yahoo's one-day request
+    const prevDay = Math.max(...rows.filter(x => x.close != null && x.time / 86400 < qDay).map(x => x.time / 86400));
+    const pb = rows.find(x => x.rebuilt && x.time / 86400 === prevDay);
+    if (pb) {
+      try {
+        const g = await getJSON(`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(yahooSym(sym))}?range=1d&interval=5m&includePrePost=false`);
+        const gm = g && g.chart && g.chart.result && g.chart.result[0] && g.chart.result[0].meta, pc0 = gm && (gm.previousClose ?? gm.chartPreviousClose);
+        if (pc0 > 0 && Math.abs(pc0 / pb.close - 1) < 0.05) { pb.close = pc0; pb.high = Math.max(pb.high, pc0); pb.low = Math.min(pb.low, pc0); }
+      } catch (e) { /* keep the hourly close */ }
+    }
+  }
+  const bars = clean(rows);
   const splits = Object.values((r.events && r.events.splits) || {}).map(x => ({ time: x.date, ratio: x.numerator / x.denominator })).filter(x => x.ratio > 0 && x.ratio !== 1).sort((a, b) => a.time - b.time);
   // regular-session quote (the headline price on Yahoo); today's open comes from the feed's own row for today
-  const m = r.meta, li = r.timestamp.length - 1, sameDay = li >= 0 && Math.floor((r.timestamp[li] + off) / 86400) === Math.floor(((m.regularMarketTime || 0) + off) / 86400);
+  const li = r.timestamp.length - 1, sameDay = li >= 0 && Math.floor((r.timestamp[li] + off) / 86400) === Math.floor(((m.regularMarketTime || 0) + off) / 86400);
   const quote = {
     price: m.regularMarketPrice, time: m.regularMarketTime, off, high: m.regularMarketDayHigh, low: m.regularMarketDayLow, volume: m.regularMarketVolume,
     open: sameDay ? q.open[li] : null, ext: m.hasPrePostMarketData && m.fulldayPrice > 0 && Math.abs(m.fulldayPrice / m.regularMarketPrice - 1) > 0.0005 ? m.fulldayPrice : null,
     session: m.currentTradingPeriod && m.currentTradingPeriod.regular ? { start: m.currentTradingPeriod.regular.start, end: m.currentTradingPeriod.regular.end } : null,
+    chgPct: isFinite(m.regularMarketChangePercent) ? m.regularMarketChangePercent / 100 : null,
   };
   return { bars: fixSpikes(alignQuote(bars, quote)), splits, quote, currency: r.meta.currency, name: r.meta.longName || r.meta.shortName || '', exchange: r.meta.fullExchangeName || r.meta.exchangeName || '' };
 }
