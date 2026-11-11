@@ -429,7 +429,9 @@
     "finance assistant",
     "administrative assistant",
     "it assistant",
-    "warehouse"
+    "warehouse",
+    "traineeship",
+    "trainee"
   ],
   "min_score_to_notify": 4,
   "_help_priority": "Extra-loud alerts. top_score: jobs with at least this CV score get an urgent alert. priority_locations: places whose matches get a high-priority alert. top_score_anywhere: true = also alert for top-score jobs outside your places.",
