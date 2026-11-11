@@ -1,0 +1,42 @@
+{
+  "_help": "Your search profile. Edit this file on GitHub (pencil icon) to change what counts as a match. Words are matched case-insensitively in the job title, organisation, location and text.",
+
+  "locations": {
+    "Geneva":          ["geneva", "genève", "geneve", "genf"],
+    "Brussels":        ["brussels", "bruxelles", "brussel"],
+    "Rome":            ["rome", "roma"],
+    "Bhutan":          ["bhutan", "thimphu"],
+    "Nepal":           ["nepal", "kathmandu", "lalitpur"],
+    "Philippines":     ["philippines", "manila", "makati", "pasig", "cebu", "davao", "mindanao", "cotabato", "quezon city"],
+    "Fiji":            ["fiji", "suva", "nadi"],
+    "New Zealand":     ["new zealand", "wellington", "auckland"],
+    "Australia":       ["australia", "canberra", "sydney", "melbourne", "brisbane"],
+    "Indonesia":       ["indonesia", "jakarta", "bali", "denpasar"],
+    "Japan":           ["japan", "tokyo", "yokohama", "kobe"],
+    "Pacific Islands": ["samoa", "apia", "vanuatu", "port vila", "solomon islands", "honiara", "tonga", "nuku'alofa", "papua new guinea", "port moresby", "kiribati", "tuvalu", "palau", "micronesia", "marshall islands", "cook islands", "timor-leste", "dili", "pacific"],
+    "Other South/Southeast Asia": ["sri lanka", "colombo", "maldives", "thailand", "bangkok", "viet nam", "vietnam", "hanoi", "cambodia", "phnom penh", "lao", "vientiane", "malaysia", "kuala lumpur", "bangladesh", "dhaka", "myanmar", "india", "new delhi", "pakistan", "islamabad"],
+    "Home-based / Remote": ["home-based", "home based", "homebased", "remote", "telecommut"]
+  },
+
+  "_help_locations": "Locations that trigger a phone notification. The other ones still appear in the dashboard.",
+  "notify_locations": ["Geneva", "Brussels", "Rome", "Bhutan", "Nepal", "Philippines", "Fiji", "New Zealand", "Australia", "Indonesia", "Japan", "Pacific Islands"],
+
+  "_help_keywords": "Words that make a job fit your CV. Weight = how much each one counts.",
+  "keywords": {
+    "evaluation": 5, "evaluator": 5, "m&e": 4, "monitoring and evaluation": 5, "meal": 3, "mel ": 2,
+    "impact assessment": 4, "impact evaluation": 5, "learning": 1, "results-based": 2, "accountability": 1,
+    "gis": 5, "geospatial": 5, "geographic information": 5, "remote sensing": 5, "earth observation": 4, "spatial": 3, "mapping": 2, "satellite": 3,
+    "data analyst": 4, "data analysis": 3, "research": 2, "researcher": 3, "analyst": 2, "policy": 2, "programme analyst": 3, "program analyst": 3,
+    "forest": 4, "forestry": 4, "reforestation": 5, "restoration": 3, "land use": 3, "biodiversity": 3, "ecosystem": 3, "climate": 3, "environment": 2,
+    "agriculture": 3, "food systems": 3, "food security": 3, "fisheries": 2, "rural development": 3, "natural resource": 3,
+    "knowledge management": 2, "governance": 2, "development": 1, "sustainab": 2
+  },
+
+  "_help_levels": "Grades / contract types you want. Jobs with other grades are hidden by default in the dashboard (not deleted).",
+  "levels_wanted": ["P1", "P2", "P3", "NO-A", "NO-B", "NOA", "NOB", "JPO", "Junior Professional", "Consultant", "Consultancy", "Individual Contractor", "IPSA", "NPSA", "UNV", "Volunteer", "Specialist", "Analyst", "Associate", "Officer", "Researcher", "Fellow"],
+
+  "_help_exclude": "Jobs whose TITLE contains one of these words are never notified (still visible when you tick 'show all').",
+  "exclude_title": ["driver", "cleaner", "security guard", "receptionist", "intern ", "internship", "senior director", "director", "chief of", "head of", "d-1", "d-2", "p-5", "p5", "p-6", "accountant", "nurse", "medical doctor", "physician", "mechanic", "electrician", "translator", "interpreter", "procurement assistant", "finance assistant", "administrative assistant", "it assistant", "warehouse"],
+
+  "min_score_to_notify": 4
+}
