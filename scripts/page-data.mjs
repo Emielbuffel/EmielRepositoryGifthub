@@ -42,6 +42,16 @@ const uniBy = new Map(universe.map(r => [r[0], r]));
 const usNames = new Map((has('us.json') ? readJ('us.json') : []).map(r => [r[0], r]));
 const stockBy = new Map(meta.stocks.map(s => [s.s, s]));
 const migrate = oldH !== H || !oldR;
+// what the repository adds about the stocks (industry and one-line description, longer EPS history) flows into the page too
+try {
+  const repo = JSON.parse(fs.readFileSync(new URL('../public/data/meta.json', import.meta.url)));
+  const rs = new Map(repo.stocks.map(s => [s.s, s]));
+  for (const s of meta.stocks) { const r = rs.get(s.s); if (r) for (const k of ['i', 'b', 'g']) if (r[k] && !s[k]) s[k] = r[k]; }
+  for (const [sym, e] of Object.entries(repo.earnings || {})) {
+    const cur = meta.earnings[sym], n = x => ((x && x.q) || []).filter(q => q.eps != null).length;
+    if (!cur || n(e) > n(cur)) meta.earnings[sym] = e;
+  }
+} catch (e) { /* no repository data next to the script */ }
 const touchedPx = new Set(); // history files that must be rewritten
 const log = [];
 
