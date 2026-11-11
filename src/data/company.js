@@ -52,7 +52,7 @@ export async function companyInfo(sym) {
   if (!r) {
     try {
       const m = await snapshotMeta(), s = m.stocks.find(x => x.s === sym), u = (await universe()).items.find(x => x[0] === sym);
-      if (s || u) r = { name: (s && s.n) || u[1], sector: (s && s.g) || (u && u[3]) || null, rs: s ? s.r : null, src: 'built-in list', limited: true };
+      if (s || u) r = { name: (s && s.n) || u[1], sector: (s && s.g) || (u && u[3]) || null, industry: (s && s.i) || null, brief: (s && s.b) || null, rs: s ? s.r : null, src: 'built-in list', limited: true };
     } catch (e) { /* none */ }
   }
   if (!r) return c || null;

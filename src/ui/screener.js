@@ -129,11 +129,11 @@ async function reset() {
   sources(); tiles(); presets(); table();
 }
 
-let BUILTIN = [], SECTOR = {}, EPSYOY = {}, UNI = [], NV = new Set(), USALL = [], NAME = {};
+let BUILTIN = [], ABOUT = {}, SECTOR = {}, EPSYOY = {}, UNI = [], NV = new Set(), USALL = [], NAME = {};
 const REGIONS = ['US', 'Europe', 'Japan', 'Hong Kong', 'China', 'Korea'];
 universe().then(u => { UNI = u.items; NV = new Set(u.nv || []); u.items.forEach(r => { if (r[3] && !SECTOR[r[0]]) SECTOR[r[0]] = r[3]; if (r[1]) NAME[r[0]] = r[1]; }); if (App.view === 'screener') sources(); });
 snapshotMeta().then(m => {
-  BUILTIN = m.stocks.map(x => x.s); m.stocks.forEach(x => { if (x.g) SECTOR[x.s] = x.g; });
+  BUILTIN = m.stocks.map(x => x.s); m.stocks.forEach(x => { if (x.g) SECTOR[x.s] = x.g; if (x.i || x.b) ABOUT[x.s] = { i: x.i, b: x.b }; });
   Object.entries(m.earnings).forEach(([s, e]) => { const q = enrich(e.q.map(x => ({ time: Date.parse(x.t) / 1000, eps: x.eps, est: x.est }))).pop(); if (q && q.yoy != null) EPSYOY[s] = q.yoy; });
 }).catch(() => {});
 /** Setup score for every row (needs strength ranks, so run after rankRS). */
@@ -296,7 +296,7 @@ function table() {
   const cell = (r, c) => {
     switch (c) {
       case 's': return html`<td class="sticky"><b>${r.s.replace('.DEMO', '')}</b></td>`;
-      case 'nm': return html`<td class="name">${r.nm}</td>`;
+      case 'nm': { const a = ABOUT[r.s]; return html`<td class="name" title="${a ? [a.i, a.b].filter(Boolean).join(' · ') : ''}">${r.nm}${a && a.i ? html`<div class="muted tiny">${a.i}</div>` : ''}</td>`; }
       case 'g': return html`<td class="name small">${r.g || ''}</td>`;
       case 'c': { const f = S.ccy && S.fx[r.cu + S.ccy]; return html`<td class="n" title="${f && !f.live ? 'Reference rate of ' + f.date : ''}">${f ? (f.live ? '' : '≈') + money(r.c * f.v, S.ccy) : money(r.c, r.cu)}</td>`; }
       case 'sc': return html`<td class="n" title="${(r.scParts || []).map(p => `${p[0]} ${p[1]}/${p[2]} (${p[3]})`).join(' · ')}"><span class="score ${r.sc >= 70 ? 't-ok' : r.sc >= 45 ? 't-warn' : 't-mute'}">${r.sc ?? '—'}</span></td>`;

@@ -9,6 +9,7 @@ import { setCoachStock, openCoach } from './coachui.js';
 import { drawIntraday } from './intraday.js';
 import { companyCard, fundsItem } from './companyui.js';
 import { companyInfo } from '../data/company.js';
+import { brief } from '../core/brief.js';
 import PAT from '../core/pat.js';
 import { baseCard, signal, pc, fD, fDs, f2, lineVal, cupPivot, screenRow, baseState, patternPhase } from '../core/analysis.js';
 import { setupScore } from '../core/score.js';
@@ -47,6 +48,7 @@ export async function initStock(el) {
     <div class="stock-head">
       <div class="stock-id">
         <div class="sym"><b id="sSym">—</b><span id="sName"></span><span id="sTags" class="row" style="gap:6px"></span></div>
+        <div class="about" id="sAbout" hidden></div>
         <div class="px"><span class="p" id="sPx">—</span><span class="ch" id="sCh"></span><span class="ext" id="sExt" hidden></span><span class="ext t-warn" id="sChk" hidden></span></div>
         <div class="vol-line" id="sVol" hidden></div>
         <div class="status"><span class="dot" id="sDot"></span><span id="sStatus">Loading…</span></div>
@@ -122,6 +124,7 @@ async function load(sym, force = false) {
   setTool(null);
   status('Loading ' + sym + '…', '');
   $('#sSym').textContent = sym; $('#sName').textContent = App.names[sym] || '';
+  aboutLine(null, sym);
   chips();
   try {
     const g = group(sym);
@@ -153,7 +156,7 @@ async function load(sym, force = false) {
     if (!V.mkt) loadEarnings(sym, seq); else earnCard();
     $('#cFund').hidden = !!V.mkt || isDemoSym(sym); if (!$('#cFund').hidden) fundCard(sym);
     V.co = null; $('#cCo').hidden = true; renderPanel(V);
-    if (!V.mkt && !isDemoSym(sym)) companyInfo(sym).then(co => { if (seq !== V.seq) return; V.co = co; companyCard(co, d.bars[n].close); renderCanslim(); renderPanel(V); });
+    if (!V.mkt && !isDemoSym(sym)) companyInfo(sym).then(co => { if (seq !== V.seq) return; V.co = co; aboutLine(co, sym); companyCard(co, d.bars[n].close); renderCanslim(); renderPanel(V); });
     loadNews(sym, seq);
   } catch (e) {
     if (seq !== V.seq) return;
@@ -252,6 +255,23 @@ async function suggest(sym) {
   const el = $('#eSug'); if (!el || !list.length) return;
   render(el, html`<p class="small" style="margin:8px 0 4px">Did you mean:</p><div class="toolbar" style="justify-content:center">${list.slice(0, 6).map(x => html`<button class="btn sm" data-sug="${x.symbol}" data-n="${x.name || ''}"><b>${x.symbol}</b>&nbsp;${x.name || ''}</button>`)}</div>`);
   $$('[data-sug]', el).forEach(b => { b.onclick = () => openStock(b.dataset.sug, b.dataset.n); });
+}
+
+/* What the company is, in one line under its name: industry · a short description. */
+async function aboutLine(co, sym) {
+  const el = $('#sAbout'); if (!el) return;
+  if (!co) {
+    if (el.dataset.sym === sym && !el.hidden) return; // same stock refreshed: keep the line
+    el.dataset.sym = sym; el.hidden = true; el.textContent = ''; delete el.dataset.full;
+    if (isDemoSym(sym) || isIndexSym(sym)) return;
+    // the built-in line shows at once; the full profile (when it arrives) replaces it
+    try { const m = await snapshotMeta(), s = m.stocks.find(x => x.s === sym); if (s && (s.b || s.i || s.g)) co = { industry: s.i, sector: s.g, brief: s.b }; } catch (e) { /* no built-in data */ }
+    if (!co || $('#sSym').textContent !== sym || el.dataset.full === sym) return;
+  } else { el.dataset.full = sym; el.dataset.sym = sym; }
+  const ind = co.industry || co.sector || '', txt = co.brief || brief(co.about, co.name);
+  if (!ind && !txt) return;
+  render(el, html`${ind ? html`<b>${ind}</b>` : ''}${ind && txt ? ' · ' : ''}${txt}`);
+  el.title = co.about || ''; el.hidden = false;
 }
 
 function status(t, cls) { $('#sStatus').textContent = t; $('#sDot').className = 'dot ' + (cls || ''); }
