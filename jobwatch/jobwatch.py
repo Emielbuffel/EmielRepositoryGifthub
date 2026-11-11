@@ -45,6 +45,10 @@ class Profile:
         self.locations = {name: [word_re(a) for a in aliases] for name, aliases in raw["locations"].items()}
         self.notify_locations = set(raw.get("notify_locations", []))
         self.keywords = [(k.rstrip("*"), word_re(k, plural=True), w) for k, w in raw["keywords"].items()]
+        self.interests = {g: [word_re(w, plural=True) for w in words] for g, words in raw.get("interests", {}).items()}
+        self.un_bonus = raw.get("un_bonus", 0)
+        orgs = raw.get("un_organisations", [])
+        self.un_re = re.compile(r"(?<![A-Za-z])(" + "|".join(re.escape(o) for o in orgs) + r")(?![A-Za-z])") if orgs else None
         self.exclude = [word_re(x, plural=True) for x in raw.get("exclude_title", [])]
         self.min_score = raw.get("min_score_to_notify", 4)
         self.top_score = raw.get("top_score", 20)
@@ -82,12 +86,26 @@ class Profile:
             elif pat.search(rest):
                 s += w
                 hits.append(k.strip())
+        if s and self.is_un(j):
+            s += self.un_bonus
         return s, hits
+
+    def is_un(self, j):
+        return bool(self.un_re and (j["source"] in UN_SOURCES or self.un_re.search(j["org"] or "")))
+
+    def interests_of(self, j):
+        text = f"{j['title']} {j['category']} {j['summary']}".lower()
+        found = [g for g, pats in self.interests.items() if any(p.search(text) for p in pats)]
+        if self.is_un(j):
+            found.append("UN")
+        return found
 
     def excluded(self, j):
         t = j["title"].lower()
         return any(p.search(t) for p in self.exclude)
 
+
+UN_SOURCES = {"UN Careers", "FAO", "WHO", "UNDP", "UNFPA", "UNICEF", "WFP", "UNHCR"}
 
 LEVEL_RE = re.compile(r"(?<![A-Za-z])(P|D|G|GS|NO|FS|SB|LICA|NPSA|IPSA|SSA|NOA|NOB|NOC|NOD)[- ]?(\d{1,2}|[A-D])?(?![A-Za-z0-9])")
 
@@ -247,6 +265,7 @@ def build_dashboard(state, profile):
         "min_score": profile.min_score,
         "top_score": profile.top_score,
         "priority_locations": sorted(profile.priority_locations),
+        "interests": list(profile.interests) + ["UN"],
         "sources": state.get("last_sources", {}),
         "jobs": jobs,
     }
@@ -314,7 +333,7 @@ def main():
             continue  # seen before under another key
         lvl = level_of(j)
         score, hits = profile.score(j)
-        rec = {**j, "regions": regions, "level": lvl, "type": type_of(j, lvl), "score": score, "hits": hits,
+        rec = {**j, "regions": regions, "level": lvl, "type": type_of(j, lvl), "score": score, "hits": hits, "interests": profile.interests_of(j),
                "excluded": profile.excluded(j)}
         rec.pop("sid", None)
         if old:

@@ -44,6 +44,7 @@ Edit `profile.json` on GitHub (open the file, click the pencil, then "Commit cha
 - `top_score_anywhere`: set to true to also get top-score jobs outside your places.
 - `locations`: the place names and city names that are recognised.
 - `keywords`: words from your CV with a weight. A word in the job title counts double.
+- `interests`: your interest groups (Environment, Forest, Diplomacy, GIS, Evaluation). Each job is labelled with the groups it matches; the dashboard has an Interest filter. Jobs at UN organisations get the label UN and `un_bonus` extra points.
 - `min_score_to_notify`: raise it (for example to 8) for fewer, stronger alerts.
 - `exclude_title`: jobs with these words in the title never send an alert.
 - `unjobs_pages`: the UNjobs.org country pages that are read every hour.

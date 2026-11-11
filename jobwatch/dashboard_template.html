@@ -85,6 +85,7 @@ ol.jobs { list-style: none; margin: 0; padding: 0; background: var(--surface); b
 .tag.mono { font-family: var(--mono); }
 .tag.new { background: var(--new-soft); color: var(--new); font-weight: 600; }
 .tag.top { background: var(--good); color: var(--bg); font-weight: 600; }
+.tag.int { background: transparent; border: 1px solid var(--accent); color: var(--accent); }
 .tag.hit { background: var(--good-soft); color: var(--good); }
 .side { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; text-align: right; }
 .score { font-family: var(--mono); font-size: 12.5px; color: var(--muted); display: flex; align-items: center; gap: 6px; }
@@ -128,6 +129,10 @@ ol.jobs { list-style: none; margin: 0; padding: 0; background: var(--surface); b
         <span class="lbl">Place</span>
         <div class="chips" id="placeChips"></div>
         <button class="linkbtn" id="placeAlert" type="button">Only my alert places</button>
+      </div>
+      <div class="fgroup">
+        <span class="lbl">Interest</span>
+        <div class="chips" id="interestChips"></div>
       </div>
       <div class="fgroup">
         <span class="lbl">Job type</span>
@@ -211,8 +216,10 @@ window.JOBWATCH = /*__JOBWATCH_DATA__*/null;
   const typeOrder = ["International staff", "National officer", "Consultancy / contract", "JPO", "UN Volunteer", "Staff (grade not stated)", "Support staff", "Internship", "Not stated"];
   jobs.forEach(j => { if (!typeOrder.includes(j.type)) typeOrder.push(j.type); });
 
-  const defaults = { q: "", places: alertPlaces.slice(), types: [], org: "", match: "4", age: "0", sort: "new", hideEx: true, starOnly: false };
+  const interestOrder = D.interests || [];
+  const defaults = { q: "", places: alertPlaces.slice(), interests: [], types: [], org: "", match: "4", age: "0", sort: "new", hideEx: true, starOnly: false };
   let st = Object.assign({}, defaults, store.get("filters", {}));
+  if (!Array.isArray(st.interests)) st.interests = [];
   let limit = 120;
 
   function chip(container, label, count, pressed, onClick) {
@@ -233,6 +240,7 @@ window.JOBWATCH = /*__JOBWATCH_DATA__*/null;
     if (st.q) { for (const w of st.q.toLowerCase().split(/\s+/).filter(Boolean)) if (!j.text.includes(w)) return false; }
     if (skip !== "places" && st.places.length && !j.places.some(p => st.places.includes(p))) return false;
     if (skip !== "types" && st.types.length && !st.types.includes(j.type)) return false;
+    if (skip !== "interests" && st.interests.length && !(j.interests || []).some(x => st.interests.includes(x))) return false;
     return true;
   }
 
@@ -254,6 +262,12 @@ window.JOBWATCH = /*__JOBWATCH_DATA__*/null;
       const n = forPlaces.filter(j => j.places.includes(p)).length;
       if (!n && !st.places.includes(p) && !alertPlaces.includes(p)) return;
       chip(pc, p, n, st.places.includes(p), () => { st.places = st.places.includes(p) ? st.places.filter(x => x !== p) : [...st.places, p]; limit = 120; render(); });
+    });
+    const ic = $("interestChips"); ic.textContent = "";
+    const forInt = jobs.filter(j => base(j, "interests"));
+    interestOrder.forEach(g => {
+      const n = forInt.filter(j => (j.interests || []).includes(g)).length;
+      chip(ic, g, n, st.interests.includes(g), () => { st.interests = st.interests.includes(g) ? st.interests.filter(x => x !== g) : [...st.interests, g]; limit = 120; render(); });
     });
     const tc = $("typeChips"); tc.textContent = "";
     const forTypes = jobs.filter(j => base(j, "types"));
@@ -303,6 +317,7 @@ window.JOBWATCH = /*__JOBWATCH_DATA__*/null;
     if (j.score >= (D.top_score || 20)) tags.appendChild(el("span", "tag top", "Top match"));
     if (j.level && !j.type.toLowerCase().includes(j.level.toLowerCase().slice(0, 7))) tags.appendChild(el("span", "tag mono", j.level));
     if (j.type !== "Not stated") tags.appendChild(el("span", "tag", j.type));
+    (j.interests || []).forEach(g => tags.appendChild(el("span", "tag int", g)));
     (j.hits || []).slice(0, 4).forEach(h => tags.appendChild(el("span", "tag hit", h)));
     main.appendChild(tags);
     li.appendChild(main);
