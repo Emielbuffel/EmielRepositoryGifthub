@@ -19,10 +19,10 @@ def around(u, pat, before=300, after=1800, n=2):
     if not ms: out.append(b[:800])
     return "\n".join(out)
 tasks = [
- lambda: around("https://www.gavi.org/about-us/work-us/vacancies", r"(?i)vacanc[a-z]*/|closing|deadline|<h3|views-row"),
- lambda: around("https://iucn.org/involved/jobs", r"hrms\.iucn\.org/vacancy|(?i)closing date|views-row"),
- lambda: around("https://hrms.iucn.org/", r"vacancy/\d+|(?i)closing"),
- lambda: around("https://hrms.iucn.org/vacancies", r"vacancy/\d+|(?i)closing"),
+ lambda: around("https://www.gavi.org/about-us/work-us/vacancies", r"(?i)(vacanc[a-z]*/|closing|deadline|<h3|views-row)"),
+ lambda: around("https://iucn.org/involved/jobs", r"(?i)(hrms\.iucn\.org/vacancy|closing date|views-row)"),
+ lambda: around("https://hrms.iucn.org/", r"(?i)(vacancy/\d+|closing)"),
+ lambda: around("https://hrms.iucn.org/vacancies", r"(?i)(vacancy/\d+|closing)"),
  lambda: (lambda s,f,b: f"### WEF WD status={s}\n{b[:900]}")(*req("https://weforum.wd3.myworkdayjobs.com/wday/cxs/weforum/Forum_Careers/jobs", json.dumps({"appliedFacets": {}, "limit": 3, "offset": 0, "searchText": ""}).encode())),
 ]
 with cf.ThreadPoolExecutor(6) as ex:
