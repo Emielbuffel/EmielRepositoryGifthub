@@ -213,6 +213,9 @@ function emptyState(sym, e) {
   $('#cMkt').hidden = true;
   // no stale chart of the previous stock
   V.data = null; $('#sChartWrap').hidden = true; $('#sNote').hidden = true; $('#sSym').textContent = sym; $('#sName').textContent = '';
+  // nothing of the previous stock may stay on screen (price, change, volume, tags, ratings)
+  ['#sTags', '#sPx', '#sCh', '#sExt', '#sChk', '#sVol', '#sAbout'].forEach(id => { const x = $(id); if (x) { x.innerHTML = ''; if (id === '#sAbout') x.hidden = true; } });
+  renderPanel(V);
   render($('#cBase'), html`<div class="empty">${raw(ICON.info)}${msg}<div id="eSug"></div></div>`);
   if (!isDemo() && !(e instanceof DataError && e.kind === 'auth')) suggest(sym);
   $('#eSet') && ($('#eSet').onclick = () => go('settings'));

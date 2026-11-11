@@ -237,7 +237,12 @@ const EOD = {
 // so a web preview shows the built-in data only.
 let metaP = null; const shardP = new Map();
 const base = () => (typeof document !== 'undefined' ? new URL('./data/', document.baseURI).href : './data/');
-let uniP = null;
+let uniP = null, usP = null;
+/** Every company listed on Nasdaq/NYSE (from the SEC's list, built into the page): [{s, n, x}]. */
+export function usList() {
+  if (!usP) usP = fetch(base() + 'us.json').then(r => r.ok ? r.json() : []).then(rows => rows.map(([s, n, x]) => ({ s, n, x }))).catch(() => { usP = null; return []; });
+  return usP;
+}
 /** Every stock the app knows worldwide: {items: [[sym, name, region, sector, isin]], nv: [syms with secondary-venue built-in prices]}. */
 export function universe() {
   if (!uniP) uniP = fetch(base() + 'universe.json').then(r => { if (!r.ok) throw new Error('no universe'); return r.json(); }).catch(e => { uniP = null; return { items: [], nv: [] }; });
@@ -455,19 +460,20 @@ const FREE = {
       return hit;
     }
     const fold = t => String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase();
-    const score = (s, n) => (s === Q || s.split('.')[0] === Q ? 100 : s.startsWith(Q) ? 40 : 0) + (fold(n).startsWith(Q) ? 60 : fold(n).includes(' ' + Q) ? 35 : fold(n).includes(Q) ? 20 : 0);
+    const flat = t => fold(t).replace(/[^A-Z0-9]/g, ''), QF = flat(Q);
+    const score = (s, n) => (s === Q || s.split('.')[0] === Q ? 100 : s.startsWith(Q) ? 40 : 0) + (fold(n).startsWith(Q) ? 60 : fold(n).includes(' ' + Q) ? 35 : fold(n).includes(Q) ? 20 : QF.length >= 5 && flat(n).startsWith(QF) ? 55 : 0);
     const U = await universe(), known = new Set([...have, ...m.directory.map(r => r[0])]);
     const rows = [...m.stocks.map(x => [x.s, x.n, '', x.x]), ...m.directory.filter(r => !have.has(r[0])), ...U.items.filter(r => !known.has(r[0])).map(r => [r[0], r[1], r[4], r[2]])];
     const local = rows.map(r => [score(r[0], r[1]), r]).filter(x => x[0] > 0).sort((a, b) => b[0] - a[0] || (have.has(b[1][0]) - have.has(a[1][0]))).slice(0, 10)
       .map(([, r]) => ({ symbol: r[0], name: r[1], exchange: have.has(r[0]) ? 'Built-in data' : (r[3] || '') + (isApp() ? '' : ' · loads in the desktop app'), isin: r[2] }));
-    if (!isApp()) return local;
-    // every company listed in the US, from the SEC's list (cached a week): finds names outside the built-in lists
+    // every company listed in the US, from the SEC's list (live in the app, a built-in copy on the web page)
     try {
       const seen = new Set(local.map(x => x.symbol));
-      const sec = (await secCompanies('BasePatternDesk/1.0 personal research')).filter(x => /^(Nasdaq|NYSE)/i.test(x.x) && !seen.has(x.s));
-      const hits = sec.map(x => [score(x.s, x.n), x]).filter(x => x[0] >= 35).sort((a, b) => b[0] - a[0]).slice(0, 8).map(([, x]) => ({ symbol: x.s, name: x.n, exchange: x.x }));
+      const sec = (isApp() ? await secCompanies('BasePatternDesk/1.0 personal research') : await usList()).filter(x => /^(Nasdaq|NYSE)/i.test(x.x) && !seen.has(x.s));
+      const hits = sec.map(x => [score(x.s, x.n), x]).filter(x => x[0] >= 35).sort((a, b) => b[0] - a[0]).slice(0, 8).map(([, x]) => ({ symbol: x.s, name: x.n, exchange: x.x + (isApp() ? '' : ' · not built in yet') }));
       local.push(...hits); local.sort((a, b) => score(b.symbol, b.name) - score(a.symbol, a.name));
     } catch (e) { /* SEC list unavailable */ }
+    if (!isApp()) return local;
     // always also ask the free feed's search, so every listed stock worldwide can be found
     try {
       const d = await getJSON(`https://query2.finance.yahoo.com/v1/finance/search?${new URLSearchParams({ q, quotesCount: 12, newsCount: 0 })}`);
