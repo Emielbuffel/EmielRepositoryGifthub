@@ -21,6 +21,7 @@ export const DEFAULT_PLAN = {
                           // the last third rides until a close below the 50-day line or a climax top
   fastWeeks: 3,           // +20% within 3 weeks of the breakout: hold at least 8 weeks (the book's exception)
   earningsDays: 14,       // no new buys within this many days before an earnings report
+  maxStocks: 8,           // O'Neil's limit; to add a new stock, sell the weakest (Sell ideas tab)
   add50: 0.02,            // follow-on buy: close within 0–2% above a rising 50-day line
 };
 

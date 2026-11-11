@@ -57,6 +57,7 @@ export const ICON = {
   chart: P('<path d="M4 19V5"/><path d="M4 19h16"/><path d="M7 15l3.5-4 3 2.5L19 7"/>'),
   market: P('<path d="M3 12h3l2.5-6 4 12 3-8 1.5 2H21"/>'),
   screener: P('<path d="M4 5h16l-6 7.5V19l-4-2v-4.5z"/>'),
+  prune: P('<circle cx="6" cy="6" r="2.6"/><circle cx="6" cy="18" r="2.6"/><path d="M8.2 7.4 20 17.5M8.2 16.6 20 6.5"/>'),
   portfolio: P('<rect x="3" y="7" width="18" height="13" rx="2.5"/><path d="M8.5 7V5.5A1.5 1.5 0 0 1 10 4h4a1.5 1.5 0 0 1 1.5 1.5V7"/><path d="M3 12.5h18"/>'),
   fund: P('<path d="M4 20V10"/><path d="M10 20V4"/><path d="M16 20v-7"/><path d="M22 20H2"/>'),
   balance: P('<path d="M12 3v18"/><path d="M5 7h14"/><path d="M5 7l-3 6a3 3 0 0 0 6 0z"/><path d="M19 7l-3 6a3 3 0 0 0 6 0z"/><path d="M8 21h8"/>'),
