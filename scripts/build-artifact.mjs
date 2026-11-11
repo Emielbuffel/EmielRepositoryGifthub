@@ -1,12 +1,14 @@
 // Turns the web build (dist/) into the files of the claude.ai page (the iPhone Home Screen page):
-//   node scripts/build-artifact.mjs OUTDIR        (run `npx vite build` first)
+//   node scripts/build-artifact.mjs OUTDIR [--with-data]   (run `npx vite build` first)
+// The price data lives in the published page itself (kept up to date by scripts/page-data.mjs every evening), so by
+// default only the page and its code are written; --with-data adds the repository's data files (first setup only).
 // Writes OUTDIR/base-pattern-desk.html (the page), OUTDIR/assets/*, OUTDIR/data/*, OUTDIR/icon.svg and
 // OUTDIR/files.json: the `files` map for the Artifact tool (published path → {from, contentType?}).
 import fs from 'node:fs';
 import path from 'node:path';
 
 const root = new URL('..', import.meta.url).pathname, dist = path.join(root, 'dist');
-const out = path.resolve(process.argv[2] || 'artifact-out');
+const out = path.resolve(process.argv[2] || 'artifact-out'), withData = process.argv.includes('--with-data');
 const index = fs.readFileSync(path.join(dist, 'index.html'), 'utf8');
 
 const entry = /<script type="module"[^>]*src="\.\/assets\/([^"]+)"/.exec(index)[1];
@@ -36,7 +38,7 @@ for (const f of fs.readdirSync(path.join(dist, 'assets'))) {
   fs.writeFileSync(to, esc(fs.readFileSync(path.join(dist, 'assets', f), 'utf8')));
   files['assets/' + f] = f.endsWith('.mjs') ? { from: to, contentType: 'text/javascript' } : { from: to };
 }
-for (const f of fs.readdirSync(path.join(dist, 'data'))) {
+for (const f of withData ? fs.readdirSync(path.join(dist, 'data')) : []) {
   if (!f.endsWith('.json')) continue;
   const to = path.join(out, 'data', f);
   fs.copyFileSync(path.join(dist, 'data', f), to);
@@ -46,4 +48,4 @@ fs.copyFileSync(path.join(dist, 'icon.svg'), path.join(out, 'icon.svg'));
 files['icon.svg'] = { from: path.join(out, 'icon.svg') };
 fs.writeFileSync(path.join(out, 'files.json'), JSON.stringify(files, null, 1));
 const meta = JSON.parse(fs.readFileSync(path.join(dist, 'data', 'meta.json')));
-console.log(`page + ${Object.keys(files).length} files in ${out} (entry ${entry}; prices through ${meta.asOf})`);
+console.log(`page + ${Object.keys(files).length} files in ${out} (entry ${entry}${withData ? '; repository data through ' + meta.asOf : '; code only'})`);

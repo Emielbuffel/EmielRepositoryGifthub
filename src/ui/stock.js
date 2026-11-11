@@ -216,11 +216,29 @@ function emptyState(sym, e) {
   // nothing of the previous stock may stay on screen (price, change, volume, tags, ratings)
   ['#sTags', '#sPx', '#sCh', '#sExt', '#sChk', '#sVol', '#sAbout'].forEach(id => { const x = $(id); if (x) { x.innerHTML = ''; if (id === '#sAbout') x.hidden = true; } });
   renderPanel(V);
-  render($('#cBase'), html`<div class="empty">${raw(ICON.info)}${msg}<div id="eSug"></div></div>`);
+  render($('#cBase'), html`<div class="empty">${raw(ICON.info)}${msg}<div id="eReq"></div><div id="eSug"></div></div>`);
+  if (!isApp() && !isDemo() && /^\^?[A-Z0-9][A-Z0-9.-]{0,14}$/.test(sym)) offerRequest(sym);
   if (!isDemo() && !(e instanceof DataError && e.kind === 'auth')) suggest(sym);
   $('#eSet') && ($('#eSet').onclick = () => go('settings'));
   $('#eDemo') && ($('#eDemo').onclick = () => openStock('ACME.DEMO'));
   $('#sPats').innerHTML = '';
+}
+
+/* On the page on claude.ai: ask for a stock that is not built in yet; the evening task adds it for good. */
+async function offerRequest(sym) {
+  const R = await import('../data/requests.js');
+  if (!(await R.canRequest())) return;
+  const el = $('#eReq'); if (!el || $('#sSym').textContent !== sym) return;
+  const open = (await R.requests())[sym];
+  const paint = req => render(el, req
+    ? html`<p class="small" style="margin:8px 0">✅ Requested ${new Date(req.at).toLocaleDateString()}. Tonight's update (about 23:45 Brussels time) fetches ${sym} from the free price feed and adds it to the built-in data for good — it is here tomorrow morning.</p>`
+    : html`<button class="btn primary" id="eAdd">Add ${sym} to the built-in data</button><p class="muted tiny" style="margin:6px 0 0">It arrives tomorrow morning and is updated every evening after that.</p>`);
+  paint(open);
+  const b = $('#eAdd', el); if (b) b.onclick = async () => {
+    b.disabled = true;
+    try { await R.requestStock(sym, App.names[sym] || ''); paint({ at: Date.now() }); toast(`${sym} will be added tonight.`); }
+    catch (e) { b.disabled = false; toast('Could not save the request: ' + (e.message || e)); }
+  };
 }
 
 /* ---------- intraday view (1 day / 5 days) from the free Yahoo feed, refreshed every minute ---------- */

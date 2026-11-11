@@ -176,7 +176,7 @@ function sources() {
 function note() {
   const n = list(S.source).length, P = provider();
   const per = P.id === 'twelvedata' ? 7.6 : P.id === 'demo' ? 0 : 0.3;
-  $('#scNote').textContent = P.id === 'demo' ? 'Runs on the demo stocks instantly.' : P.id === 'free' && isApp() ? `${n} stocks · live prices from the free feed (at most 15 minutes old). Rescans automatically every ${settings.autoScan || 30} minutes while the app is open (Settings → Market data). First scan about ${Math.max(1, Math.round(n / 12 / 60))} min, repeats are much faster.` : P.id === 'free' ? `${n} stocks · uses the built-in data (the desktop app adds live prices and the full universe). A full scan takes about ${Math.max(1, Math.round(n / 25))} s.` :
+  $('#scNote').textContent = P.id === 'demo' ? 'Runs on the demo stocks instantly.' : P.id === 'free' && isApp() ? `${n} stocks · live prices from the free feed (at most 15 minutes old). Rescans automatically every ${settings.autoScan || 30} minutes while the app is open (Settings → Market data). First scan about ${Math.max(1, Math.round(n / 12 / 60))} min, repeats are much faster.` : P.id === 'free' ? (S.source === 'builtin' ? `${n} stocks · worked out every evening with the newest closing prices (the desktop app adds live prices).` : `${n} stocks · uses the built-in data (the desktop app adds live prices). A scan takes about ${Math.max(1, Math.round(n / 25))} s.`) :
     `${n} stocks · uses up to ${n + 1} requests on your ${P.short} plan the first time (cached prices are reused for 3 hours)${per > 1 ? ` · about ${Math.ceil(n * per / 60)} min on the free plan (8 requests a minute)` : ''}.`;
   $('#scAt').textContent = S.at ? 'Last scan ' + ago(S.at) + (S.running ? ' · scanning now…' : '') : '';
 }
@@ -187,6 +187,19 @@ async function run({ auto = false } = {}) {
   if (S.source === 'usall' && !USALL.length) {
     try { toast('Loading the SEC list of US-listed companies…'); const l = listedCommon(await secCompanies(secAgent())); l.forEach(x => { if (!NAME[x.s]) NAME[x.s] = x.n; }); USALL = l.map(x => x.s); sources(); }
     catch (e) { toast(e.message, 6000); return; }
+  }
+  if (!isApp() && S.source === 'builtin' && provider().id === 'free') {
+    let m = null; try { m = await snapshotMeta(); } catch (e) { /* none */ }
+    if (m && m.screen) {
+      try {
+        const d = await (await fetch(new URL('./data/screen.json', document.baseURI).href)).json();
+        S.rows = d.rows; S.at = d.at; score(); await loadFx();
+        rememberQuotes(S.rows.map(r => ({ s: r.s, c: r.c, ch: r.d1, ph: r.ph && r.ph.l, pt: r.ph && r.ph.t, rs: r.rs, vp: r.vr != null ? r.vr - 1 : null })));
+        setTimeout(() => emit('scan'), 0);
+        await store.set('screen.' + provider().id, { rows: S.rows, at: S.at });
+        tiles(); table(); note(); loadEarn(); return;
+      } catch (e) { /* scan here instead */ }
+    }
   }
   const syms = list(S.source);
   if (!syms.length) { if (!auto) toast('Nothing to scan: add stocks to this list first.'); return; }

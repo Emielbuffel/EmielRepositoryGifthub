@@ -235,7 +235,7 @@ const EOD = {
 // scripts/build-snapshot.mjs). The desktop app (and the iPhone/Mac app) tops them up, and loads any other ticker,
 // from free public chart feeds (Yahoo Finance, Stooq as a fallback). Browsers block those feeds (CORS),
 // so a web preview shows the built-in data only.
-let metaP = null; const shardP = new Map();
+let metaP = null; const shardP = new Map(), recentP = new Map();
 const base = () => (typeof document !== 'undefined' ? new URL('./data/', document.baseURI).href : './data/');
 let uniP = null, usP = null;
 /** Every company listed on Nasdaq/NYSE (from the SEC's list, built into the page): [{s, n, x}]. */
@@ -257,8 +257,14 @@ async function snapBars(sym) {
   let m; try { m = await snapshotMeta(); } catch (e) { return null; }
   const i = shardOf(sym, m.shards);
   if (!shardP.has(i)) shardP.set(i, fetch(base() + `px-${i}.json`).then(r => r.json()).catch(e => { shardP.delete(i); return {}; }));
-  const rows = (await shardP.get(i))[sym];
-  if (!rows) return null;
+  let rows = (await shardP.get(i))[sym];
+  if (m.rshards) {
+    const k = shardOf(sym, m.rshards);
+    if (!recentP.has(k)) recentP.set(k, fetch(base() + `rc-${k}.json`).then(r => r.json()).catch(e => { recentP.delete(k); return {}; }));
+    const rc = (await recentP.get(k))[sym];
+    if (rc && rc.length) { const last = rows && rows.length ? rows[rows.length - 1][0] : 0; rows = (rows || []).concat(rc.filter(r => r[0] > last)); }
+  }
+  if (!rows || !rows.length) return null;
   const info = sym.startsWith('^') ? { n: (m.indexes[sym.slice(1)] || {}).name, c: '', x: 'Index' } : (m.stocks.find(x => x.s === sym) || {});
   return { bars: rows.map(r => ({ time: r[0], open: r[1], high: r[2], low: r[3], close: r[4], volume: r[5] })), name: info.n || '', currency: info.c || '', exchange: info.x || '', asOf: rows[rows.length - 1][0] };
 }
@@ -436,7 +442,7 @@ const FREE = {
         } catch (e2) { /* keep the built-in data */ }
       }
       if (snap) return { ...snap, live: false };
-      throw new DataError(`${sym} is not in the built-in data${isApp() ? ' and the free feeds did not answer' : '. Other tickers load in the desktop app (browsers block the free feeds)'}.`, 'notfound');
+      throw new DataError(`${sym} is not in the built-in data${isApp() ? ' and the free feeds did not answer' : ' yet'}.`, 'notfound');
     }
   },
   indexSym: k => '^' + k,
@@ -465,7 +471,7 @@ const FREE = {
     const U = await universe(), known = new Set([...have, ...m.directory.map(r => r[0])]);
     const rows = [...m.stocks.map(x => [x.s, x.n, '', x.x]), ...m.directory.filter(r => !have.has(r[0])), ...U.items.filter(r => !known.has(r[0])).map(r => [r[0], r[1], r[4], r[2]])];
     const local = rows.map(r => [score(r[0], r[1]), r]).filter(x => x[0] > 0).sort((a, b) => b[0] - a[0] || (have.has(b[1][0]) - have.has(a[1][0]))).slice(0, 10)
-      .map(([, r]) => ({ symbol: r[0], name: r[1], exchange: have.has(r[0]) ? 'Built-in data' : (r[3] || '') + (isApp() ? '' : ' · loads in the desktop app'), isin: r[2] }));
+      .map(([, r]) => ({ symbol: r[0], name: r[1], exchange: have.has(r[0]) ? 'Built-in data' : (r[3] || '') + (isApp() ? '' : ' · not built in yet'), isin: r[2] }));
     // every company listed in the US, from the SEC's list (live in the app, a built-in copy on the web page)
     try {
       const seen = new Set(local.map(x => x.symbol));
