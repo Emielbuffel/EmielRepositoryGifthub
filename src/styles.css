@@ -596,3 +596,11 @@ tr.auto td { background: color-mix(in srgb, var(--blue) 6%, transparent); }
 .stock-id .about { font-size: 13px; color: var(--ink2); margin: 1px 0 2px; max-width: 760px; line-height: 1.35; }
 .stock-id .about b { font-weight: 600; color: var(--ink); }
 #sChart[hidden] ~ .vol-legend { display: none; }
+
+.co-trades { white-space: normal; display: grid; gap: 8px; max-width: 100%; }
+.co-tr { display: grid; gap: 3px; padding-top: 6px; border-top: 1px solid var(--sep); }
+.co-tr-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.co-tr-row .input.sm { width: 74px; padding: 5px 7px; font-size: 13px; }
+.co-tr-row .input.sm.co-sym { width: 92px; }
+.co-tr-row input[type=date].input.sm { width: 132px; }
+.co-tr-row select.input.sm { width: 66px; }
