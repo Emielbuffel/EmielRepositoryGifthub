@@ -57,6 +57,6 @@ Add these under **Settings → Secrets and variables → Actions** in the GitHub
 
 - The check runs every hour. GitHub sometimes starts scheduled runs some minutes late.
 - The schedule only runs from the repository's main branch.
-- A private repository gets 2,000 free GitHub Actions minutes per month. One run takes about 1 to 2 minutes, so one run per hour fits.
+- A private repository on the free GitHub plan gets a monthly Actions allowance of about 2,000 Linux minutes (GitHub now writes it as $12 of usage). One run takes about 1 minute, so one run per hour (about 720 minutes a month) fits. Your other workflows use the same allowance.
 - When a website changes its layout, that one source can stop working. The others keep going. Each run lists the sources and how many jobs each gave (Actions tab → run → summary), and the dashboard shows it at the bottom.
 - Some sites (IFAD, IOM, UN Women, ADB, SPREP, UNOPS) block automated reading. Their jobs still come in through UNjobs.org and Impactpool.
