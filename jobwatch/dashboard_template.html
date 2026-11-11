@@ -85,6 +85,12 @@ ol.jobs { list-style: none; margin: 0; padding: 0; background: var(--surface); b
 .tag.mono { font-family: var(--mono); }
 .tag.new { background: var(--new-soft); color: var(--new); font-weight: 600; }
 .tag.top { background: var(--good); color: var(--bg); font-weight: 600; }
+.tabs { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 14px; border-bottom: 1px solid var(--line); }
+.tab { font: inherit; font-weight: 600; font-size: 14.5px; padding: 9px 14px; border: 1px solid transparent; border-bottom: 0; border-radius: 8px 8px 0 0; background: none; color: var(--muted); cursor: pointer; margin-bottom: -1px; }
+.tab[aria-selected="true"] { background: var(--surface); border-color: var(--line); color: var(--ink); }
+.tab small { font-weight: 500; color: var(--muted); margin-left: 4px; font-variant-numeric: tabular-nums; }
+.tabnote { color: var(--muted); font-size: 13.5px; margin: 10px 0 0; }
+.tag.me { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
 .tag.partner { background: var(--new-soft); color: var(--new); font-weight: 600; }
 .tag.phit { background: transparent; border: 1px dashed var(--new); color: var(--new); }
 .together { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; margin-bottom: 16px; }
@@ -124,23 +130,21 @@ ol.jobs { list-style: none; margin: 0; padding: 0; background: var(--surface); b
   <header class="top">
     <div>
       <h1>Duty Station Watch</h1>
-      <p class="sub">UN and NGO vacancies matched to your CV (evaluation, GIS, environment, forests, diplomacy) and to your partner's (epidemiology, biostatistics, environmental health).</p>
+      <p class="sub">UN and NGO vacancies matched to your CV: evaluation, GIS, environment, forests and diplomacy.</p>
     </div>
     <div class="stamp" id="stamp">Loading…</div>
   </header>
+  <nav class="tabs" role="tablist" aria-label="Views" id="tabs">
+    <button class="tab" role="tab" type="button" data-tab="me">My jobs</button>
+    <button class="tab" role="tab" type="button" data-tab="partner">Partner's jobs</button>
+    <button class="tab" role="tab" type="button" data-tab="together">Work together</button>
+  </nav>
+  <p class="tabnote" id="tabnote"></p>
 
   <section class="stats" id="stats" aria-label="Summary"></section>
 
   <div class="layout">
     <aside class="filters" aria-label="Filters">
-      <div class="fgroup" id="whoGroup">
-        <label for="who">Jobs for</label>
-        <select id="who">
-          <option value="both">Me and my partner</option>
-          <option value="me">Only me</option>
-          <option value="partner">Only my partner</option>
-        </select>
-      </div>
       <div class="fgroup">
         <label for="q">Search</label>
         <input type="search" id="q" placeholder="e.g. evaluation, GIS, FAO, P-3">
@@ -245,8 +249,22 @@ window.JOBWATCH = /*__JOBWATCH_DATA__*/null;
   const interestOrder = (D.interests || []).concat(D.partner_interests || []);
   const eff = j => st.who === "me" ? j.score : st.who === "partner" ? (j.pscore || 0) : Math.max(j.score, j.pscore || 0);
   const intsOf = j => (st.who !== "partner" ? (j.interests || []) : []).concat(st.who !== "me" ? (j.pinterests || []) : []);
-  const defaults = { who: "both", q: "", places: alertPlaces.slice(), interests: [], types: [], org: "", match: "4", age: "0", sort: "new", hideEx: true, starOnly: false };
-  let st = Object.assign({}, defaults, store.get("filters", {}));
+  const TABS = ["me", "partner", "together"];
+  let tab = TABS.includes(location.hash.slice(1)) ? location.hash.slice(1) : "me";
+  if (!D.partner_on) tab = "me";
+  const shared = new Set();
+  const defaults = { who: "me", q: "", places: alertPlaces.slice(), interests: [], types: [], org: "", match: "4", age: "0", sort: "new", hideEx: true, starOnly: false };
+  function tabDefaults(t) {
+    return Object.assign({}, defaults, { who: t === "together" ? "both" : t, places: t === "together" ? [] : alertPlaces.slice(),
+                                         match: t === "partner" ? String(PMIN) : "4" });
+  }
+  function loadTab(t) {
+    const saved = store.get("filters:" + t, {});
+    const s = Object.assign(tabDefaults(t), saved);
+    s.who = t === "together" ? "both" : t;
+    return s;
+  }
+  let st = loadTab(tab);
   if (!Array.isArray(st.interests)) st.interests = [];
   let limit = 120;
 
@@ -266,6 +284,10 @@ window.JOBWATCH = /*__JOBWATCH_DATA__*/null;
     if (skip !== "age" && +st.age && now - j.seen > +st.age * DAY) return false;
     if (skip !== "org" && st.org && j.org !== st.org) return false;
     if (st.q) { for (const w of st.q.toLowerCase().split(/\s+/).filter(Boolean)) if (!j.text.includes(w)) return false; }
+    if (tab === "together") {
+      if (!j.places.some(p => shared.has(p))) return false;
+      if (j.score < Math.max(+st.match, 4) && (j.pscore || 0) < Math.max(+st.match, PMIN)) return false;
+    }
     if (skip !== "places" && st.places.length && !j.places.some(p => st.places.includes(p))) return false;
     if (skip !== "types" && st.types.length && !st.types.includes(j.type)) return false;
     if (skip !== "interests" && st.interests.length && !intsOf(j).some(x => st.interests.includes(x))) return false;
@@ -280,8 +302,13 @@ window.JOBWATCH = /*__JOBWATCH_DATA__*/null;
   }
 
   function render() {
-    store.set("filters", st);
-    $("who").value = st.who; $("whoGroup").hidden = !D.partner_on;
+    store.set("filters:" + tab, st);
+    document.querySelectorAll(".tab").forEach(b => { b.setAttribute("aria-selected", b.dataset.tab === tab ? "true" : "false"); });
+    $("tabs").hidden = !D.partner_on;
+    $("tabnote").textContent = tab === "partner" ? "Vacancies scored on your partner's profile: environmental epidemiology, biostatistics, air pollution, public health."
+      : tab === "together" ? "Duty stations with matching vacancies for both of you, and the jobs there for each of you." : "";
+    $("tabnote").hidden = tab === "me";
+    renderStats();
     renderTogether();
     $("q").value = st.q; $("org").value = st.org; $("match").value = st.match; $("age").value = st.age;
     $("sort").value = st.sort; $("hideEx").checked = st.hideEx; $("starOnly").checked = st.starOnly;
@@ -289,6 +316,7 @@ window.JOBWATCH = /*__JOBWATCH_DATA__*/null;
     const pc = $("placeChips"); pc.textContent = "";
     const forPlaces = jobs.filter(j => base(j, "places"));
     placeOrder.forEach(p => {
+      if (tab === "together" && !shared.has(p)) return;
       const n = forPlaces.filter(j => j.places.includes(p)).length;
       if (!n && !st.places.includes(p) && !alertPlaces.includes(p)) return;
       chip(pc, p, n, st.places.includes(p), () => { st.places = st.places.includes(p) ? st.places.filter(x => x !== p) : [...st.places, p]; limit = 120; render(); });
@@ -346,8 +374,9 @@ window.JOBWATCH = /*__JOBWATCH_DATA__*/null;
     const tags = el("div", "tags");
     if (isNew) tags.appendChild(el("span", "tag new", "New"));
     if (st.who !== "partner" && j.score >= (D.top_score || 20)) tags.appendChild(el("span", "tag top", "Top match"));
+    if (tab === "together" && j.score >= (D.min_score || 4)) tags.appendChild(el("span", "tag me", "For me · " + j.score));
     const forPartner = st.who !== "me" && (j.pscore || 0) >= PMIN;
-    if (forPartner) tags.appendChild(el("span", "tag partner", st.who === "partner" ? "Partner · match " + j.pscore : "Also for partner · " + j.pscore));
+    if (forPartner) tags.appendChild(el("span", "tag partner", st.who === "partner" ? "Partner · match " + j.pscore : "For partner · " + j.pscore));
     if (j.level && !j.type.toLowerCase().includes(j.level.toLowerCase().slice(0, 7))) tags.appendChild(el("span", "tag mono", j.level));
     if (j.type !== "Not stated") tags.appendChild(el("span", "tag", j.type));
     if (j.lang && j.lang !== "en") tags.appendChild(el("span", "tag mono", j.lang.toUpperCase()));
@@ -381,7 +410,7 @@ window.JOBWATCH = /*__JOBWATCH_DATA__*/null;
 
   function renderTogether() {
     const box = $("together");
-    box.hidden = !D.partner_on || st.who !== "both";
+    box.hidden = !D.partner_on || tab !== "together";
     if (box.hidden) return;
     const rows = {};
     jobs.forEach(j => {
@@ -393,10 +422,11 @@ window.JOBWATCH = /*__JOBWATCH_DATA__*/null;
         if ((j.pscore || 0) >= PMIN) r.partner++;
       });
     });
-    const list = Object.entries(rows).filter(([, r]) => r.me || r.partner)
+    const list = Object.entries(rows).filter(([, r]) => r.me && r.partner)
       .sort((a, b) => (Math.min(b[1].me, b[1].partner) > 0) - (Math.min(a[1].me, a[1].partner) > 0) || (b[1].me + b[1].partner) - (a[1].me + a[1].partner));
     const tb = $("togetherBody"); tb.textContent = "";
-    list.slice(0, 14).forEach(([p, r]) => {
+    if (!list.length) { const tr = el("tr"); const td = el("td", "", "No place has matches for both of you right now."); td.colSpan = 3; tr.appendChild(td); tb.appendChild(tr); }
+    list.forEach(([p, r]) => {
       const tr = el("tr", r.me && r.partner ? "both" : "");
       const td = el("td"); const b = el("button", "", p); b.type = "button";
       b.addEventListener("click", () => { st.places = [p]; limit = 120; render(); $("count").scrollIntoView({ behavior: "smooth" }); });
@@ -410,14 +440,40 @@ window.JOBWATCH = /*__JOBWATCH_DATA__*/null;
   const gen = D.generated ? Date.parse(D.generated) : null;
   $("stamp").textContent = gen ? "Updated " + new Date(gen).toLocaleString(undefined, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) + " · " + ago(gen) : "Not updated yet";
   const inPlaces = jobs.filter(j => j.places.some(p => alertPlaces.includes(p)) && !j.excluded);
-  const stats = [
-    [jobs.length, "open vacancies tracked"],
-    [inPlaces.length, "in your alert places"],
-    [inPlaces.filter(j => j.score >= (D.min_score || 4)).length, "of those match your CV"],
-    ...(D.partner_on ? [[inPlaces.filter(j => (j.pscore || 0) >= PMIN).length, "in your places for your partner"]] : []),
-    [jobs.filter(j => now - j.seen < DAY).length, "added in the last 24 h"],
-  ];
-  stats.forEach(([n, l]) => { const d = el("div", "stat"); d.appendChild(el("b", "", n.toLocaleString())); d.appendChild(el("span", "", l)); $("stats").appendChild(d); });
+  (function computeShared() {
+    const rows = {};
+    jobs.forEach(j => { if (j.excluded) return; j.places.forEach(p => { if (p === "Elsewhere") return;
+      const r = rows[p] = rows[p] || { me: 0, partner: 0 };
+      if (j.score >= (D.min_score || 4)) r.me++; if ((j.pscore || 0) >= PMIN) r.partner++; }); });
+    Object.entries(rows).forEach(([p, r]) => { if (r.me && r.partner) shared.add(p); });
+  })();
+  document.querySelectorAll(".tab").forEach(b => {
+    const n = b.dataset.tab === "me" ? inPlaces.filter(j => j.score >= (D.min_score || 4)).length
+      : b.dataset.tab === "partner" ? inPlaces.filter(j => (j.pscore || 0) >= PMIN).length : shared.size;
+    const s = el("small", "", n); b.appendChild(s);
+    b.addEventListener("click", () => { if (tab === b.dataset.tab) return; tab = b.dataset.tab; try { history.replaceState(null, "", "#" + tab); } catch (e) {} st = loadTab(tab); limit = 120; render(); });
+  });
+  function renderStats() {
+    const box = $("stats"); box.textContent = "";
+    const inShared = jobs.filter(j => !j.excluded && j.places.some(p => shared.has(p)));
+    const stats = tab === "partner" ? [
+      [jobs.length, "open vacancies tracked"],
+      [inPlaces.length, "in your alert places"],
+      [inPlaces.filter(j => (j.pscore || 0) >= PMIN).length, "of those match your partner"],
+      [jobs.filter(j => (j.pscore || 0) >= PMIN && now - j.seen < DAY).length, "partner matches added in 24 h"],
+    ] : tab === "together" ? [
+      [shared.size, "places with jobs for both of you"],
+      [inShared.filter(j => j.score >= (D.min_score || 4)).length, "jobs there for you"],
+      [inShared.filter(j => (j.pscore || 0) >= PMIN).length, "jobs there for your partner"],
+    ] : [
+      [jobs.length, "open vacancies tracked"],
+      [inPlaces.length, "in your alert places"],
+      [inPlaces.filter(j => j.score >= (D.min_score || 4)).length, "of those match your CV"],
+      [jobs.filter(j => now - j.seen < DAY).length, "added in the last 24 h"],
+    ];
+    stats.forEach(([n, l]) => { const d = el("div", "stat"); d.appendChild(el("b", "", n.toLocaleString())); d.appendChild(el("span", "", l)); box.appendChild(d); });
+  }
+  window.addEventListener("hashchange", () => { const h = location.hash.slice(1); if (TABS.includes(h) && h !== tab && D.partner_on) { tab = h; st = loadTab(tab); limit = 120; render(); } });
 
   const orgs = {}; jobs.forEach(j => { if (j.org) orgs[j.org] = (orgs[j.org] || 0) + 1; });
   Object.entries(orgs).sort((a, b) => b[1] - a[1]).forEach(([o, n]) => { const op = el("option", "", o + " (" + n + ")"); op.value = o; $("org").appendChild(op); });
@@ -432,7 +488,6 @@ window.JOBWATCH = /*__JOBWATCH_DATA__*/null;
 
   let qt;
   $("q").addEventListener("input", e => { clearTimeout(qt); qt = setTimeout(() => { st.q = e.target.value; limit = 120; render(); }, 150); });
-  $("who").addEventListener("change", e => { st.who = e.target.value; st.interests = []; limit = 120; render(); });
   $("org").addEventListener("change", e => { st.org = e.target.value; render(); });
   $("match").addEventListener("change", e => { st.match = e.target.value; render(); });
   $("age").addEventListener("change", e => { st.age = e.target.value; render(); });
@@ -440,7 +495,7 @@ window.JOBWATCH = /*__JOBWATCH_DATA__*/null;
   $("hideEx").addEventListener("change", e => { st.hideEx = e.target.checked; render(); });
   $("starOnly").addEventListener("change", e => { st.starOnly = e.target.checked; render(); });
   $("placeAlert").addEventListener("click", () => { st.places = alertPlaces.slice(); render(); });
-  $("reset").addEventListener("click", () => { st = Object.assign({}, defaults); render(); });
+  $("reset").addEventListener("click", () => { st = tabDefaults(tab); render(); });
   $("more").addEventListener("click", () => { limit += 200; render(); });
   render();
 })();

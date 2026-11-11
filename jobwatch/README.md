@@ -79,7 +79,7 @@ The Mac must be switched on and awake at least once every 12 hours; ntfy keeps t
 
 `profile.json` → `partner` holds a second search profile: environmental epidemiology, biostatistics, air pollution, public health (also in Spanish and Dutch). Every job gets a score for you and one for your partner.
 
-- Dashboard: **Jobs for** → *Me and my partner* / *Only me* / *Only my partner*. With *Me and my partner*, the table **Where we could work together** lists the places with matches for both of you.
+- Dashboard: three tabs. **My jobs** (only your matches, as before), **Partner's jobs** (her matches) and **Work together** (the places with matches for both of you, and the jobs there for each of you).
 - Phone alerts for her matches in your alert places start with "For partner". Set `"alerts": false` under `partner` to stop them.
 - Deadline reminders stay for your own top matches only.
 
