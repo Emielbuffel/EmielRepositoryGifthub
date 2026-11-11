@@ -337,6 +337,38 @@ def reliefweb(appname):
     return out
 
 
+# ---------------------------------------------------------------- SAP SuccessFactors career sites (Enabel, ...)
+SF_ROW = re.compile(r'<tr class="data-row">(.*?)</tr>', re.S)
+
+
+def successfactors(name, base, org, max_rows=300):
+    out, seen = [], set()
+    for start in range(0, max_rows, 25):
+        body = fetch(f"{base}/search/?q=&sortColumn=referencedate&sortDirection=desc&locale=en_US&startrow={start}")
+        rows = SF_ROW.findall(body)
+        new = 0
+        for r in rows:
+            m = re.search(r'href="(/job/[^"]+?/(\d+)/)"[^>]*class="jobTitle-link">(.*?)</a>|class="jobTitle-link" href="(/job/[^"]+?/(\d+)/)">(.*?)</a>', r, re.S)
+            if not m:
+                continue
+            path, jid, title = (m.group(1), m.group(2), m.group(3)) if m.group(1) else (m.group(4), m.group(5), m.group(6))
+            if jid in seen:
+                continue
+            seen.add(jid)
+            new += 1
+            loc = re.search(r'<span class="jobLocation">(.*?)</span>', r, re.S)
+            dept = re.search(r'<span class="jobDepartment">(.*?)</span>', r, re.S)
+            fac = re.search(r'<span class="jobFacility">(.*?)</span>', r, re.S)
+            date = re.search(r'<span class="jobDate[^"]*">(.*?)</span>', r, re.S)
+            out.append(job(name, jid, title, base + path, org=org, location=loc.group(1) if loc else "",
+                           jtype=dept.group(1) if dept else "", category=fac.group(1) if fac else "",
+                           posted=parse_date(clean(date.group(1))) if date else None))
+        if not rows or not new or len(rows) < 25:
+            break
+        time.sleep(0.5)
+    return out
+
+
 def all_sources(profile, reliefweb_appname=""):
     """Return {source name: callable}."""
     pages = {k: tuple(v) for k, v in profile.get("unjobs_pages", {}).items()}
@@ -354,6 +386,7 @@ def all_sources(profile, reliefweb_appname=""):
         "NRC": lambda: oracle("NRC", "ekum.fa.em2.oraclecloud.com", "CX_2019", "Norwegian Refugee Council"),
         "World Vision": lambda: workday("World Vision", "worldvision.wd1.myworkdayjobs.com", "worldvision", "WorldVisionInternational", "World Vision International"),
         "Global Fund": lambda: workday("Global Fund", "theglobalfund.wd1.myworkdayjobs.com", "theglobalfund", "External", "The Global Fund"),
+        "Enabel": lambda: successfactors("Enabel", "https://jobs.enabel.be", "Enabel (Belgian development agency)"),
         "Impactpool": lambda: impactpool(profile.get("impactpool_queries", [])),
         "ReliefWeb": lambda: reliefweb(reliefweb_appname),
     }
