@@ -10,6 +10,7 @@ export const VIEWS = [
   { id: 'portfolio', label: 'Portfolio', icon: 'portfolio' },
   { id: 'prune', label: 'Sell ideas', icon: 'prune' },
   { id: 'taxes', label: 'Dividends & taxes', icon: 'taxes' },
+  { id: 'review', label: 'Trade review', icon: 'review' },
   { id: 'balance', label: 'Balance', icon: 'balance' },
   { id: 'plan', label: 'Plan', icon: 'plan' },
   { id: 'learn', label: 'Learn', icon: 'learn' },

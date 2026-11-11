@@ -49,3 +49,17 @@ test('English and French statements and the stock-exchange tax in each language'
   assert.equal(classify('Stock exchange tax').sub, 'tob'); assert.equal(classify('Börsensteuer').sub, 'tob');
   assert.equal(classify('Impôts sur dividende').kind, 'divtax');
 });
+
+test('trades: Dutch thousands ("1.100" = 1,100), and a description wrapped before its currency', () => {
+  const L = ledgerFromRows([
+    '02-03-2026 09:05 02-03-2026 ASML HOLDING NL0010273215 Koop 10 @ 1.100 EUR EUR -11.000,00 EUR 9.000,00',
+    '15-04-2026 10:10 15-04-2026 ASML HOLDING NL0010273215 Verkoop 10 @ 1.010 EUR 10.100,00 EUR 19.100,00', // "EUR" after the price wrapped away
+    '02/06/2026 09:31 02/06/2026 SHOPIFY CA82509L1076 Buy 4 @ 1.25 USD USD -5.00 USD 10.00',
+  ]);
+  assert.deepEqual(L.map(l => [l.kind, l.qty, l.price, l.pcur]), [['buy', 10, 1100, 'EUR'], ['sell', 10, 1010, 'EUR'], ['buy', 4, 1.25, 'USD']]);
+});
+
+test('a currency that wraps onto the next PDF line is not glued to the company name', () => {
+  const L = ledgerFromRows(['15-04-2026 10:10 15-04-2026 ASML HOLDING NL0010273215 Verkoop 10 @ 1.010 EUR 10.100,00 EUR 19.100,00', 'EUR', '30-06-2026 16:20 30-06-2026 META PLATFORMS NL0000000001 Verkoop 15 @ 760 USD 11.400,00 USD 1.800,00', 'INC USD']);
+  assert.equal(L[0].product, 'ASML HOLDING'); assert.equal(L[1].product, 'META PLATFORMS INC'); assert.equal(L[1].pcur, 'USD');
+});

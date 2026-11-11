@@ -15,6 +15,8 @@ import { checkBars } from '../data/alerts.js';
 import { fundamentals } from '../data/fundamentals.js';
 import { fundSummary } from '../core/fundamentals.js';
 import { factor } from '../data/fx.js';
+import { nextEarnings } from '../data/earndate.js';
+import { strategy } from '../data/plans.js';
 
 export const US_LARGE = ['AAPL', 'MSFT', 'NVDA', 'AMZN', 'GOOGL', 'META', 'AVGO', 'TSLA', 'JPM', 'LLY', 'V', 'UNH', 'XOM', 'MA', 'COST', 'HD', 'PG', 'JNJ', 'NFLX', 'WMT', 'ABBV', 'CRM', 'ORCL', 'AMD', 'BAC', 'KO', 'MRK', 'CVX', 'PEP', 'ADBE', 'TMO', 'LIN', 'CSCO', 'ACN', 'MCD', 'ABT', 'WFC', 'DIS', 'INTU', 'TXN', 'QCOM', 'IBM', 'AMAT', 'GE', 'CAT', 'NOW', 'ISRG', 'UBER', 'PANW', 'BKNG'];
 const ST = { near: ['Near buy point', 'ok'], forming: ['Base forming', 'warn'], buyzone: ['Buy zone', 'ok'], extended: ['Extended', 'warn'], below: ['Below buy point', 'warn'], stop: ['Stop hit', 'bad'], faulty: ['Faulty base', 'bad'] };
@@ -33,10 +35,10 @@ const PRESETS = [
 ];
 const COLS = [
   ['s', 'Symbol'], ['nm', 'Name'], ['sc', 'Setup', 'n'], ['c', 'Close', 'n'], ['d1', 'Day', 'n'], ['m1', '1 mo', 'n'], ['m3', '3 mo', 'n'], ['y1', '1 yr', 'n'],
-  ['rs', 'Strength', 'n'], ['g', 'Sector'], ['vr', 'Vol ×', 'n'], ['ph', 'Phase'], ['p', 'Pattern'], ['di', 'To buy pt', 'n'], ['hi', 'Off high', 'n'], ['eg', 'EPS g', 'n'], ['sg', 'Sales g', 'n'], ['nm', 'Net m', 'n'], ['sig', 'Signals'], ['sp', '60 days'],
+  ['rs', 'Strength', 'n'], ['g', 'Sector'], ['vr', 'Vol ×', 'n'], ['ph', 'Phase'], ['p', 'Pattern'], ['di', 'To buy pt', 'n'], ['ne', 'Earnings', 'n'], ['hi', 'Off high', 'n'], ['eg', 'EPS g', 'n'], ['sg', 'Sales g', 'n'], ['nm', 'Net m', 'n'], ['sig', 'Signals'], ['sp', '60 days'],
 ];
 const FF = { eg: null, sg: null, nm: null, de: null, acc: false, up3: false, fcf: false }, FUND = {};
-const S = { rows: [], at: null, running: false, cancel: false, sort: 'sc', asc: false, ccy: '', fx: {}, preset: 'pat', q: '', minRs: 0, sector: '', source: null, custom: '' };
+const S = { rows: [], at: null, running: false, cancel: false, sort: 'sc', asc: false, ccy: '', fx: {}, preset: 'pat', hideEarn: true, earnDays: 14, q: '', minRs: 0, sector: '', source: null, custom: '' };
 
 export async function initScreener(el) {
   S.custom = await store.get('screen.custom', 'AAPL MSFT NVDA');
@@ -59,6 +61,7 @@ export async function initScreener(el) {
         <select class="input" id="scSec" style="width:auto;padding:7px 10px;font-size:14px" aria-label="Sector"><option value="">All sectors</option></select>
         <select class="input" id="scCcy" style="width:auto;padding:7px 10px;font-size:14px" aria-label="Show prices in"><option value="">Local currency</option><option>EUR</option><option>USD</option></select>
         <label class="chk">Min strength <input class="input" type="number" id="scRs" min="0" max="99" step="10" value="0" style="width:80px"></label>
+        <label class="chk" title="Your plan: no new buys in the days before an earnings report"><input type="checkbox" id="scEarn" checked> Hide stocks reporting within <span id="scEarnD">14</span> days</label>
         <span class="muted small" id="scCount"></span>
       </div>
       <details class="fscreen" id="scFund"><summary><b>Fundamentals</b> <span class="muted small" id="scFundSum">EPS and sales growth, acceleration, margins, cash flow, debt</span></summary>
@@ -92,6 +95,10 @@ export async function initScreener(el) {
   $('#scFundClear').onclick = () => { Object.keys(FF).forEach(k => { FF[k] = typeof FF[k] === 'boolean' ? false : null; }); $$('[data-ff]').forEach(i => { if (i.type === 'checkbox') i.checked = false; else i.value = ''; }); store.set('screen.ff', FF); table(); };
   on((type, data) => { if (type === 'row' && data && data.row) syncRow(data.row); if (type === 'sector') { S.sector = data || ''; S.preset = 'all'; presets(); table(); } if (type === 'market' && S.rows.length) { score(); table(); } if (type === 'provider') reset(); if (type === 'watch' && App.view === 'screener') sources(); if (type === 'view' && App.view === 'screener') { sources(); if (!S.rows.length && (isDemo() || (provider().id === 'free' && !isApp())) && !S.running) run(); else autoScan(); } });
   await reset();
+  strategy().then(Sx => { S.earnDays = Sx.earningsDays || 14; const d = $('#scEarnD'); if (d) d.textContent = S.earnDays; });
+  S.hideEarn = await store.get('screen.hideEarn', true); $('#scEarn').checked = S.hideEarn;
+  $('#scEarn').onchange = () => { S.hideEarn = $('#scEarn').checked; store.set('screen.hideEarn', S.hideEarn); tiles(); table(); };
+  loadEarn();
   if (App.view === 'screener' && (isDemo() || (provider().id === 'free' && !isApp())) && !S.rows.length) run();
   // automatic scans: when the tab opens with an old scan, and in the background every few minutes
   setInterval(() => autoScan(), 5 * 60e3); setTimeout(() => autoScan(), 20e3);
@@ -215,15 +222,17 @@ async function run({ auto = false } = {}) {
   $('#scProg').hidden = true; $('#scRun').disabled = false;
   if (errors.length && !auto) toast(`${rows.length} scanned; ${errors.length} skipped (${errors.slice(0, 2).join('; ')}${errors.length > 2 ? '…' : ''})`, 6000);
   tiles(); table(); note();
+  loadEarn();
 }
 
 function tiles() {
   const R = S.rows, el = $('#scTiles');
   if (!R.length) { render(el, html`<div class="tile"><div class="empty">${raw(ICON.screener)}<p>No scan yet. Pick a list and press Run scan.</p></div></div>`); return; }
+  const R2 = S.hideEarn ? R.filter(r => !earnSoon(r)) : R;
   const T = [
-    ['In buy zone (broke out)', 't-ok', R.filter(r => r.p && r.p.st === 'buyzone').sort((a, b) => a.p.bo - b.p.bo), r => (r.p.bo === 0 ? 'today' : r.p.bo + 'd ago') + ' · ' + pc(r.p.di)],
-    ['Base ready, near buy point', 't-blue', R.filter(r => r.p && r.p.st === 'near' && !r.p.f).sort((a, b) => b.p.di - a.p.di), r => pc(r.p.di) + ' to go'],
-    ['Volume surges in a base', 't-warn', R.filter(r => r.vr >= 2 && INPAT(r)).sort((a, b) => b.vr - a.vr), r => '×' + r.vr.toFixed(1) + ' ' + (r.d1 >= 0 ? '▲' : '▼')],
+    ['In buy zone (broke out)', 't-ok', R2.filter(r => r.p && r.p.st === 'buyzone').sort((a, b) => a.p.bo - b.p.bo), r => (r.p.bo === 0 ? 'today' : r.p.bo + 'd ago') + ' · ' + pc(r.p.di)],
+    ['Base ready, near buy point', 't-blue', R2.filter(r => r.p && r.p.st === 'near' && !r.p.f).sort((a, b) => b.p.di - a.p.di), r => pc(r.p.di) + ' to go'],
+    ['Volume surges in a base', 't-warn', R2.filter(r => r.vr >= 2 && INPAT(r)).sort((a, b) => b.vr - a.vr), r => '×' + r.vr.toFixed(1) + ' ' + (r.d1 >= 0 ? '▲' : '▼')],
     ['Sell signals', 't-bad', R.filter(r => r.sell.length).sort((a, b) => b.sell.length - a.sell.length), r => r.sell[0]],
   ];
   render(el, html`${T.map(([t, c, rows, v]) => html`<div class="tile"><h3><span class="${c}">●</span>${t}<span class="count">${rows.length}</span></h3>
@@ -272,7 +281,7 @@ function spark(a, up) {
 }
 function currentRows() {
   const f = PRESETS.find(p => p[0] === S.preset)[2];
-  return S.rows.filter(f).filter(fundOk).filter(r => (r.rs || 0) >= S.minRs).filter(r => !S.sector || r.g === S.sector).filter(r => !S.q || r.s.includes(S.q) || (r.nm || '').toUpperCase().includes(S.q));
+  return S.rows.filter(f).filter(fundOk).filter(r => !S.hideEarn || !earnSoon(r)).filter(r => (r.rs || 0) >= S.minRs).filter(r => !S.sector || r.g === S.sector).filter(r => !S.q || r.s.includes(S.q) || (r.nm || '').toUpperCase().includes(S.q));
 }
 function table() {
   const secs = [...new Set(S.rows.map(r => r.g || SECTOR[r.s]).filter(Boolean))].sort();
@@ -282,7 +291,8 @@ function table() {
   const fs = $('#scFundSum'); if (fs) fs.textContent = fundOn() ? `filter on · ${Object.keys(FUND).length} stocks with figures loaded` : 'EPS and sales growth, acceleration, margins, cash flow, debt';
   const k = S.sort, dir = S.asc ? 1 : -1;
   R = R.sort((a, b) => { const x = val(a, k), y = val(b, k); if (x == null) return 1; if (y == null) return -1; return (typeof x === 'string' ? x.localeCompare(y) : x - y) * dir; });
-  $('#scCount').textContent = `${R.length} of ${S.rows.length}`;
+  const hid = S.hideEarn ? S.rows.filter(r => earnSoon(r)).length : 0;
+  $('#scCount').textContent = `${R.length} of ${S.rows.length}` + (hid ? ` · ${hid} hidden: earnings within ${S.earnDays} days` : '');
   const cell = (r, c) => {
     switch (c) {
       case 's': return html`<td class="sticky"><b>${r.s.replace('.DEMO', '')}</b></td>`;
@@ -296,6 +306,7 @@ function table() {
       case 'di': return html`<td class="n">${r.p && r.p.di != null ? pc(r.p.di) : '—'}</td>`;
       case 'sig': return html`<td title="${[...r.buy.map(x => '▲ ' + x), ...r.sell.map(x => '▼ ' + x)].join('\n')}">${r.buy.length ? html`<span class="t-ok">▲${r.buy.length}</span> ` : ''}${r.sell.length ? html`<span class="t-bad">▼${r.sell.length}</span>` : ''}${!r.buy.length && !r.sell.length ? html`<span class="muted">—</span>` : ''}</td>`;
       case 'sp': return html`<td>${raw(spark(r.sp, r.m3 >= 0))}</td>`;
+      case 'ne': { if (r.ne == null) return html`<td class="n muted">—</td>`; const d = Math.round((r.ne - Date.now() / 1000) / 86400); return html`<td class="n ${earnSoon(r) ? 't-warn' : ''}" title="Next earnings report">${fDs(r.ne)}${d >= 0 && d <= 60 ? html` <span class="tiny">(${d}d)</span>` : ''}</td>`; }
       case 'eg': case 'sg': case 'nm': { const f = FUND[r.s], v = f ? f[c] : (c === 'eg' && EPSYOY[r.s] != null ? EPSYOY[r.s] : null); return html`<td class="n ${v == null ? 'muted' : c !== 'nm' ? (v >= 0.25 ? 'up' : v < 0 ? 'down' : '') : ''}" title="${f && f.acc ? 'EPS growth accelerating' : ''}">${v == null ? '—' : pc(v, 0)}${c === 'eg' && f && f.acc ? raw(' <span class="t-ok">↑</span>') : ''}</td>`; }
       case 'ph': return r.ph ? html`<td title="${r.ph.d || ''}"><span class="mini-steps">${[1, 2, 3, 4, 5, 6, 7].map(i => html`<i class="${r.ph.s === i ? 'on t-' + r.ph.t : r.ph.s && i < r.ph.s ? 'done' : ''}"></i>`)}</span> <span class="small t-${r.ph.t}">${r.ph.l}</span></td>` : html`<td class="muted">—</td>`;
       default: { const v = r[c]; return html`<td class="n ${v > 0 ? 'up' : v < 0 ? 'down' : ''}">${pc(v)}</td>`; }
@@ -308,3 +319,13 @@ function table() {
 }
 
 export { S as screenerState };
+
+/* ---------- earnings dates: no new buys in the days before a report ---------- */
+const earnSoon = r => r.ne != null && r.ne >= Date.now() / 1000 - 86400 && (r.ne - Date.now() / 1000) / 86400 <= S.earnDays;
+/** Next earnings date for the stocks in a pattern (cached for a day), then redraws. */
+async function loadEarn() {
+  const todo = S.rows.filter(r => INPAT(r) || (r.p && r.p.st === 'buyzone')).slice(0, 150);
+  let n = 0;
+  await pool(todo, 4, async r => { const t = await nextEarnings(r.s).catch(() => null); if (t !== undefined) { r.ne = t; n++; } });
+  if (n && App.view === 'screener') { tiles(); table(); }
+}

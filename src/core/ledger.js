@@ -18,14 +18,15 @@ const RULES = [
   ['deposit', /storting|deposit|einzahlung|versement|dep[óo]sito|ingreso|bijschrijving/i],
 ];
 export const TOB = /beurstaks|beursbelasting|\bTOB\b|taxe sur les op[ée]rations de bourse|stock exchange tax|tax on stock exchange|b[öo]rsen(umsatz)?steuer/i;
-const TRADE = /(koop|buy|kauf|achat|acquisto|compra|verkoop|sell|verkauf|vente|vendita|venta)\s+([\d.,]+)\s+(?:@|zu je|à|a)\s+([\d.,]+)\s+([A-Z]{3}|GBX)/i;
+// the currency may be missing when a PDF wraps the description onto a second line
+const TRADE = /(koop|buy|kauf|achat|acquisto|compra|verkoop|sell|verkauf|vente|vendita|venta)\s+([\d.,]+)\s+(?:@|zu je|à|a)\s+([\d.,]+)(?:\s+([A-Z]{3}|GBX))?/i;
 const SELLW = /^(verkoop|sell|verkauf|vente|vendita|venta)$/i;
 
 export const KIND_LABEL = { deposit: 'Deposit', withdrawal: 'Withdrawal', buy: 'Buy', sell: 'Sell', dividend: 'Dividend', divtax: 'Dividend tax', fee: 'Costs', tax: 'Tax', interest: 'Interest', internal: 'Internal (FX, cash fund, transfers)', other: 'Not recognised' };
 
 export function classify(desc) {
   const m = TRADE.exec(desc);
-  if (m) return { kind: SELLW.test(m[1]) ? 'sell' : 'buy', qty: num(m[2]), price: num(m[3]), pcur: m[4].toUpperCase() };
+  if (m) return { kind: SELLW.test(m[1]) ? 'sell' : 'buy', qty: num(m[2]), price: num(m[3]), pcur: m[4] ? m[4].toUpperCase() : null, priceText: m[3] };
   // the Belgian stock-exchange tax (TOB) on each buy and sell, kept apart from other taxes
   if (TOB.test(desc)) return { kind: 'tax', sub: 'tob' };
   for (const [k, re] of RULES) if (re.test(desc)) return { kind: k };
@@ -58,7 +59,7 @@ export function parseAccount(text) {
     const desc = c[ix.desc] || '', product = ix.product >= 0 ? c[ix.product] || '' : '', isin = ix.isin >= 0 ? (c[ix.isin] || '').toUpperCase() : '';
     const orderId = ix.order >= 0 ? c[ix.order] || '' : '';
     const t = day + (ix.time >= 0 ? hm(c[ix.time]) : 12 * 3600);
-    out.push({ id: [t, desc, cur, amount, product, orderId].join('|'), t, product, isin, desc, cur, amount, orderId, ...classify(desc) });
+    out.push(fixTrade({ id: [t, desc, cur, amount, product, orderId].join('|'), t, product, isin, desc, cur, amount, orderId, ...classify(desc) }));
   }
   if (!out.length) throw new Error('No dated lines with an amount were found in the account statement.');
   return out;
@@ -86,4 +87,21 @@ export function summarize(lines, fx, from = 0, to = Infinity) {
     }
   }
   return { tot, months: [...months].sort((a, b) => (a[0] < b[0] ? -1 : 1)), years: [...years].sort((a, b) => (a[0] < b[0] ? -1 : 1)), stocks: [...stocks.values()].sort((a, b) => b.gross - a.gross), other };
+}
+
+/**
+ * Checks a trade line's price against its cash amount: "1.100" is 1,100 in Dutch statements but 1.1 in English ones.
+ * When shares × price is far from the amount (same currency), the other reading is used if it fits better. Also fills
+ * the price currency from the line when the description had none.
+ */
+export function fixTrade(l) {
+  if ((l.kind !== 'buy' && l.kind !== 'sell') || !l.qty) return l;
+  if (!l.pcur) l.pcur = l.cur;
+  const t = String(l.priceText || ''), amt = Math.abs(l.amount || 0);
+  if (amt && l.pcur === l.cur && /^\d{1,3}([.,]\d{3})+$/.test(t)) {
+    const alt = num(t.replace(/[.,]/g, '')), err = p => Math.abs(l.qty * p - amt) / amt;
+    if (alt && err(alt) < err(l.price)) l.price = alt;
+  }
+  delete l.priceText;
+  return l;
 }

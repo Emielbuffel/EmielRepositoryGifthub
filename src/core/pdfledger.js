@@ -3,7 +3,7 @@
 // description, FX, change (currency + amount), balance. Each line is classified (dividend, dividend tax, costs,
 // taxes such as the Belgian stock-exchange tax, interest, deposits…). Long product names that wrap onto a second
 // line are joined. Lines without a date (headers, page footers) are skipped. Pure functions, tested on text lines.
-import { classify } from './ledger.js';
+import { classify, fixTrade } from './ledger.js';
 import { num } from './importer.js';
 
 const DATE = /^(\d{1,2})[-/.](\d{1,2})[-/.](\d{4})\b/;
@@ -28,7 +28,8 @@ export function parseRow(line) {
   let product = '', isin = '', desc = head;
   const im = ISIN.exec(head);
   if (im) { product = head.slice(0, im.index).trim(); isin = im[1]; desc = head.slice(im.index + im[1].length).trim(); }
-  desc = desc.replace(/\s+-?\d+[.,]\d{2,6}$/, '').trim(); // the FX column (a rate such as 1,0834) at the end
+  // the FX column (a rate such as 1,0834) at the end — but not the price of a trade ("Koop 10 @ 1.010")
+  if (!/(@|zu je|à)\s+[\d.,]+$/i.test(desc)) desc = desc.replace(/\s+-?\d+[.,]\d{2,6}$/, '').trim();
   return { t, product, isin, desc, cur: money[0][1] === 'GBX' ? 'GBX' : money[0][1], amount, balance, orderId };
 }
 
@@ -57,13 +58,19 @@ export function ledgerFromRows(rows) {
     if (/^(datum|date|data|fecha|pagina|page|seite|degiro|flatex|rekeningoverzicht|account statement|relev[ée])/i.test(line) || MONEY.test(line)) { MONEY.lastIndex = 0; continue; }
     MONEY.lastIndex = 0;
     // a wrapped company name is in capitals ("SEMICONDUCTOR MANUFACTURING CO"); other wrapped text belongs to the description
-    if (prev.product && /^[A-Z0-9 .,&'()\/+-]+$/.test(line) && /[A-Z]{2}/.test(line)) prev.product = (prev.product + ' ' + line).trim();
-    else if (line.length < 80) prev.desc = (prev.desc + ' ' + line).trim();
+    // a currency code that wrapped out of the description ("Koop 10 @ 1.100" / "EUR") is not part of the name
+    const CUR = /\b(EUR|USD|GBP|GBX|CHF|SEK|NOK|DKK|PLN|CZK|HUF|JPY|HKD|CAD|AUD|SGD|KRW|CNY)\b/g, curs = line.match(CUR) || [];
+    if (curs.length && !prev.pcurWrap) prev.pcurWrap = curs[0];
+    const rest = line.replace(CUR, ' ').replace(/\s+/g, ' ').trim(); if (!rest) continue;
+    if (prev.product && /^[A-Z0-9 .,&'()\/+-]+$/.test(rest) && /[A-Z]{2}/.test(rest)) prev.product = (prev.product + ' ' + rest).trim();
+    else if (rest.length < 80) prev.desc = (prev.desc + ' ' + rest).trim();
   }
-  return out.filter(r => r.amount != null && r.cur).map(r => ({
-    id: [r.t, r.desc, r.cur, r.amount, r.product, r.orderId].join('|'), t: r.t, product: r.product, isin: r.isin, desc: r.desc, cur: r.cur, amount: r.amount, orderId: r.orderId, src: 'pdf',
-    ...classify(r.desc + (r.product && !r.desc ? ' ' + r.product : '')),
-  }));
+  return out.filter(r => r.amount != null && r.cur).map(r => {
+    const l = { id: [r.t, r.desc, r.cur, r.amount, r.product, r.orderId].join('|'), t: r.t, product: r.product, isin: r.isin, desc: r.desc, cur: r.cur, amount: r.amount, orderId: r.orderId, src: 'pdf', ...classify(r.desc + (r.product && !r.desc ? ' ' + r.product : '')) };
+    // the price currency wrapped onto the next line: use it for the trade
+    if ((l.kind === 'buy' || l.kind === 'sell') && !l.pcur && r.pcurWrap) l.pcur = r.pcurWrap;
+    return fixTrade(l);
+  });
 }
 
 /** Country of the issuer from the ISIN (first two letters), for the dividend overview per country. */

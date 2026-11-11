@@ -9,6 +9,8 @@ import { on, App } from '../app.js';
 import { $, $$, html, raw, render, money, toast, ICON, tok } from './dom.js';
 const big = (x, cur) => (x < 0 ? '−' : '') + money(Math.abs(x || 0), cur); // cents matter for a tax return
 import { fDs } from '../core/analysis.js';
+import { realisedGains, CGT } from '../core/cgt.js';
+import { loadTrades, refValues, setOwnRef } from './trades.js';
 
 const T = { pending: null, year: null };
 const KINDS = ['dividend', 'divtax', 'tax', 'fee', 'interest', 'deposit', 'withdrawal', 'buy', 'sell', 'internal', 'other'];
@@ -25,14 +27,15 @@ export async function initTaxes(el) {
     <section class="card" id="txSum"></section>
     <section class="card" id="txStocks" hidden></section>
     <section class="card" id="txList" hidden></section>
+    <section class="card" id="txCgt"></section>
     <p class="disclaimer">An overview of what your statements show, to help with your tax return. It is not tax advice: rules, rates and exemptions change every year — check them with the FOD Financiën / SPF Finances or your accountant.</p>`);
   const inp = $('#txFile'), drop = $('#txDrop');
   inp.onchange = () => { if (inp.files.length) read([...inp.files]); inp.value = ''; };
   drop.ondragover = e => { e.preventDefault(); drop.classList.add('over'); };
   drop.ondragleave = () => drop.classList.remove('over');
   drop.ondrop = e => { e.preventDefault(); drop.classList.remove('over'); const f = [...e.dataTransfer.files].filter(f => /\.(pdf|csv)$/i.test(f.name)); if (f.length) read(f); };
-  on(type => { if ((type === 'cash' || type === 'view') && App.view === 'taxes') overview(); });
-  overview();
+  on(type => { if ((type === 'cash' || type === 'view' || type === 'journal') && App.view === 'taxes') { overview(); cgtCard(); } });
+  overview(); cgtCard();
 }
 
 /** Reads the chosen files and shows what was found, for checking before saving. */
@@ -132,4 +135,41 @@ async function overview() {
     <div class="tbl-wrap" style="max-height:360px;overflow:auto"><table class="tbl"><thead><tr><th>Date</th><th>What</th><th>Product</th><th class="n">Amount</th></tr></thead><tbody>
       ${ls.slice(0, 600).map(l => html`<tr><td class="small">${fDs(l.t)}</td><td class="small">${l.sub === 'tob' ? 'Stock-exchange tax (TOB)' : KIND_LABEL[l.kind]}<div class="muted tiny">${l.desc}</div></td><td class="small">${l.product || '—'}</td><td class="n down">${l.cur} ${l.amount.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td></tr>`)}
     </tbody></table></div></details>`);
+}
+
+/* ---------- capital gains (Belgian 10% tax from 2026) ---------- */
+async function cgtCard() {
+  const el = $('#txCgt'); if (!el) return;
+  const S = await strategy(), base = S.ccy || 'EUR';
+  const { trades, src, fx } = await loadTrades(base);
+  if (!trades.length) { render(el, html`<div class="card-head"><h2>Capital gains (10% tax from 2026)</h2></div><p class="muted small" style="margin:0">Upload DEGIRO statements with your buys and sells (above), or record trades in the buying plans, to see your realised gains per year and the estimated tax.</p>`); return; }
+  render(el, html`<div class="card-head"><h2>Capital gains (10% tax from 2026)</h2></div><p class="small muted" style="margin:0"><span class="spinner"></span> Working out your realised gains…</p>`);
+  // stocks that need the 31-12-2025 value: bought before 2026, or sold without a purchase in the data
+  const names = {}; trades.forEach(x => { names[x.key] = x.name; });
+  const pre = new Set(trades.filter(x => x.side === 'buy' && x.t < CGT.start).map(x => x.key));
+  const sold26 = new Set(trades.filter(x => x.side === 'sell' && x.t >= CGT.start).map(x => x.key));
+  const need = [...sold26].filter(k => pre.has(k) || !trades.some(x => x.key === k && x.side === 'buy' && x.t < trades.find(y => y.key === k && y.side === 'sell' && y.t >= CGT.start).t));
+  const refs = await refValues(need, names, base, fx);
+  const R = realisedGains(trades, k => refs[k] ? refs[k].v : null);
+  const years = Object.keys(R.years).sort().reverse();
+  const sales = R.sales.filter(x => x.taxed).sort((a, b) => b.t - a.t);
+  const m = x => x == null ? '—' : big(x, base);
+  render(el, html`
+    <div class="card-head"><h2>Capital gains (10% tax from 2026)</h2><span class="muted tiny">From your ${src === 'statement' ? 'DEGIRO statements' : 'buying-plan trades'}</span></div>
+    ${years.length ? html`<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Year</th><th class="n">Gains</th><th class="n">Losses</th><th class="n">Net</th><th class="n">Exempt</th><th class="n">Taxable</th><th class="n">Tax 10%</th></tr></thead><tbody>
+      ${years.map(y => { const v = R.years[y]; return html`<tr><td><b>${y}</b>${v.unknown ? html`<div class="t-warn tiny">${v.unknown} sale${v.unknown > 1 ? 's' : ''} without a purchase price</div>` : ''}</td><td class="n up">${m(v.gains)}</td><td class="n down">${m(v.losses)}</td><td class="n">${m(v.net)}</td><td class="n">${m(v.exemption)}</td><td class="n">${m(v.taxable)}</td><td class="n"><b>${m(v.tax)}</b></td></tr>`; })}
+    </tbody></table></div>` : html`<p class="small" style="margin:0">No sales from 2026 on yet: nothing to tax so far.</p>`}
+    ${sales.length ? html`<details ${sales.length <= 12 ? raw('open') : ''}><summary><b>Sales from 2026</b> <span class="muted small">${sales.length}</span></summary>
+      <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Date</th><th>Stock</th><th class="n">Shares</th><th class="n">Sold for</th><th class="n">Cost basis</th><th class="n">Gain</th></tr></thead><tbody>
+      ${sales.map(x => html`<tr><td class="small">${fDs(x.t)}</td><td class="small">${x.name}<div class="muted tiny">${x.parts.map(p => p.how).join('; ')}</div></td><td class="n">${+x.qty.toFixed(4)}</td><td class="n">${m(x.proceeds)}</td><td class="n">${m(x.basis)}</td><td class="n ${x.gain >= 0 ? 'up' : 'down'}">${m(x.gain)}</td></tr>`)}
+      </tbody></table></div></details>` : ''}
+    ${need.length ? html`<details><summary><b>Values on 31 December 2025</b> <span class="muted small">${need.length} stock${need.length > 1 ? 's' : ''} bought before 2026</span></summary>
+      <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Stock</th><th class="n">Value per share (${base})</th><th>Source</th></tr></thead><tbody>
+      ${need.map(k => html`<tr><td class="small">${names[k]}<div class="muted tiny">${k}</div></td><td class="n"><input class="input sm-select" style="width:110px;text-align:right" type="number" step="any" min="0" data-ref="${k}" value="${refs[k] ? +refs[k].v.toFixed(4) : ''}" placeholder="enter"></td><td class="small muted">${!refs[k] ? 'not found: enter the closing price of 31-12-2025' : refs[k].src === 'own' ? 'your number' : `closing price ${refs[k].close} ${refs[k].cur} (${refs[k].src})`}</td></tr>`)}
+      </tbody></table></div><p class="muted tiny" style="margin:0">Keep proof of these values (e.g. DEGIRO's portfolio overview of 31-12-2025): as a client of a foreign broker you document them yourself.</p></details>` : ''}
+    <ul class="small muted" style="margin:0">
+      <li>Rules used: 10% on the net gains of a year above the exemption (EUR ${CGT.exemption[2026].toLocaleString('en-US')} in 2026; indexed in later years). Shares bought before 2026 start from their closing price on 31-12-2025, or — for sales up to and including 2030 — your real average purchase price when that is higher. Several purchases: the average purchase price. Losses of the year offset gains of the year. Costs and TOB are not deducted here.</li>
+      <li>DEGIRO is a foreign broker and does not withhold this tax: you declare the gains in your tax return. An estimate to help with that, not tax advice — check the final rules with the FOD Financiën or your accountant.</li>
+    </ul>`);
+  $$('[data-ref]', el).forEach(i => { i.onchange = async () => { await setOwnRef(i.dataset.ref, i.value === '' ? null : +i.value); cgtCard(); }; });
 }
