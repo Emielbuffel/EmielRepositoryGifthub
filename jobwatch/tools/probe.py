@@ -1,27 +1,18 @@
-"""Probe 5 (temporary): how vlaanderen.be calls /api/overview-search."""
-import re, urllib.request
+"""Probe 6 (temporary): Flemish government job records."""
+import json, urllib.request
 UA = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36"
-def get(u):
-    with urllib.request.urlopen(urllib.request.Request(u, headers={"User-Agent": UA}), timeout=30) as r:
-        return r.read().decode("utf-8", "replace")
-page = get("https://www.vlaanderen.be/werken-voor-vlaanderen/vacatures")
-srcs = re.findall(r'src="(/_nuxt/[^"]+\.js)"', page)
-seen = set(srcs)
-queue = list(srcs)
-hits = 0
-while queue and len(seen) < 120:
-    s = queue.pop(0)
-    try:
-        js = get("https://www.vlaanderen.be" + s)
-    except Exception as e:
-        continue
-    for m in re.findall(r'["\'](\.?/?(?:_nuxt/)?[A-Za-z0-9_-]+\.js)["\']', js):
-        p = "/_nuxt/" + m.split("/")[-1]
-        if p not in seen:
-            seen.add(p); queue.append(p)
-    for m in re.finditer(r"overview-search", js):
-        hits += 1
-        print(f"=== {s} @ {m.start()}\n{js[max(0, m.start()-1500): m.start()+1500]}\n")
-        if hits >= 4: break
-    if hits >= 4: break
-print("scanned", len(seen), "files, hits", hits)
+def post(body):
+    r = urllib.request.Request("https://www.vlaanderen.be/api/overview-search", data=json.dumps(body).encode(),
+                               headers={"User-Agent": UA, "Content-Type": "application/json", "Accept": "application/json"})
+    with urllib.request.urlopen(r, timeout=30) as resp:
+        return json.loads(resp.read())
+for off in (0, 1):
+    d = post({"page": {"offset": off, "limit": 100}, "filter": {"contentType": {"IN": ["Job"]}}, "resolverContext": {"language": "nl"}})
+    print("offset", off, {k: d.get(k) for k in ("totalItems", "offset", "limit", "isLastPage", "firstItemOfPage", "lastItemOfPage")}, "items", len(d.get("items", [])))
+    if off == 0:
+        for it in d["items"][:2]:
+            print(json.dumps(it, ensure_ascii=False)[:3500])
+            print()
+        print("TITLES:", [ (i.get("displayTitle"), i.get("link")) for i in d["items"][:15]])
+        fit = [i.get("displayTitle") for i in d["items"] if "flanders" in json.dumps(i).lower() or "buitenland" in json.dumps(i).lower()]
+        print("FIT/buitenland on page 1:", fit[:10])

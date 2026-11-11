@@ -369,6 +369,41 @@ def successfactors(name, base, org, max_rows=300):
     return out
 
 
+# ---------------------------------------------------------------- Belgian FPS Foreign Affairs (diplomatie.belgium.be)
+NL_MONTHS = {"januari": 1, "februari": 2, "maart": 3, "april": 4, "mei": 5, "juni": 6, "juli": 7, "augustus": 8,
+             "september": 9, "oktober": 10, "november": 11, "december": 12}
+
+
+def parse_nl_date(text):
+    m = re.search(r"(\d{1,2}) (" + "|".join(NL_MONTHS) + r") (\d{4})", text.lower())
+    if not m:
+        return None
+    try:
+        return datetime(int(m.group(3)), NL_MONTHS[m.group(2)], int(m.group(1))).date()
+    except ValueError:
+        return None
+
+
+def belgian_foreign_affairs():
+    page = "https://diplomatie.belgium.be/nl/werken-voor-fod-buitenlandse-zaken/vacatures"
+    body = fetch(page)
+    out = []
+    for sec in re.findall(r'<section class="\s*highlighted-text.*?</section>', body, re.S):
+        t = re.search(r'<h2 class="highlighted-text__title">(.*?)</h2>', sec, re.S)
+        if not t or "<li>" not in sec:
+            continue
+        items = [clean(li) for li in re.findall(r"<li>(.*?)</li>", sec, re.S)]
+        info = {i.split(":", 1)[0].strip().lower(): i.split(":", 1)[1].strip() for i in items if ":" in i}
+        link = re.search(r'href="(https?://[^"]+)"', sec)
+        deadline = next((parse_nl_date(i) for i in items if "tot en met" in i), None)
+        title = clean(t.group(1))
+        out.append(job("Belgian Foreign Affairs", title, title, html.unescape(link.group(1)) if link else page,
+                       org="FPS Foreign Affairs (Belgium)", location="Brussels, Belgium",
+                       level=("Level " + info["niveau"]) if info.get("niveau") else "", jtype=info.get("type", ""),
+                       deadline=deadline))
+    return out
+
+
 def all_sources(profile, reliefweb_appname=""):
     """Return {source name: callable}."""
     pages = {k: tuple(v) for k, v in profile.get("unjobs_pages", {}).items()}
@@ -386,6 +421,7 @@ def all_sources(profile, reliefweb_appname=""):
         "NRC": lambda: oracle("NRC", "ekum.fa.em2.oraclecloud.com", "CX_2019", "Norwegian Refugee Council"),
         "World Vision": lambda: workday("World Vision", "worldvision.wd1.myworkdayjobs.com", "worldvision", "WorldVisionInternational", "World Vision International"),
         "Global Fund": lambda: workday("Global Fund", "theglobalfund.wd1.myworkdayjobs.com", "theglobalfund", "External", "The Global Fund"),
+        "Belgian Foreign Affairs": belgian_foreign_affairs,
         "Enabel": lambda: successfactors("Enabel", "https://jobs.enabel.be", "Enabel (Belgian development agency)"),
         "Impactpool": lambda: impactpool(profile.get("impactpool_queries", [])),
         "ReliefWeb": lambda: reliefweb(reliefweb_appname),
