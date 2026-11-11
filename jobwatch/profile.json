@@ -140,6 +140,22 @@
       "remote",
       "telecommuting",
       "telework"
+    ],
+    "Peru & Andes": [
+      "peru",
+      "perú",
+      "lima",
+      "cusco",
+      "arequipa",
+      "bolivia",
+      "la paz",
+      "ecuador",
+      "quito",
+      "colombia",
+      "bogotá",
+      "bogota",
+      "chile",
+      "santiago de chile"
     ]
   },
   "_help_locations": "Locations that trigger a phone notification. The other ones still appear in the dashboard.",
@@ -426,6 +442,125 @@
       "relations internationales"
     ]
   },
+  "_help_partner": "Second search profile for your partner. Jobs are scored for you and for her separately. alerts=true sends phone alerts for her matches in your alert places (labelled 'For partner'); set it to false to stop them. The dashboard has a 'For' filter to show only your jobs.",
+  "partner": {
+    "name": "Partner",
+    "alerts": true,
+    "min_score_to_notify": 6,
+    "keywords": {
+      "epidemiology": 5,
+      "epidemiologist": 5,
+      "epidemiological": 4,
+      "environmental epidemiology": 6,
+      "biostatistics": 5,
+      "biostatistician": 5,
+      "biomedical statistics": 5,
+      "statistician": 4,
+      "statistical": 2,
+      "statistics": 3,
+      "environmental health": 5,
+      "air pollution": 6,
+      "air quality": 6,
+      "pollution": 3,
+      "public health": 4,
+      "health data": 3,
+      "health information": 3,
+      "surveillance": 3,
+      "disease surveillance": 4,
+      "one health": 3,
+      "climate and health": 5,
+      "health impact": 4,
+      "exposure": 2,
+      "cohort": 2,
+      "data scientist": 3,
+      "data analyst": 3,
+      "research": 2,
+      "researcher": 3,
+      "modelling": 2,
+      "modeling": 2,
+      "health": 1,
+      "epidemiología": 5,
+      "epidemiólogo": 5,
+      "epidemióloga": 5,
+      "epidemiológica": 4,
+      "bioestadística": 5,
+      "estadístico": 4,
+      "estadística": 3,
+      "salud pública": 4,
+      "salud ambiental": 5,
+      "contaminación del aire": 6,
+      "calidad del aire": 6,
+      "vigilancia epidemiológica": 5,
+      "epidemiologie": 5,
+      "epidemioloog": 5,
+      "volksgezondheid": 4,
+      "luchtkwaliteit": 6,
+      "luchtverontreiniging": 6,
+      "biostatistiek": 5
+    },
+    "interests": {
+      "Epidemiology": [
+        "epidemiology",
+        "epidemiologist",
+        "epidemiological",
+        "epidemiología",
+        "epidemiólogo",
+        "epidemióloga",
+        "epidemiologie",
+        "surveillance",
+        "vigilancia epidemiológica"
+      ],
+      "Biostatistics": [
+        "biostatistics",
+        "biostatistician",
+        "biomedical statistics",
+        "statistician",
+        "statistics",
+        "bioestadística",
+        "estadística",
+        "biostatistiek"
+      ],
+      "Environmental health": [
+        "environmental health",
+        "air pollution",
+        "air quality",
+        "pollution",
+        "climate and health",
+        "salud ambiental",
+        "contaminación del aire",
+        "calidad del aire",
+        "luchtkwaliteit",
+        "luchtverontreiniging"
+      ],
+      "Public health": [
+        "public health",
+        "salud pública",
+        "volksgezondheid",
+        "one health",
+        "health data",
+        "health information"
+      ]
+    },
+    "organisations": [
+      "WHO",
+      "PAHO",
+      "OPS",
+      "ORAS",
+      "ORAS-CONHU",
+      "IARC",
+      "ECDC",
+      "EEA",
+      "UNEP",
+      "UNICEF",
+      "IHME",
+      "Wellcome",
+      "Institut Pasteur",
+      "Swiss TPH",
+      "LSHTM",
+      "ISGlobal",
+      "Cayetano"
+    ]
+  },
   "un_bonus": 3,
   "un_organisations": [
     "UN",
@@ -544,7 +679,8 @@
   ],
   "_help_languages": "Vacancies in these languages are dropped completely (not stored, not shown, no alerts). Codes: fr = French, es = Spanish, pt = Portuguese, nl = Dutch, en = English.",
   "exclude_languages": [
-    "fr"
+    "fr",
+    "pt"
   ],
   "min_score_to_notify": 4,
   "_help_priority": "Extra-loud alerts. top_score: jobs with at least this CV score get an urgent alert. priority_locations: places whose matches get a high-priority alert. top_score_anywhere: true = also alert for top-score jobs outside your places.",
@@ -636,6 +772,10 @@
     "home_based|home-based|homebased": [
       "Home-based",
       2
+    ],
+    "peru": [
+      "Peru",
+      1
     ]
   },
   "_help_impactpool": "Search words used on Impactpool (newest 2 pages each).",
@@ -650,7 +790,13 @@
     "forest",
     "diplomacy",
     "climate",
-    "biodiversity"
+    "biodiversity",
+    "epidemiology",
+    "epidemiologist",
+    "biostatistics",
+    "environmental health",
+    "air quality",
+    "public health"
   ],
   "_help_ntfy": "Phone alerts: install the free 'ntfy' app and subscribe to this topic name. Keep it secret-ish: anyone who knows it can read your alerts.",
   "ntfy_topic": "jobwatch-eb-160a37bfa7"

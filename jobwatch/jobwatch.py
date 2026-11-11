@@ -54,6 +54,14 @@ class Profile:
         self.un_bonus = raw.get("un_bonus", 0)
         orgs = raw.get("un_organisations", [])
         self.un_re = re.compile(r"(?<![A-Za-z])(" + "|".join(re.escape(o) for o in orgs) + r")(?![A-Za-z])") if orgs else None
+        pr = raw.get("partner") or {}
+        self.partner_on = bool(pr)
+        self.partner_alerts = bool(pr.get("alerts", False))
+        self.partner_min = pr.get("min_score_to_notify", 6)
+        self.p_keywords = [(k.rstrip("*"), word_re(k, plural=True), w) for k, w in (pr.get("keywords") or {}).items() if w]
+        self.p_interests = {g: [word_re(w, plural=True) for w in ws] for g, ws in (pr.get("interests") or {}).items()}
+        porgs = pr.get("organisations") or []
+        self.p_org_re = re.compile(r"(?<![A-Za-z])(" + "|".join(re.escape(o) for o in porgs) + r")(?![A-Za-z])") if porgs else None
         self.exclude = [word_re(x, plural=True) for x in raw.get("exclude_title", [])]
         self.min_score = raw.get("min_score_to_notify", 4)
         self.exclude_languages = set(raw.get("exclude_languages", []))
@@ -97,6 +105,33 @@ class Profile:
         if s and self.is_un(j):
             s += self.un_bonus
         return s, hits
+
+    def partner_score(self, j):
+        """(score, hits, interests) for the partner's profile."""
+        if not self.partner_on:
+            return 0, [], []
+        title = j["title"].lower()
+        rest = f"{j['category']} {j['summary']} {j['jtype']}".lower()
+        s, hits = 0, []
+        for k, pat, w in self.p_keywords:
+            if pat.search(title):
+                s += 2 * w
+                hits.append(k)
+            elif pat.search(rest):
+                s += w
+                hits.append(k)
+        if s and (self.is_un(j) or (self.p_org_re and self.p_org_re.search(j["org"] or ""))):
+            s += self.un_bonus
+        text = f"{j['title']} {j['category']} {j['summary']}".lower()
+        ints = [g for g, pats in self.p_interests.items() if any(p.search(text) for p in pats)]
+        return s, hits, ints
+
+    def partner_tier(self, j):
+        if not (self.partner_on and self.partner_alerts) or j["excluded"]:
+            return 0
+        if not set(j["regions"]) & self.notify_locations or j.get("pscore", 0) < self.partner_min:
+            return 0
+        return 2 if j["pscore"] >= self.top_score else 1
 
     def is_un(self, j):
         return bool(self.un_re and (j["source"] in UN_SOURCES or self.un_re.search(j["org"] or "")))
@@ -234,8 +269,9 @@ def describe(j):
     line = " · ".join(b for b in bits if b)
     if j.get("deadline"):
         line += f"\nDeadline: {j['deadline']}"
-    if j.get("hits"):
-        line += f"\nMatches: {', '.join(j['hits'][:6])}"
+    hits = j.get("phits") if j.get("for_partner_only") else j.get("hits")
+    if hits:
+        line += f"\nMatches: {', '.join(hits[:6])}"
     return line
 
 
@@ -252,17 +288,19 @@ def notify(new_matches, topic, first_run, total, dash_url):
     normal = [j for j in new_matches if j["tier"] < 2]
     for j in loud[:15]:
         top = j["tier"] == 3
-        ntfy(topic, f"{'TOP MATCH ' + str(j['score']) if top else 'Match ' + str(j['score'])} · {', '.join(j['regions']) or j['location']}: {j['title']}",
+        label = f"For partner · match {j['pscore']}" if j.get("for_partner_only") else (f"TOP MATCH {j['score']}" if top else f"Match {j['score']}")
+        ntfy(topic, f"{label} · {', '.join(j['regions']) or j['location']}: {j['title']}",
              describe(j), click=j["url"], tags="rotating_light,star" if top else "star", priority=5 if top else 4)
         time.sleep(1)
     if len(loud) > 15:
         ntfy(topic, f"{len(loud) - 15} more priority matches", "Open the dashboard to see them all.", click=dash_url, priority=4)
     if len(normal) <= 5:
         for j in normal:
-            ntfy(topic, f"{', '.join(j['regions'])}: {j['title']}", describe(j), click=j["url"], tags="briefcase", priority=3)
+            who = "For partner · " if j.get("for_partner_only") else ""
+            ntfy(topic, f"{who}{', '.join(j['regions'])}: {j['title']}", describe(j), click=j["url"], tags="briefcase", priority=3)
             time.sleep(1)
     else:
-        lst = "\n".join(f"• {j['title']} — {j['org'] or j['source']} ({', '.join(j['regions'])})" for j in normal[:12])
+        lst = "\n".join(f"• {'[partner] ' if j.get('for_partner_only') else ''}{j['title']} — {j['org'] or j['source']} ({', '.join(j['regions'])})" for j in normal[:12])
         ntfy(topic, f"{len(normal)} new matching vacancies", lst, click=dash_url or normal[0]["url"], tags="briefcase", priority=3)
     text = "\n\n".join(f"{j['title']}\n{describe(j)}\n{j['url']}" for j in new_matches)
     email(f"Job watch: {len(new_matches)} new matching vacancies", text)
@@ -279,6 +317,9 @@ def build_dashboard(state, profile):
         "min_score": profile.min_score,
         "top_score": profile.top_score,
         "priority_locations": sorted(profile.priority_locations),
+        "partner_on": profile.partner_on,
+        "partner_min": profile.partner_min,
+        "partner_interests": list(profile.p_interests),
         "interests": list(profile.interests) + ["UN"] + ([profile.always_label] if profile.always_label else []),
         "sources": state.get("last_sources", {}),
         "jobs": jobs,
@@ -355,6 +396,8 @@ def main():
         score, hits = profile.score(j)
         rec = {**j, "regions": regions, "level": lvl, "type": type_of(j, lvl), "score": score, "hits": hits, "interests": profile.interests_of(j), "lang": guess_lang(f"{j['title']} {j['summary']}"),
                "excluded": profile.excluded(j)}
+        rec["pscore"], rec["phits"], rec["pinterests"] = profile.partner_score(j)
+        rec["for"] = [w for w, ok in (("me", score >= profile.min_score), ("partner", rec["pscore"] >= profile.partner_min)) if ok]
         rec.pop("sid", None)
         if old:
             rec["first_seen"] = old["first_seen"]
@@ -369,7 +412,11 @@ def main():
         rec["sources"] = [j["source"]]
         state["jobs"][fp] = rec
         rec["tier"] = profile.tier(rec)
-        rec["alert"] = rec["tier"] > 0
+        rec["ptier"] = profile.partner_tier(rec)
+        rec["alert"] = rec["tier"] > 0 or rec["ptier"] > 0
+        if rec["tier"] == 0 and rec["ptier"] > 0:
+            rec["for_partner_only"] = True
+            rec["tier"] = rec["ptier"]
         if rec["alert"]:
             new_matches.append(rec)
 
