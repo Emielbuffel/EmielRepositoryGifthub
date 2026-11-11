@@ -1,5 +1,6 @@
 // "Sell ideas": which of the stocks you own to sell first when you hold too many, or need room for a new leader.
-// Built on the book and your playbook: keep at most ~8 stocks; to add a new one, sell the weakest; cut every loss at
+// Built on the book and your playbook: hold no more positions than your size allows (e.g. 20% each: 5, or 7 with
+// 50% margin in an uptrend); to add a new one, sell the weakest; cut every loss at
 // 7–8%; sell laggards and keep the leaders ("weed the garden"); money in a stock that goes nowhere could work in a
 // leader. Hard sell rules come first; the rest is ranked by a keep score (0–100, higher = keep).
 // Pure functions: bars + detector result + your cost → a verdict with reasons.

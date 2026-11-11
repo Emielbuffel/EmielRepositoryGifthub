@@ -6,7 +6,7 @@ import * as store from '../data/store.js';
 import { App, emit, loadState } from '../app.js';
 import { NEWS_SOURCES, newsSettings } from '../data/news.js';
 import { $, $$, html, raw, render, toast } from './dom.js';
-import { strategy, saveStrategy } from '../data/plans.js';
+import { strategy, rawStrategy, saveStrategy } from '../data/plans.js';
 import { DEFAULT_PLAN, pyramid } from '../core/strategy.js';
 import { COACH_MODELS } from '../data/coach.js';
 
@@ -14,7 +14,7 @@ export const VERSION = '1.0.0';
 
 export async function initSettings(el) {
   const theme = await store.get('theme', 'system');
-  const S = await strategy();
+  const S = await rawStrategy(), live = await strategy();
   const P100 = x => +(x * 100).toFixed(2);
   render(el, html`
     <section class="card">
@@ -46,11 +46,13 @@ export async function initSettings(el) {
       <h2>Buying plan</h2>
       <p class="small" style="margin:0">Equal-size positions bought in a pyramid inside the buy zone: a first buy at the breakout, smaller adds as the stock proves itself, and a stop below the buy point. Used by the Plan button, its alerts and the portfolio checks.</p>
       <form id="stPlan" style="display:grid;gap:10px">
-        <div class="grid2"><label class="field"><span>Portfolio value</span><input class="input" name="capital" type="number" min="0" step="any" value="${S.capital}"></label>
+        <label class="field"><span>Portfolio value</span><select class="input" name="capitalMode"><option value="auto" ${S.capitalMode !== 'manual' ? raw('selected') : ''}>Automatic: my stocks at today's prices + my cash${live.auto ? ` (now ${Math.round(live.capital).toLocaleString('en-US')} ${S.ccy})` : ' (add holdings and cash on the Portfolio tab)'}</option><option value="manual" ${S.capitalMode === 'manual' ? raw('selected') : ''}>A fixed number I enter</option></select></label>
+        <div class="grid2"><label class="field"><span>Fixed portfolio value (used when set to fixed, or until holdings and cash are known)</span><input class="input" name="capital" type="number" min="0" step="any" value="${S.capital}"></label>
         <label class="field"><span>Currency</span><select class="input" name="ccy">${['EUR', 'USD', 'GBP', 'CHF'].map(c => html`<option ${c === S.ccy ? raw('selected') : ''}>${c}</option>`)}</select></label></div>
         <div class="grid2"><label class="field"><span>Position size (% of portfolio)</span><input class="input" name="posPct" type="number" min="1" max="100" step="any" value="${P100(S.posPct)}"></label>
         <label class="field"><span>Stop (%)</span><input class="input" name="stop" type="number" min="1" max="20" step="any" value="${P100(S.stop)}"></label></div>
-        <label class="field"><span>Maximum number of stocks (the book: about 8; the Sell ideas tab uses it)</span><input class="input" name="maxStocks" type="number" min="1" max="40" step="1" value="${S.maxStocks || 8}"></label>
+        <label class="field"><span>Maximum margin (loan as % of your own money; 0 = never). Used only in a confirmed uptrend.</span><input class="input" name="maxMargin" type="number" min="0" max="100" step="5" value="${P100(S.maxMargin ?? 0.5)}"></label>
+        <p class="small muted" style="margin:0">Number of positions: worked out from the position size and the market — ${Math.floor((1 + (S.maxMargin ?? 0.5)) / S.posPct + 1e-9)} in a confirmed uptrend with full margin (${Math.round((1 + (S.maxMargin ?? 0.5)) * 100)}% invested), ${Math.floor(1 / S.posPct + 1e-9)} without margin, ${Math.floor(0.6 / S.posPct + 1e-9)} when the uptrend is under pressure, ${Math.max(1, Math.floor(0.2 / S.posPct + 1e-9))} in a correction.</p>
         <label class="field"><span>Stop measured from</span><select class="input" name="stopFrom"><option value="cost" ${S.stopFrom !== 'pivot' ? raw('selected') : ''}>Your average purchase price (the book: 7–8% below what you paid)</option><option value="pivot" ${S.stopFrom === 'pivot' ? raw('selected') : ''}>The buy point (your webinar notes: 5–8% below the buy point)</option></select></label>
         <div class="grid2"><label class="field"><span>Buys (% of the position, e.g. 50 35 15)</span><input class="input" name="tranches" value="${S.tranches.map(P100).join(' ')}"></label>
         <label class="field"><span>No buys this many days before earnings</span><input class="input" name="earningsDays" type="number" min="0" max="60" value="${S.earningsDays}"></label></div>
@@ -107,7 +109,7 @@ export async function initSettings(el) {
     settings.keys.anthropic = $('#stAnth', el).value.trim(); settings.coachModel = $('#stAnthModel', el).value; await saveSettings();
     const m = $('#stAnthMsg', el); m.className = 'small t-ok'; m.textContent = settings.keys.anthropic ? 'Saved. The Coach now answers with Claude.' : 'Key removed: the Coach gives offline answers.';
   };
-  const ex = () => { const p = pyramid(S, 100); $('#stPlanEx', el).textContent = `Example: ${Math.round(S.capital).toLocaleString('en-US')} ${S.ccy} → ${p.target.toLocaleString('en-US')} ${S.ccy} per position, bought as ${p.steps.map(x => x.amount.toLocaleString('en-US')).join(' + ')} ${S.ccy}; stop ${Math.round(S.stop * 100)}% below ${S.stopFrom === 'pivot' ? 'the buy point' : 'your average purchase price'}, raised to just below the buy point at +15% and to breakeven at +20%.`; };
+  const ex = () => { const cap = S.capitalMode !== 'manual' && live.auto ? live.capital : S.capital, p = pyramid({ ...S, capital: cap }, 100); $('#stPlanEx', el).textContent = `${S.capitalMode !== 'manual' && live.auto ? 'Now' : 'Example'}: ${Math.round(cap).toLocaleString('en-US')} ${S.ccy} → ${p.target.toLocaleString('en-US')} ${S.ccy} per position, bought as ${p.steps.map(x => x.amount.toLocaleString('en-US')).join(' + ')} ${S.ccy}; stop ${Math.round(S.stop * 100)}% below ${S.stopFrom === 'pivot' ? 'the buy point' : 'your average purchase price'}, raised to just below the buy point at +15% and to breakeven at +20%.`; };
   ex();
   $('#stPlan', el).onsubmit = async e => {
     e.preventDefault(); const F = new FormData(e.target), nums = v => String(v).split(/[\s,;–-]+/).map(Number).filter(x => isFinite(x) && x >= 0);
@@ -115,7 +117,8 @@ export async function initSettings(el) {
     const sum = tr.reduce((a, b) => a + b, 0);
     if (tr.length < 1 || Math.abs(sum - 100) > 0.5) { toast(`The buys should add up to 100% (now ${sum}%).`); return; }
     if (a2.length !== 2 || a3.length !== 2) { toast('Give each add as two numbers, e.g. 1 2.'); return; }
-    Object.assign(S, { capital: +F.get('capital'), ccy: F.get('ccy'), posPct: +F.get('posPct') / 100, stop: +F.get('stop') / 100, stopFrom: F.get('stopFrom'), tranches: tr.map(x => x / 100), add2: a2.map(x => x / 100), add3: a3.map(x => x / 100), earningsDays: +F.get('earningsDays'), maxStocks: Math.max(1, Math.round(+F.get('maxStocks') || 8)) });
+    Object.assign(S, { capital: +F.get('capital'), ccy: F.get('ccy'), posPct: +F.get('posPct') / 100, stop: +F.get('stop') / 100, stopFrom: F.get('stopFrom'), tranches: tr.map(x => x / 100), add2: a2.map(x => x / 100), add3: a3.map(x => x / 100), earningsDays: +F.get('earningsDays'), capitalMode: F.get('capitalMode') === 'manual' ? 'manual' : 'auto', maxMargin: Math.max(0, Math.min(1, (+F.get('maxMargin') || 0) / 100)) });
+    delete S.maxStocks;
     S.zone = Math.max(S.zone || 0.05, S.add3[1]);
     await saveStrategy(S); ex(); toast('Buying plan saved.');
   };

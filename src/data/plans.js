@@ -9,11 +9,27 @@ import { earnings, isDemo } from './service.js';
 import { nextReport } from '../core/earnings.js';
 import { factor } from './fx.js';
 import { pushEvent, setPlanHook } from './alerts.js';
+import { accountValue } from './account.js';
+import { sizing } from '../core/sizing.js';
 
 const k = name => name + (isDemo() ? '.demo' : '.real');
 const id = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 
-export async function strategy() { return { ...DEFAULT_PLAN, ...(await store.get('strategy', {})) }; }
+export async function rawStrategy() { return { ...DEFAULT_PLAN, ...(await store.get('strategy', {})) }; }
+/**
+ * The plan as used everywhere: in 'auto' mode the portfolio value is your own money (stocks at today's prices + cash),
+ * so a position is always e.g. 20% of what the account is worth today. S.sz holds the sizing (positions, margin room).
+ */
+export async function strategy() {
+  const S = await rawStrategy();
+  S.manualCapital = S.capital;
+  if (S.capitalMode !== 'manual') {
+    try { const a = await accountValue(S.ccy); if (a.rows.length || a.cashKnown) { S.acct = a; S.auto = true; if (a.equity > 0) S.capital = a.equity; } } catch (e) { /* prices not available: keep the number */ }
+  }
+  S.sz = sizing(S.acct ? { stocks: S.acct.stocks, cash: S.acct.cash } : { stocks: 0, cash: S.capital }, S, App.mkt && App.mkt.us);
+  S.maxStocks = S.sz.maxPositions;
+  return S;
+}
 export async function saveStrategy(s) { await store.set('strategy', s); emit('strategy'); }
 
 export async function allPlans() { return store.get(k('plans'), []); }

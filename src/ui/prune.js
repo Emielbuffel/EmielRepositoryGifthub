@@ -27,7 +27,7 @@ export async function initPrune(el) {
 
 async function load() {
   const seq = ++V.seq, H = (App.holdings || []).filter(h => h.sym && h.shares > 0);
-  const S = { ...DEFAULT_PLAN, ...(await strategy()) }, max = S.maxStocks || 8;
+  const S = { ...DEFAULT_PLAN, ...(await strategy()) }, z = S.sz, max = z ? z.maxPositions : 8;
   if (!H.length) {
     render($('#prSum'), html`<div class="empty">${raw(ICON.portfolio)}<p>No holdings yet. Import your broker statement or add positions on the Portfolio tab, and this page ranks them weakest first.</p><button class="btn primary" id="prGo">Open Portfolio</button></div>`);
     $('#prGo').onclick = () => go('portfolio'); $('#prList').innerHTML = ''; $('#prRepl').hidden = true; return;
@@ -50,7 +50,8 @@ async function load() {
   const n0 = x => Math.round(x).toLocaleString('en-US') + ' ' + S.ccy, freed = syms => syms.reduce((t, s) => t + (vals[s] || 0), 0);
   const nm = s => { const x = items.find(i => i.sym === s); return html`<b>${s}</b>${x && x.name ? html` <span class="muted">(${x.name})</span>` : ''}`; };
   render($('#prSum'), html`
-    <div class="card-head"><h2>Sell ideas</h2><span class="muted tiny">${items.length} stock${items.length === 1 ? '' : 's'} · your limit ${max} · ${n0(total)}</span></div>
+    <div class="card-head"><h2>Sell ideas</h2><span class="muted tiny">${items.length} stock${items.length === 1 ? '' : 's'} · limit now ${max} · ${n0(total)} in stocks</span></div>
+    ${z ? html`<p class="small" style="margin:0">Limit ${max} = ${Math.round(z.allowed * 100)}% invested ÷ ${Math.round(S.posPct * 100)}% per position, because the market is ${z.market === 'corr' ? 'in a correction (0–20% invested, no margin)' : z.market === 'press' ? 'under pressure (40–60% invested, no margin)' : `in a confirmed uptrend (100%${z.maxMargin ? ' + up to ' + Math.round(z.maxMargin * 100) + '% margin' : ''})`}. Own money ${n0(z.equity)}${z.loan ? `, margin loan ${n0(z.loan)} (${Math.round(z.marginPct * 100)}%)` : ''}; ${z.exposure != null ? Math.round(z.exposure * 100) + '% invested' : ''}.</p>` : ''}
     <div class="pr-kpis">
       <div class="pr-k ${r.over ? 't-bad' : 't-ok'}"><b>${items.length} / ${max}</b><span>${r.over ? r.over + ' more than your limit' : 'within your limit'}</span></div>
       <div class="pr-k ${r.sellNow.length ? 't-bad' : 't-ok'}"><b>${r.sellNow.length}</b><span>sell rule broken</span></div>
@@ -61,8 +62,10 @@ async function load() {
       ${r.sellNow.length ? html`<li class="t-bad"><b>Sell now (a rule is broken):</b> ${r.sellNow.map((s, i) => html`${i ? ', ' : ''}${nm(s)}`)}.</li>` : ''}
       ${r.over && r.sellNow.length >= r.over ? html`<li><b>You hold ${r.over} more than your limit of ${max}.</b> Selling the stocks above (a rule is broken) already brings you within it, and frees about ${n0(freed(r.sellNow))}.</li>` : ''}
       ${r.over && r.sellNow.length < r.over ? html`<li><b>You hold ${r.over} more than your limit of ${max}.</b> Sell the ${r.over === 1 ? 'weakest' : r.over + ' weakest'}${r.sellNow.length ? ' (the ones with a broken rule first)' : ''}: ${r.suggest.map((s, i) => html`${i ? ', ' : ''}${nm(s)}`)} — frees about ${n0(freed(r.suggest))} for your leaders or a new breakout.</li>` : ''}
+      ${z && z.loan > 0 && z.market !== 'up' ? html`<li class="t-bad"><b>Pay back the margin loan (${n0(z.loan)}):</b> the market is no longer in a confirmed uptrend. Selling ${repay(r.list, z.loan, vals).map((s, i) => html`${i ? ', ' : ''}${nm(s)}`)} (weakest first) covers it.</li>` : ''}
+      ${z && z.marginPct > z.maxMargin + 1e-9 ? html`<li class="t-bad"><b>Margin above your ${Math.round(z.maxMargin * 100)}% limit:</b> bring the loan down by about ${n0(z.loan - z.maxMargin * z.equity)} — selling the weakest first.</li>` : ''}
       ${!r.over && r.room ? html`<li><b>Need room for a new buy?</b> Sell ${nm(r.room)} first (the weakest now, keep score ${r.list[0].score}).</li>` : ''}
-      <li class="muted small">The book: keep your money in your best stocks and sell the laggards; to add a new stock, sell the weakest. Each sale costs the stock-exchange tax (TOB), and gains are taxed 10% in Belgium since 2026.</li>
+      <li class="muted small">The book: keep your money in your best stocks and sell the laggards; to add a new stock, sell the weakest; use margin only in a bull market, and cut losses even faster with it. Each sale costs the stock-exchange tax (TOB), and gains are taxed 10% in Belgium since 2026.</li>
     </ul>`);
   render($('#prList'), html`
     <div class="card-head"><h2>Your stocks, weakest first</h2><span class="muted tiny">Keep score 0–100 · tap a stock for its chart</span></div>
@@ -88,4 +91,11 @@ async function load() {
       <ul class="alist">${cand.map(x => html`<li data-s="${x.s}"><span class="t">${x.s}</span><span class="n">${x.nm || ''}</span><span class="small num">${x.p.st === 'buyzone' ? 'buy zone ' + pc(x.p.di, 1) : pc(x.p.di, 1) + ' to buy point'} · RS ${x.rs}</span></li>`)}</ul>`);
     $$('#prRepl li[data-s]').forEach(li => { li.onclick = () => openStock(li.dataset.s); });
   }
+}
+
+/** The weakest stocks whose sale covers `amount` (e.g. a margin loan). */
+function repay(list, amount, vals) {
+  const out = []; let t = 0;
+  for (const x of list) { if (t >= amount) break; if (vals[x.sym]) { out.push(x.sym); t += vals[x.sym]; } }
+  return out;
 }

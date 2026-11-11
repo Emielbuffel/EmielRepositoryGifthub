@@ -31,7 +31,7 @@ BUY RULES: buy zone = buy point to +5%; beyond that extended — never chase, wa
 Early entries (downtrend-line break, bounce off the 21/50-day line, shelf, pocket pivot, three weeks tight, shakeout+rally) are allowed only in an uptrend,
 for true leaders, in the upper part of a sound base — and START SMALLER: the back-test shows early entries reach +20% before -8% only 16% of the time vs 22% for breakouts.
 
-EMIEL'S OWN RULES (webinar notes): max 8 stocks (to add one, sell the weakest). Pyramid 50% at the buy point, 35% at +1-2%, 15% near +5%.
+EMIEL'S OWN RULES (webinar notes): each position is 20% of his own money as it is today (stocks at today's prices + cash), so the size grows and shrinks with the account; the number of positions follows from it and the market: 100% invested ÷ 20% = 5 positions, up to 150% (7 positions) with margin — he uses margin up to 50% of his own money, ONLY in a confirmed uptrend, and pays it back when the market comes under pressure; 40–60% invested (3 positions) under pressure, 0–20% in a correction. With margin a 10% fall costs ~15% of his own money: stops matter even more. To add a stock when full, sell the weakest (the Sell ideas tab ranks them). Pyramid 50% at the buy point, 35% at +1-2%, 15% near +5%.
 Position target ~20% of the portfolio for top conviction, ~12.5% neutral default. Stop 5-8% below cost, no exceptions. Extra buys at the 50-day line.
 NO new positions in the 2 weeks before an earnings report. Trades via DEGIRO; Belgian taxes: TOB per trade and 10% capital-gains tax since 2026 — bundle trades, weigh taxes when selling winners.
 
@@ -52,6 +52,7 @@ export function coachContext({ stock, mkt, holdings, strategy }) {
   if (stock) ctx.stock = stock;
   if (mkt) ctx.market = { us: mkt.us === 'up' ? 'confirmed uptrend' : mkt.us === 'press' ? 'uptrend under pressure' : 'correction' };
   if (holdings && holdings.length) ctx.portfolio = { positions: holdings.length, symbols: holdings.map(h => h.sym).slice(0, 12) };
+  if (strategy && strategy.sz) { const z = strategy.sz; ctx.account = { ownMoney: Math.round(z.equity), stocks: Math.round(z.stocks), cash: Math.round(z.cash), marginLoan: Math.round(z.loan), marginPctOfOwn: z.marginPct != null ? Math.round(z.marginPct * 100) + '%' : null, invested: z.exposure != null ? Math.round(z.exposure * 100) + '%' : null, allowedNow: Math.round(z.allowed * 100) + '%', maxPositionsNow: z.maxPositions, marginLimit: Math.round(z.maxMargin * 100) + '%', valueFrom: strategy.auto ? 'stocks at today\'s prices + cash' : 'fixed number in settings', warnings: z.notes.map(n => n[1]) }; }
   if (strategy) ctx.plan = { capital: strategy.capital, ccy: strategy.ccy, perPosition: Math.round(strategy.posPct * 100) + '%', pyramid: strategy.tranches.map(t => Math.round(t * 100) + '%').join('/'), stop: Math.round(strategy.stop * 100) + '%', noBuyDaysBeforeEarnings: strategy.earningsDays };
   return ctx;
 }
@@ -77,7 +78,7 @@ export function askOffline(q0, ctx) {
       'Only in an uptrend, only for real leaders (RS 80+), only in the upper part of a sound base — and start smaller: in your back-test early entries reached +20% before −8% just 16% of the time, vs 22% for normal breakouts. The official buy point stays the confirmation.');
   } else if (has(q, 'size', 'how much', 'hoeveel', 'position', 'positie', 'pyramid')) {
     out.push(P ? `Your plan: ${P.perPosition} of ${P.capital.toLocaleString('en-US')} ${P.ccy} per position, bought in steps of ${P.pyramid} — 50% at the buy point, 35% at +1–2%, the rest near +5%. Stop −${P.stop}.` : 'Pyramid: 50% at the buy point, 35% at +1–2%, 15% near +5%; stop 5–8% below cost.',
-      'Max 8 stocks (O’Neil): to add a new one, sell the weakest. No new positions in the ~2 weeks before earnings' + (s && s.nextEarnings ? ` — ${name} reports ${s.nextEarnings}.` : '.'));
+      (ctx.account ? `Positions now: up to ${ctx.account.maxPositionsNow} (${ctx.account.allowedNow} invested allowed in this market${ctx.account.marginLoan ? `; margin loan ${ctx.account.marginLoan.toLocaleString('en-US')} = ${ctx.account.marginPctOfOwn} of your own money, limit ${ctx.account.marginLimit}` : ''}). ` : '') + 'Margin only in a confirmed uptrend, up to your limit; to add a stock when full, sell the weakest (Sell ideas tab). No new positions in the ~2 weeks before earnings' + (s && s.nextEarnings ? ` — ${name} reports ${s.nextEarnings}.` : '.'));
   } else if (has(q, 'moat', 'buffett', 'quality', 'fundament', 'eps', 'earnings', 'winst')) {
     out.push('Fundamentals have two parts in your playbook:',
       '1. O’Neil growth: latest quarterly EPS ≥ +25% y/y, sales ≥ +20–25% (ideally accelerating), 3 years of 25%+ annual EPS growth, ROE ≥ 17%.',

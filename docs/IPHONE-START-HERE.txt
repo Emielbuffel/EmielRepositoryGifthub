@@ -1,0 +1,40 @@
+BASE PATTERN DESK FOR IPHONE / IPAD — START HERE
+================================================
+
+Apple only lets an app onto an iPhone when it is signed with an Apple ID. This folder is the complete
+Xcode project with the newest app inside; you sign and install it yourself in a few minutes.
+
+WHAT YOU NEED
+- Your Mac with Xcode (free, from the Mac App Store).
+- Your Apple ID (a free one works).
+- Your iPhone and a USB cable.
+
+STEPS (first time, about 10 minutes)
+1. Unzip this file anywhere, for example in Documents. Keep the folders together:
+   the "ios" folder and the "node_modules" folder must stay side by side.
+2. Open  ios/App/App.xcodeproj  (double-click). Xcode opens and downloads the Capacitor
+   package by itself (a minute; you need internet).
+3. Xcode → Settings → Accounts → "+" → Apple ID → sign in.
+4. In the left column click "App" (the blue icon) → target "App" → tab "Signing & Capabilities":
+   - tick "Automatically manage signing";
+   - Team: choose your name (Personal Team);
+   - if Xcode says the Bundle Identifier is taken, change it to something of your own,
+     for example  com.yourname.basepatterndesk
+5. Connect the iPhone with the cable, unlock it, tap "Trust this computer".
+   On the iPhone: Settings → Privacy & Security → Developer Mode → on (the iPhone restarts).
+6. At the top of Xcode choose your iPhone as the destination and press the ▶ (Run) button.
+7. The first time, the iPhone asks to trust you as developer:
+   Settings → General → VPN & Device Management → your Apple ID → Trust.
+8. Open "Base Pattern Desk" on the iPhone. Allow notifications when asked.
+
+GOOD TO KNOW
+- With a free Apple ID the app stops opening after 7 days: connect the iPhone and press ▶ again
+  (30 seconds). With the paid Apple Developer Program (99 USD/year) it lasts a year.
+- Live prices, the screener, alerts and holdings notifications work in the app itself (no website
+  needed). iOS pauses apps in the background, so checks run while the app is open.
+- Your watchlists, holdings and settings live on each device separately. Copy them with
+  Settings → Back up my data (on the Mac) and Restore a backup (on the iPhone), e.g. via AirDrop.
+- Alternative without Xcode: the Home Screen app from your own free website (docs/PHONE.md, way A);
+  it updates itself.
+
+Educational tool, not investment advice.

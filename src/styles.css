@@ -578,3 +578,7 @@ tr.auto td { background: color-mix(in srgb, var(--blue) 6%, transparent); }
 .tbl.pr tr.pr-why td { font-size: 12px; color: var(--ink2); padding-top: 0; white-space: normal; }
 .pr-bar { display: inline-block; width: 60px; height: 6px; background: var(--fill2); border-radius: 3px; vertical-align: middle; overflow: hidden; }
 .pr-bar i { display: block; height: 100%; border-radius: 3px; background: var(--warn); } .pr-bar i.ok { background: var(--up); } .pr-bar i.bad { background: var(--down); }
+
+/* trade plan on a phone: the price moves into the line under each step */
+.show-m { display: none; }
+@media (max-width: 560px) { .tbl.tp .hide-m { display: none; } .tbl.tp .show-m { display: inline; } .tbl.tp td, .tbl.tp th { padding-left: 6px; padding-right: 6px; } }

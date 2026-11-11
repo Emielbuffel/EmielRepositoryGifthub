@@ -9,9 +9,9 @@ export const STATUS = {
 };
 
 export const EXPOSURE = {
-  up: "Rule-of-thumb exposure in a confirmed uptrend: 80–100% invested. Buy proper breakouts from sound bases on strong volume.",
-  press: "Rule-of-thumb exposure when an uptrend is under pressure: 40–60% invested. Be selective, take some profits and tighten stops.",
-  corr: "Rule-of-thumb exposure in a correction: 0–20% invested. Protect capital and wait for a follow-through day (day 4–7 of a rally attempt, at the latest day 10: a 1%+ gain on higher volume).",
+  up: "Rule-of-thumb exposure in a confirmed uptrend: 80–100% invested — and, if you use margin, up to your margin limit on top (e.g. 150% with 50% margin) once your first buys are working. Buy proper breakouts from sound bases on strong volume.",
+  press: "Rule-of-thumb exposure when an uptrend is under pressure: 40–60% invested, no margin (pay the loan back first). Be selective, take some profits and tighten stops.",
+  corr: "Rule-of-thumb exposure in a correction: 0–20% invested, no margin. Protect capital and wait for a follow-through day (day 4–7 of a rally attempt, at the latest day 10: a 1%+ gain on higher volume).",
 };
 
 /** b = ascending daily bars {time,open,high,low,close,volume}. Returns null with fewer than 80 bars. */
