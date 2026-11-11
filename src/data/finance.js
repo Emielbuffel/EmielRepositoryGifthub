@@ -18,10 +18,10 @@ const DEFAULTS = () => ({
     { id: id(), name: 'Net salary', monthly: 0 },
     { id: id(), name: 'Rental income', monthly: 0 },
   ],
-  costs: [{ id: id(), name: 'Living costs (all)', cat: 'Other', monthly: 3000 }],
+  costs: [{ id: id(), name: 'Living costs (all)', cat: 'Other', monthly: 2500 }],
   plan: {
-    targets: [{ years: 10, value: 750000 }, { years: 20, value: 1500000 }, { years: 30, value: 3000000 }],
-    start: 208000, startMode: 'auto', monthly: 700, boost: false, ret: 0.06, vol: 0.15, infl: 0.02, preset: 'preserve', reserveMonths: 18, illiquidCap: 0.35,
+    targets: [{ years: 10, value: 250000 }, { years: 20, value: 500000 }, { years: 30, value: 1000000 }],
+    start: 100000, startMode: 'auto', monthly: 500, boost: false, ret: 0.06, vol: 0.15, infl: 0.02, preset: 'preserve', reserveMonths: 18, illiquidCap: 0.35,
     withdrawFrom: 30, marginRate: 0.06, other: { pe: 0, ra: 0, hf: 0, fi: 0 },
   },
 });

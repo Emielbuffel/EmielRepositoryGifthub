@@ -177,7 +177,7 @@ function draw(rows, A, bench, errs) {
   $$('#pHold tr.click').forEach(tr => { tr.onclick = e => { if (e.target.closest('[data-edit]')) return; openStock(tr.dataset.s); }; });
   $$('#pHold [data-edit]').forEach(b => { b.onclick = () => editHolding(App.holdings.find(h => h.sym === b.dataset.edit)); });
   if (!bad) { ['#pFlags', '#pRisk', '#pCorr', '#pStress'].forEach(id => { $(id).innerHTML = ''; }); return; }
-  // position sizes are measured against the plan capital (e.g. 20% of 208,000 EUR), or the holdings if larger
+  // position sizes are measured against the plan capital (e.g. 20% of 100,000 EUR), or the holdings if larger
   const capBase = P.strategy && P.capFx ? P.strategy.capital * P.capFx : 0;
   const posPct = Math.round(((P.strategy || {}).posPct || 0.2) * 100);
   // sizes are measured against the whole account (stocks + cash, margin lowers it); without a cash balance, against

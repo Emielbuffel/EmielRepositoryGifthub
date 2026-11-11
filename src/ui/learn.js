@@ -93,7 +93,7 @@ export function initLearn(el) {
       <h2>Buying plan: pyramiding a position</h2>
       <div class="prose small">
         <ul>
-          <li><b>Equal-size positions.</b> Each stock gets the same target, e.g. 20% of the portfolio (with 208,000 EUR: 41,600 EUR).</li>
+          <li><b>Equal-size positions.</b> Each stock gets the same target, e.g. 20% of the portfolio (with 100,000 EUR: 20,000 EUR).</li>
           <li><b>Average up, never down.</b> Buy in shrinking steps while the stock proves itself: 50% at the breakout (20,800 EUR), 30–35% once it is 1–2% above the buy point (14,560 EUR), the last 15–20% near +5% (6,240 EUR). The book: follow-up buys are smaller, 2–3% above the previous buy, never more than 5% past the buy point.</li>
           <li><b>Stay inside the buy zone.</b> All buys happen between the buy point and 5% above it; past that the stock is extended. Don't chase.</li>
           <li><b>Cut losses at 7–8% below your purchase price</b> (the book; your notes say 5–8% below the buy point, which is close because all buys are within 5% of it). At +15% raise the sell line to just below the buy point; after +20% never let it turn into a loss.</li>

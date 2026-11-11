@@ -7,7 +7,7 @@
 // Pure functions: amounts, the next step for a position, and portfolio-level checks.
 
 export const DEFAULT_PLAN = {
-  capital: 208000,        // portfolio value in the plan currency
+  capital: 100000,        // portfolio value in the plan currency
   ccy: 'EUR',
   posPct: 0.20,           // target size of one position (share of the portfolio)
   tranches: [0.50, 0.35, 0.15],

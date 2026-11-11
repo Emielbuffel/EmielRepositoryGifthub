@@ -33,7 +33,7 @@ const save = async () => { await saveFinance(P.f); draw(); };
 
 function draw() {
   const f = P.f, pl = f.plan;
-  // starting point: the portfolio from the Portfolio tab, or the amount you enter (e.g. 208,000)
+  // starting point: the portfolio from the Portfolio tab, or the amount you enter (e.g. 100,000)
   const others = (pl.other.fi || 0) + (pl.other.ra || 0) + (pl.other.pe || 0) + (pl.other.hf || 0);
   const fromApp = P.pf ? P.pf.stocks + P.pf.cash : null; // broker cash below zero = margin, subtracted
   const useApp = pl.startMode === 'app' ? fromApp != null : pl.startMode === 'manual' ? false : fromApp != null && fromApp > 0;
