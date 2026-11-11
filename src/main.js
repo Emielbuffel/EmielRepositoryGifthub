@@ -23,6 +23,7 @@ import { manageLists } from './ui/lists.js';
 import { onAlerts, triggeredCount, checkAll, describe } from './data/alerts.js';
 import { useList, saveLists } from './app.js';
 import { startLive } from './data/live.js';
+import { startSync } from './data/sync.js';
 import './data/plans.js'; // registers buying-plan checks with the alerts
 import { toast } from './ui/dom.js';
 
@@ -150,6 +151,7 @@ async function boot() {
   updates();
   await loadState();
   if (!App.holdings) App.holdings = await store.get(isDemo() ? 'holdings.demo' : 'holdings.real', []); // for 'My stocks' and the holdings checks
+  if (!isDemo()) startSync(); // the same data on the Mac app, the iPhone app and the claude.ai page
   nav();
   on(type => {
     if (type === 'view') show(App.view);

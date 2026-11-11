@@ -405,7 +405,10 @@ const FREE = {
   blurb: 'Daily prices for about 380 stocks and the main indexes come with the app, so it works offline. The desktop app adds the latest days, the full price history and any other ticker, from free public chart feeds (Yahoo Finance, Stooq). No account or key needed.',
   async daily(sym, key, fromT, { long = false } = {}) {
     const snap = await snapBars(sym);
-    if (fromT) { const r = await live(sym, fromT); return { ...r, live: true }; } // incremental update of a cached series
+    if (fromT) { // incremental update of a cached series (on claude.ai through the FMP connector)
+      try { const r = await live(sym, fromT); return { ...r, live: true }; }
+      catch (e) { if (isApp()) throw e; const { fmpDaily } = await import('./mcpfeed.js'); const f = await fmpDaily(sym, fromT); if (f && f.bars.length) return { bars: fixSpikes(alignQuote(f.bars, f.quote)), quote: f.quote, name: f.name, currency: 'USD', live: true, via: 'FMP' }; throw e; }
+    }
     try {
       // long = the whole history (chart view); otherwise only the days after the built-in data
       const r = long ? await live(sym, null, { max: true }) : await live(sym, snap ? snap.bars[snap.bars.length - 1].time - 10 * 86400 : null);
@@ -415,6 +418,18 @@ const FREE = {
       if (!mg.ok) { const full = long ? r : await live(sym, null); return { ...full, name: full.name || snap.name, live: true, note: 'live prices only (built-in data differed)' }; }
       return { ...snap, name: snap.name || r.name, currency: snap.currency || r.currency, splits: r.splits, quote: r.quote, bars: fixSpikes(mg.bars), live: true };
     } catch (e) {
+      // on claude.ai: US stocks and indexes from the viewer's own FMP connector
+      if (!isApp()) {
+        try {
+          const { fmpDaily } = await import('./mcpfeed.js');
+          const f = await fmpDaily(sym, snap ? snap.bars[snap.bars.length - 1].time - 10 * 86400 : null);
+          if (f && f.bars.length) {
+            const mg = snap ? mergeBars(snap.bars, f.bars) : { ok: true, bars: f.bars };
+            const bars = fixSpikes(alignQuote(mg.ok ? mg.bars : f.bars, f.quote));
+            if (bars.length >= 60) return { ...(snap || {}), name: (snap && snap.name) || f.name, currency: 'USD', exchange: (snap && snap.exchange) || f.exchange, quote: f.quote, bars, live: true, via: 'FMP' };
+          }
+        } catch (e2) { /* keep the built-in data */ }
+      }
       if (snap) return { ...snap, live: false };
       throw new DataError(`${sym} is not in the built-in data${isApp() ? ' and the free feeds did not answer' : '. Other tickers load in the desktop app (browsers block the free feeds)'}.`, 'notfound');
     }

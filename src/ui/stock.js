@@ -299,7 +299,7 @@ function volLine() {
    quotes for European exchanges run about 15 minutes behind). */
 function liveStatus(d, src) {
   const n = d.bars.length - 1, dt = fD(d.bars[n].time), q = d.quote;
-  let s = `${provider().id === 'free' ? 'Live · Yahoo Finance' : src} · daily data through ${dt}`;
+  let s = `${d.via === 'FMP' ? 'Live · FMP (your connector)' : provider().id === 'free' ? (d.builtIn || d.live === false ? 'Built-in data' : 'Live · Yahoo Finance') : src} · daily data through ${dt}`;
   if (q && q.time) {
     const t = new Date((q.time + (q.off || 0)) * 1000), hm = t.toISOString().slice(11, 16), now = Date.now() / 1000, ss = q.session;
     s += ` · last trade ${Math.floor((q.time + (q.off || 0)) / 86400) === Math.floor(d.bars[n].time / 86400) ? '' : fD(q.time) + ' '}${hm} exchange time`;

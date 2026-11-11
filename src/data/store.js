@@ -13,8 +13,13 @@ export async function get(key, def) {
   } catch (e) { return mem.has(key) ? mem.get(key) : def; }
 }
 
-export async function set(key, value) {
+/** Called after every save (the sync notes which data changed); `quiet` saves (from the sync itself) skip it. */
+let onSet = null;
+export const setHook = fn => { onSet = fn; };
+
+export async function set(key, value, { quiet = false } = {}) {
   mem.set(key, value);
+  if (!quiet && onSet) { try { onSet(key); } catch (e) { /* ignore */ } }
   try {
     if (native) await Preferences.set({ key, value: JSON.stringify(value) });
     else localStorage.setItem('bpd.' + key, JSON.stringify(value));
@@ -24,6 +29,15 @@ export async function set(key, value) {
 export async function remove(key) {
   mem.delete(key);
   try { if (native) await Preferences.remove({ key }); else localStorage.removeItem('bpd.' + key); } catch (e) { /* ignore */ }
+}
+
+/** Every key saved on this device. */
+export async function keys() {
+  try {
+    if (native) return (await Preferences.keys()).keys;
+    const out = []; for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (k && k.startsWith('bpd.')) out.push(k.slice(4)); }
+    return out;
+  } catch (e) { return [...mem.keys()]; }
 }
 
 /* ---------- IndexedDB cache for price history ---------- */

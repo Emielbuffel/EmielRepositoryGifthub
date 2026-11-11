@@ -9,6 +9,8 @@ import { $, $$, html, raw, render, toast } from './dom.js';
 import { strategy, rawStrategy, saveStrategy } from '../data/plans.js';
 import { DEFAULT_PLAN, pyramid } from '../core/strategy.js';
 import { COACH_MODELS } from '../data/coach.js';
+import { syncNow, onSyncStatus, syncTargets } from '../data/sync.js';
+import * as storeS from '../data/store.js';
 
 export const VERSION = '1.0.0';
 
@@ -28,6 +30,17 @@ export async function initSettings(el) {
       <p class="small muted" style="margin:0">In the desktop app prices refresh by themselves: about every 90 seconds for your watchlists and holdings while their market is open (every 30 minutes otherwise), every minute on the open chart, every 5 minutes on the Market tab.</p>
       <label class="field"><span>Screener: scan again automatically every</span><select class="input" id="stAuto">${[[15, '15 minutes'], [30, '30 minutes'], [60, 'hour'], [0, 'never (only when I press Run scan)']].map(([v, l]) => html`<option value="${v}" ${(settings.autoScan ?? 30) === v ? raw('selected') : ''}>${l}</option>`)}</select></label>
       <label class="chk"><input type="checkbox" id="stNotW" ${settings.notifyWatch === false ? '' : raw('checked')}> Also notify when a watchlist stock breaks out into its buy zone (stocks you own always get buy-zone and add-on notifications)</label>
+    </section>
+    <section class="card" id="stSync">
+      <h2>Sync between your devices</h2>
+      <p class="small" style="margin:0">Keeps your watchlists, holdings, cash, buying plans, journal, statements (dividends, taxes, trades), alerts, drawings and plan settings the same on the Mac app, the iPhone app and the page on claude.ai. Prices, scans and keys stay on each device.</p>
+      <ul class="small" style="margin:0">
+        <li><b>On claude.ai</b> (the page on your iPhone Home Screen): automatic, in your private storage of the page — only you can read it.</li>
+        <li><b>Mac app and iPhone app</b>: through a private GitHub Gist in your GitHub account. Make a token with only the "gist" permission (<a href="https://github.com/settings/tokens/new?scopes=gist&amp;description=Base%20Pattern%20Desk%20sync" target="_blank" rel="noopener">github.com → new token, "gist" ticked</a>), paste it here on each device. Add it on the claude.ai page too to link both worlds.</li>
+      </ul>
+      <div class="row" style="gap:8px;justify-content:flex-start;flex-wrap:wrap"><input class="input" id="stGist" type="password" placeholder="GitHub token (gist permission)" value="${settings.keys.gist || ''}" autocomplete="off" style="flex:1;min-width:220px"><button class="btn" id="stGistSave">Save token</button><button class="btn primary" id="stSyncNow">Sync now</button></div>
+      <p class="small muted" id="stSyncMsg" style="margin:0"></p>
+      <p class="muted tiny" style="margin:0">A device that joins takes the data already synced and adds only what it has extra, so a new iPhone never overwrites your Mac's lists. After that the newest change of each item wins.</p>
     </section>
     <section class="card" id="stSite">
       <h2>Phone &amp; automatic updates</h2>
@@ -105,6 +118,16 @@ export async function initSettings(el) {
     </section>`);
   keyBox();
   siteBox(el);
+  const syncMsg = async st => {
+    st = st || await storeS.get('sync.status', null); const m = $('#stSyncMsg', el); if (!m) return;
+    const where = (await syncTargets()).map(t => t.name);
+    if (st && st.busy) { m.textContent = 'Syncing…'; return; }
+    m.className = 'small ' + (st && !st.ok ? 't-bad' : 'muted');
+    m.textContent = !where.length ? 'Sync is off on this device: add a GitHub token (or open the page on claude.ai).' : !st ? `Syncing with ${where.join(' and ')}.` : st.ok ? `Last synced ${new Date(st.at).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })} with ${st.places.join(' and ')}${st.applied ? ` · ${st.applied} item${st.applied > 1 ? 's' : ''} updated from another device` : ''}.` : 'Sync failed: ' + st.msg;
+  };
+  syncMsg(); onSyncStatus(syncMsg);
+  $('#stGistSave', el).onclick = async () => { settings.keys.gist = $('#stGist', el).value.trim(); await saveSettings(); toast(settings.keys.gist ? 'Token saved: syncing now.' : 'Token removed: GitHub sync is off.'); if (settings.keys.gist) syncNow({ reason: 'manual' }); syncMsg(); };
+  $('#stSyncNow', el).onclick = () => syncNow({ reason: 'manual' }).then(st => { if (!st) toast('Sync is off on this device: add a GitHub token first.'); });
   $('#stAnthSave', el).onclick = async () => {
     settings.keys.anthropic = $('#stAnth', el).value.trim(); settings.coachModel = $('#stAnthModel', el).value; await saveSettings();
     const m = $('#stAnthMsg', el); m.className = 'small t-ok'; m.textContent = settings.keys.anthropic ? 'Saved. The Coach now answers with Claude.' : 'Key removed: the Coach gives offline answers.';

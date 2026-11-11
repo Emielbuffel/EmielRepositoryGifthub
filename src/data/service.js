@@ -72,7 +72,7 @@ export async function daily(sym, { force = false, long = false, years = YEARS, m
       bars = r.bars.filter(b => b.time >= fromFull); meta = r;
     }
     if (bars.length < 60) throw new DataError(`Only ${bars.length} days of history for ${sym}: the detector needs at least 60.`, 'notfound');
-    const doc = { sym, name: meta.name || (cached && cached.name) || '', currency: meta.currency || currencyOf(sym), exchange: meta.exchange || '', bars, splits: meta.splits || (cached && cached.splits) || [], quote: meta.quote || null, fetchedAt: Date.now(), live: meta.live, builtIn: P.id === 'free' && meta.live === false };
+    const doc = { sym, name: meta.name || (cached && cached.name) || '', currency: meta.currency || currencyOf(sym), exchange: meta.exchange || '', bars, splits: meta.splits || (cached && cached.splits) || [], quote: meta.quote || null, via: meta.via || null, fetchedAt: Date.now(), live: meta.live, builtIn: P.id === 'free' && meta.live === false };
     if (P.id !== 'demo' && meta.live !== false) await store.cacheSet(ck, doc); // built-in data is already on the device
     return doc;
   } catch (e) {
