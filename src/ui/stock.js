@@ -3,6 +3,8 @@
 import { fundCard } from './fundui.js';
 import { phaseTag, phaseStrip } from './phase.js';
 import { renderPanel } from './panel.js';
+import { volStats } from '../core/volume.js';
+import { fmtVol } from '../core/analysis.js';
 import { setCoachStock, openCoach } from './coachui.js';
 import { drawIntraday } from './intraday.js';
 import { companyCard, fundsItem } from './companyui.js';
@@ -43,7 +45,8 @@ export async function initStock(el) {
     <div class="stock-head">
       <div class="stock-id">
         <div class="sym"><b id="sSym">—</b><span id="sName"></span><span id="sTags" class="row" style="gap:6px"></span></div>
-        <div class="px"><span class="p" id="sPx">—</span><span class="ch" id="sCh"></span></div>
+        <div class="px"><span class="p" id="sPx">—</span><span class="ch" id="sCh"></span><span class="ext" id="sExt" hidden></span></div>
+        <div class="vol-line" id="sVol" hidden></div>
         <div class="status"><span class="dot" id="sDot"></span><span id="sStatus">Loading…</span></div>
       </div>
       <div class="toolbar">
@@ -94,12 +97,13 @@ export async function initStock(el) {
       <section class="card" id="cNums"></section>
       <section class="card" id="cDraw"></section>
     </div>
-    <p class="disclaimer">Educational analysis using widely published rules of thumb. Not investment advice. End-of-day data; check prices with your broker before acting.</p>
+    <p class="disclaimer">Educational analysis using widely published rules of thumb. Not investment advice. Daily bars; in the desktop app today's price and volume refresh about every minute while the market is open. Check prices with your broker before acting.</p>
   `);
   V.chart = new StockChart($('#sChart'), $('#sLegend'));
   V.chart.panes = { ...prefs.panes }; V.chart.style = prefs.style; V.chart.build();
   V.chart.clickCb = onChartClick;
   wireTools();
+  clearInterval(V.liveTimer); V.liveTimer = setInterval(liveTick, 60000);
   onAlerts(() => { if (V.data) head(); });
   on((type) => {
     if (type === 'stock') load(App.sym);
@@ -119,7 +123,7 @@ async function load(sym, force = false) {
   chips();
   try {
     const g = group(sym);
-    const [d, bench] = await Promise.all([daily(sym, { force, long: true }), benchmarkFor(sym, prefs.rsBench[g], { long: true }).catch(() => null)]);
+    const [d, bench] = await Promise.all([daily(sym, { force, long: true, maxAge: 60e3 }), benchmarkFor(sym, prefs.rsBench[g], { long: true }).catch(() => null)]);
     if (seq !== V.seq) return;
     // an index has no RS line against itself
     $('#sChartWrap').hidden = false; if (IV.range) intra(null);
@@ -130,7 +134,7 @@ async function load(sym, force = false) {
     V.sells = sellPoints(d.bars, V.R);
     V.mkt = isIndexSym(sym) ? analyseIndex(d.bars) : null;
     const n = d.bars.length - 1;
-    await rememberQuote(sym, d.bars[n].close, d.bars[n].close / d.bars[n - 1].close - 1, V.phase ? { ph: V.phase.label, pt: V.phase.tone } : {});
+    { const v = volStats(d.bars); await rememberQuote(sym, d.bars[n].close, d.bars[n].close / d.bars[n - 1].close - 1, { ...(V.phase ? { ph: V.phase.label, pt: V.phase.tone } : {}), ...(v ? { vp: v.pct } : {}) }); }
     head(); draw(false); cards();
     if (App.pendingZoom && App.pendingZoom.sym === sym) { // "Review chart" from the journal
       const z = App.pendingZoom; App.pendingZoom = null; const idx = t => { let i = d.bars.findIndex(b => b.time >= t); return i < 0 ? n : i; };
@@ -254,10 +258,46 @@ function head() {
   $('#sPx').textContent = fp(p);
   const e = $('#sCh'); e.textContent = (ch >= 0 ? '+' : '−') + money(Math.abs(ch), V.data.currency).replace(/^[^\d]*/, '') + ' (' + pc(ch / d[n - 1].close, 2) + ')';
   e.className = 'ch ' + (ch >= 0 ? 'up' : 'down');
+  volLine();
   tags();
   const inLists = App.lists.filter(l => l.syms.includes(V.sym));
   render($('#sWatch'), html`${raw(inLists.length ? ICON.starFill : ICON.star)}<span>${inLists.length ? (inLists.length === 1 ? inLists[0].name : inLists.length + ' lists') : 'Add to list'}</span>`);
   activeFor(V.sym).then(a => { if (V.sym) render($('#sAlert'), html`${raw(ICON.bell)}<span>${a.length ? a.length + ' alert' + (a.length > 1 ? 's' : '') : 'Alert'}</span>`); });
+}
+
+/* Today's volume against the 50-day average, the week so far, and pre-market / after-hours prices (Yahoo's own split). */
+function volLine() {
+  const d = V.data, q = d.quote || null, vs = V.vs = volStats(d.bars, { quote: q });
+  const el = $('#sVol'), ext = $('#sExt');
+  if (q && q.ext && d.bars.length) {
+    const s = q.session, now = Date.now() / 1000, pre = s && now < s.start && now > s.start - 6 * 3600, c = d.bars[d.bars.length - 1].close;
+    ext.hidden = !!(s && now >= s.start && now < s.end);
+    ext.textContent = `${pre ? 'Pre-market' : 'After hours'} ${fp(q.ext)} (${pc(q.ext / c - 1, 2)})`;
+    ext.title = 'Trading outside the regular session. The day change above is for the regular session, as on Yahoo Finance.';
+  } else ext.hidden = true;
+  if (!vs) { el.hidden = true; return; }
+  el.hidden = false;
+  const hot = vs.pct >= 0.4, cl = hot ? (vs.up ? 'up hot' : 'down hot') : vs.pct < -0.3 ? 'muted' : '';
+  const wk = vs.week;
+  render(el, html`
+    <span title="Volume today${vs.open ? ' so far' : ''} against the average of the previous 50 trading days">Volume <b>${fmtVol(vs.vol)}</b>${vs.open ? ' so far' : ''} · <span class="${cl}">${pc(vs.pct, 0)} vs 50-day avg</span> (${fmtVol(vs.avg50)})</span>
+    ${vs.open && vs.pace ? html`<span title="A rough estimate: volume is heavier at the open and the close, so the app scales today's volume by a typical intraday curve">On pace for ≈ <b>${fmtVol(vs.pace)}</b> (${pc(vs.pacePct, 0)})</span>` : ''}
+    ${wk ? html`<span title="All trading days since Monday, against the average of the 10 full weeks before">This week <b>${fmtVol(wk.vol)}</b> in ${wk.days} day${wk.days > 1 ? 's' : ''}${vs.avgWeek ? html` · avg week ${fmtVol(vs.avgWeek)}` : ''} · <span class="${wk.perDayPct >= 0.25 ? (wk.up ? 'up' : 'down') : wk.perDayPct < -0.25 ? 'muted' : ''}" title="The average day this week against the 50-day average${wk.up ? '' : ' — on a down week'}">${pc(wk.perDayPct, 0)} per day</span></span>` : ''}
+    ${vs.since ? html`<span class="t-warn">Most volume in ${vs.since.days} days</span>` : ''}`);
+}
+
+/* While the market is open, refresh today's price and volume about every minute (desktop app, live feed only). */
+async function liveTick() {
+  const d = V.data, q = d && d.quote, s = q && q.session, now = Date.now() / 1000;
+  if (!s || now < s.start || now > s.end + 300 || document.visibilityState !== 'visible' || IV.range) return;
+  const el = $('#sPx'); if (!el || !el.offsetParent) return;
+  const sym = V.sym, seq = V.seq;
+  let nd; try { nd = await daily(sym, { long: true, maxAge: 30e3 }); } catch (e) { return; }
+  if (seq !== V.seq || sym !== V.sym || !nd || nd.stale) return;
+  V.data = nd; V.R = PAT.scan(nd.bars); V.phase = isIndexSym(sym) ? null : patternPhase(V.R, nd.bars); V.sells = sellPoints(nd.bars, V.R);
+  const n = nd.bars.length - 1;
+  { const v = volStats(nd.bars); await rememberQuote(sym, nd.bars[n].close, nd.bars[n].close / nd.bars[n - 1].close - 1, { ...(V.phase ? { ph: V.phase.label, pt: V.phase.tone } : {}), ...(v ? { vp: v.pct } : {}) }); }
+  head(); draw(true); renderPanel(V);
 }
 
 /* RS rank (1-99 within the built-in universe, from the latest scan when there is one) and sector */
@@ -309,7 +349,7 @@ function chartState() {
   return {
     sym: V.sym, daily: V.data.bars, bench: V.bench ? V.bench.bars : null, R: V.R, tf: prefs.tf, lines: prefs.lines, patMode: prefs.patMode, log: prefs.log !== false,
     drawings: drawings(), cur: V.data.currency, pending: V.pending, poly: V.poly, mkt: V.mkt, compare: V.cmp, trades: V.trades || [], plan: V.planLv || null, sells: prefs.sells !== false && !V.mkt ? V.sells || [] : [],
-    ms: !!prefs.ms, autoPlan: prefs.tradePlan !== false && !V.mkt ? autoPlan() : null,
+    volLive: V.vs && V.vs.open ? V.vs : null, ms: !!prefs.ms, autoPlan: prefs.tradePlan !== false && !V.mkt ? autoPlan() : null,
     eps: prefs.eps !== 'off' && V.earn ? { mode: prefs.eps, points: epsPoints(V.earn, prefs.eps) } : null,
   };
 }
@@ -328,6 +368,7 @@ function lineNotes() {
   const first = V.data.bars[0].time, out = [], web = !isApp();
   const why = web ? ' In the web version only the built-in data is available; the desktop app loads it from free feeds.' : '';
   if (prefs.eps !== 'off' && V.earnErr) out.push(`EPS line: no earnings data for ${V.sym}.${why || ' The free feeds did not answer: try Refresh later.'}`);
+  else if (prefs.eps !== 'off' && !web && provider().id === 'free' && !settings.secEmail && !splitSym(V.sym).sfx && !V.sym.startsWith('^') && settings.epsBasis !== 'adjusted') out.push('EPS: for the long US earnings history (SEC filings back to about 2009) add your e-mail in Settings → Market data. The SEC refuses requests without a contact e-mail.');
   else if (prefs.eps !== 'off' && V.earn && epsPoints(V.earn, prefs.eps).length < 2) out.push(`EPS line: not enough reported quarters for ${V.sym} yet${prefs.eps === 'ttm' ? ' (the 4-quarter line needs a year of reports; try "Quarterly")' : ''}.`);
   const ids = (prefs.cmp[group(V.sym)] || []).filter(id => id !== '__none');
   if (ids.length > V.cmp.length) out.push(`${ids.length - V.cmp.length} comparison line${ids.length - V.cmp.length > 1 ? 's are' : ' is'} not available.${why}`);
@@ -675,6 +716,7 @@ function wireTools() {
       signals: (S.flags || []).slice(0, 5).map(f => f[1]),
       fundamentals: z ? `latest EPS ${z.eps} (${z.yoy != null ? pc(z.yoy, 0) + ' y/y' : 'y/y unknown'})${z.revYoy != null ? ', sales ' + pc(z.revYoy, 0) + ' y/y' : ''}` : null,
       nextEarnings: nx ? fD(nx.time) : null,
+      volume: V.vs ? `today ${fmtVol(V.vs.vol)}${V.vs.open ? ' so far (market open' + (V.vs.pace ? ', full-day estimate ' + fmtVol(V.vs.pace) : '') + ')' : ''}, ${pc(V.vs.pct, 0)} vs 50-day avg ${fmtVol(V.vs.avg50)}; this week ${V.vs.week ? fmtVol(V.vs.week.vol) + ' in ' + V.vs.week.days + ' days' : '—'}, avg week ${fmtVol(V.vs.avgWeek)}; up/down volume ratio ${V.vs.udRatio != null ? V.vs.udRatio.toFixed(2) : '—'}; breakout needs ≥ ${fmtVol(V.vs.breakoutNeed)}` : null,
     };
   });
   $('#sWatch').onclick = () => { if (V.sym) listMenu(V.sym); };

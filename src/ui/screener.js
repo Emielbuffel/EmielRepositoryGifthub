@@ -184,7 +184,7 @@ async function run() {
   else for (let i = 0; i < syms.length && !S.cancel; i++) { await one(syms[i]); prog(i + 1); if (i % 4 === 3) await new Promise(r => setTimeout(r, 0)); }
   rankRS(rows);
   S.rows = rows; S.at = Date.now(); S.running = false; score(); await loadFx();
-  rememberQuotes(rows.map(r => ({ s: r.s, c: r.c, ch: r.d1, ph: r.ph && r.ph.l, pt: r.ph && r.ph.t, rs: r.rs })));
+  rememberQuotes(rows.map(r => ({ s: r.s, c: r.c, ch: r.d1, ph: r.ph && r.ph.l, pt: r.ph && r.ph.t, rs: r.rs, vp: r.vr != null ? r.vr - 1 : null })));
   setTimeout(() => emit('scan'), 0);
   await store.set('screen.' + provider().id, { rows, at: S.at });
   $('#scProg').hidden = true; $('#scRun').disabled = false;

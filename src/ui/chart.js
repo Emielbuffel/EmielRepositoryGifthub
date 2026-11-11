@@ -36,6 +36,8 @@ export function outcome(p) {
 export class StockChart {
   constructor(el, legendEl) {
     this.el = el; this.legendEl = legendEl; this.drawn = []; this.panes = { rsi: false, macd: false };
+    // label inside the volume pane: the bar's volume against the average
+    this.volEl = document.createElement('div'); this.volEl.className = 'vol-legend'; (el.parentElement || el).appendChild(this.volEl);
     this.clickCb = null; this.S = null; this.build();
     this.mq = matchMedia('(prefers-color-scheme: dark)');
     this.onTheme = () => { this.theme(); if (this.S) this.update(this.S, true); };
@@ -69,8 +71,9 @@ export class StockChart {
     this.cmpS = [];
     c.timeScale().subscribeVisibleLogicalRangeChange(() => { this.applyMarkers(); if (this.cmpS.length && !this.rebasePending) { this.rebasePending = true; requestAnimationFrame(() => { this.rebasePending = false; this.rebase(); this.legend(this.lastT ?? null); }); } });
     const volFmt = { type: 'custom', formatter: fmtVol, minMove: 1 };
-    this.volS = c.addSeries(HistogramSeries, { priceFormat: volFmt, lastValueVisible: false, priceLineVisible: false }, 1);
-    this.vAvgS = L({ priceFormat: volFmt }, 1);
+    this.volS = c.addSeries(HistogramSeries, { priceFormat: volFmt, lastValueVisible: true, priceLineVisible: false }, 1);
+    this.vAvgS = L({ priceFormat: volFmt, lineWidth: 2, lastValueVisible: true, title: 'avg' }, 1);
+    c.priceScale('right', 1).applyOptions({ scaleMargins: { top: 0.22, bottom: 0 } });
     let pane = 2;
     if (this.panes.rsi) {
       this.rsiPane = pane++;
@@ -84,7 +87,7 @@ export class StockChart {
       this.hS = c.addSeries(HistogramSeries, { priceLineVisible: false, lastValueVisible: false }, p);
     } else this.mS = this.sS = this.hS = null;
     const ps = c.panes();
-    ps[0].setStretchFactor(1); ps[1].setStretchFactor(0.24); ps.slice(2).forEach(p => p.setStretchFactor(0.2));
+    ps[0].setStretchFactor(1); ps[1].setStretchFactor(0.3); ps.slice(2).forEach(p => p.setStretchFactor(0.2));
     c.subscribeCrosshairMove(p => { this.lastT = p && p.time != null ? p.time : null; this.legend(this.lastT); });
     c.subscribeClick(p => {
       if (!this.clickCb || !p.point || !this.bars) return;
@@ -115,7 +118,7 @@ export class StockChart {
     this.ln.l1.applyOptions({ color: fade(tok('--ma1'), 0.6) }); this.ln.l2.applyOptions({ color: fade(tok('--ma2'), 0.65) });
     this.ln.l3.applyOptions({ color: fade(tok('--ma3'), 0.8) }); this.ln.l4.applyOptions({ color: fade(tok('--ma4'), 0.6) });
     this.ln.bbu.applyOptions({ color: fade(tok('--ma1'), 0.7) }); this.ln.bbl.applyOptions({ color: fade(tok('--ma1'), 0.7) });
-    this.rsS.applyOptions({ color: fade(tok('--rs'), 0.75) }); this.vAvgS.applyOptions({ color: fade(tok('--ma3'), 0.7) });
+    this.rsS.applyOptions({ color: fade(tok('--rs'), 0.75) }); this.vAvgS.applyOptions({ color: tok('--vavg') || tok('--orange') });
     if (this.rsiS) { this.rsiS.applyOptions({ color: tok('--blue') }); [this.r70, this.r30].forEach(p => p.applyOptions({ color: ink })); }
     if (this.mS) { this.mS.applyOptions({ color: tok('--ma3') }); this.sS.applyOptions({ color: tok('--orange') }); }
     this.epsS.applyOptions({ color: tok('--eps') });
@@ -159,7 +162,9 @@ export class StockChart {
     const up = S.ms ? '#1565d8' : tok('--up'), dn = S.ms ? '#d6188f' : tok('--down'), col = i => b[i].close >= b[i].open ? up : dn;
     this.ps.setData(withF(b.map((x, i) => { const c = col(i); return { time: x.time, open: x.open, high: x.high, low: x.low, close: x.close, color: c, borderColor: c, wickColor: c }; })));
     this.ps.applyOptions({ priceFormat: { type: 'price', precision: S.cur === 'KRW' || S.cur === 'JPY' ? 0 : 2, minMove: S.cur === 'KRW' || S.cur === 'JPY' ? 1 : 0.01 } });
-    this.volS.setData(withF(b.map((x, i) => ({ time: x.time, value: x.volume, color: col(i) + 'B0' }))));
+    // MarketSurge style: bars with volume at least 40% above the average stand out, quiet days are pale
+    const vRef = i => K.vavg[i - 1] || K.vavg[i];
+    this.volS.setData(withF(b.map((x, i) => { const r = vRef(i) ? x.volume / vRef(i) : 1; return { time: x.time, value: x.volume, color: col(i) + (r >= 1.4 ? 'FF' : r < 0.6 ? '55' : '90') }; })));
     this.vAvgS.setData(ser(K.vavg));
     ['l1', 'l2', 'l3', 'l4'].forEach(k => { this.ln[k].setData(ser(K[k])); this.ln[k].applyOptions({ visible: !!S.lines[k] }); });
     this.ln.bbu.setData(ser(K.bbu)); this.ln.bbl.setData(ser(K.bbl)); [this.ln.bbu, this.ln.bbl].forEach(s => s.applyOptions({ visible: !!S.lines.bb }));
@@ -189,7 +194,7 @@ export class StockChart {
   legend(t) {
     const b = this.bars, K = this.K, S = this.S; if (!b || !K) return;
     const i = t != null ? this.idxAt(t) : b.length - 1, x = b[i], pv = i ? b[i - 1].close : x.open, ch = x.close / pv - 1, cl = ch >= 0 ? 'up' : 'down';
-    const av = K.vavg[i];
+    const av = K.vavg[i - 1] || K.vavg[i];
     const narrow = this.el.clientWidth < 560;
     let h = narrow
       ? `<span>${fD(x.time)}</span><span>C <b class="${cl}">${f2(x.close)}</b> <span class="${cl}">${pc(ch, 2)}</span></span><span>Vol <b>${fmtVol(x.volume)}</b></span>`
@@ -202,6 +207,18 @@ export class StockChart {
     }
     if (this.cmpPerf) this.cmpPerf.forEach(c => { h += `<span style="color:${c.color}">${narrow ? c.name.slice(0, 14) : c.name} <b style="color:${c.color}">${pc(c.idx, 1)}</b> vs ${narrow ? 'stock' : S.sym} ${pc(c.stock, 1)}</span>`; });
     this.legendEl.innerHTML = h;
+    this.volLegend(i, av);
+  }
+
+  /** The label at the top of the volume pane: volume, the average and how far above or below it the bar is. */
+  volLegend(i, av) {
+    const x = this.bars[i], el = this.volEl; if (!el) return;
+    const panes = this.chart.panes(); if (panes.length < 2 || !x.volume) { el.hidden = true; return; }
+    el.hidden = false; el.style.top = (panes[0].getHeight() + 4) + 'px';
+    const W = this.S.tf === 'W', r = av ? x.volume / av - 1 : null, live = this.S.volLive && i === this.bars.length - 1 ? this.S.volLive : null;
+    const cls = r == null ? '' : r >= 0.4 ? (x.close >= x.open ? 'up' : 'down') : r < -0.4 ? 'muted' : '';
+    el.innerHTML = `<span>${W ? 'Week' : 'Volume'} <b>${fmtVol(x.volume)}</b></span>${r == null ? '' : `<span class="${cls}">${pc(r, 0)} vs avg</span>`}<span style="color:var(--vavg)">${W ? '10-week' : '50-day'} avg <b style="color:var(--vavg)">${fmtVol(av)}</b></span>`
+      + (live && live.pace ? `<span>full day ≈ <b>${fmtVol(live.pace)}</b> (${pc(live.pacePct, 0)}, estimate)</span>` : '');
   }
 
   /** EPS line: smooth curve through each report's EPS, dots coloured by year-over-year growth. */

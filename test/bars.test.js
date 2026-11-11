@@ -26,3 +26,23 @@ test('a live quote on a new day becomes its own bar (correct day change)', () =>
   assert.equal(out.length, 3); assert.equal(out[2].close, 103); assert.ok(out[2].liveBar);
   assert.equal(alignQuote(b, { price: 300, time: 2 * D }).length, 2); // implausible jump: ignored
 });
+
+test("today's bar keeps the feed's volume and day range (Yahoo sends them with an empty close)", () => {
+  const b = mk(0, [100, 101]);
+  const out = alignQuote(b, { price: 99, time: 2 * D + 3600, volume: 262485, high: 101.5, low: 98.7, open: 100.5 });
+  assert.equal(out[2].volume, 262485); assert.equal(out[2].high, 101.5); assert.equal(out[2].low, 98.7); assert.equal(out[2].open, 100.5);
+  const same = alignQuote(b, { price: 101, time: D + 3600, volume: 5000 }); // same day, price equal: volume still updated
+  assert.equal(same[1].volume, 5000); assert.equal(same[1].close, 101);
+});
+
+test('EPS from two sources: the same quarter is never listed twice (built-in list newest-first)', async () => {
+  const { mergeEarnings } = await import('../src/core/earnings.js');
+  const Q = 91 * D, T = 2000 * D;
+  const built = [{ time: T + 3 * Q, eps: null }, { time: T + 2 * Q, eps: 2.22 }, { time: T + Q, eps: 1.87 }, { time: T, eps: 1.62 }, { time: T - Q, eps: 1.3 }, { time: T - 2 * Q, eps: 1.05 }, { time: T - 3 * Q, eps: 0.81 }]; // newest first, next report on top
+  const long = [{ time: T - Q + 15 * D, eps: 1.3 }, { time: T + 15 * D, eps: 1.76 }, { time: T + Q + 15 * D, eps: 2.39 }, { time: T + 2 * Q + 15 * D, eps: 2.46 }, { time: T - 3 * Q - 200 * D, eps: 3.1, annual: true }];
+  const rows = mergeEarnings(built, long);
+  assert.equal(rows.filter(r => r.eps != null && !r.annual).length, 6); // only the built-in quarters
+  assert.equal(rows.filter(r => r.annual).length, 1); // the year before them is added
+  const newer = mergeEarnings(built, [...long, { time: T + 3 * Q + 20 * D, eps: 2.6 }]);
+  assert.ok(newer.some(r => r.eps === 2.6)); // a quarter newer than the built-in data is added
+});

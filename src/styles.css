@@ -7,7 +7,7 @@
   --blue: #007AFF; --green: #248A3D; --red: #D70015; --orange: #C93400; --yellow: #A05A00; --indigo: #5856D6; --purple: #AF52DE; --teal: #0E7C8F; --pink: #D30F45;
   --up: #1F9D49; --down: #E0352B;
   --ok: var(--green); --warn: #B25000; --bad: var(--red);
-  --ma1: #8E8E93; --ma2: #0A9CA8; --ma3: #2F6FEB; --ma4: #1C1C1E; --rs: #8E44EC; --pivot: #15803D; --draw: #0A84FF; --grid: rgba(60,60,67,.07);
+  --ma1: #8E8E93; --ma2: #0A9CA8; --ma3: #2F6FEB; --vavg: #E8590C; --ma4: #1C1C1E; --rs: #8E44EC; --pivot: #15803D; --draw: #0A84FF; --grid: rgba(60,60,67,.07);
   /* one colour per base type */
   --eps: #BE123C; --cmp1: #64748B; --cmp2: #0284C7; --cmp3: #C026D3;
   --p-cwh: #F08A00; --p-cup: #C99A00; --p-dbl: #AF52DE; --p-flat: #0FA3B8; --p-asc: #5856D6; --p-htf: #FF2D55; --p-3wt: #8E6E4A; --p-desc: #E0352B;
@@ -27,7 +27,7 @@
   --sep: rgba(84,84,88,.55); --sep-strong: rgba(84,84,88,.8);
   --blue: #0A84FF; --green: #30D158; --red: #FF453A; --orange: #FF9F0A; --yellow: #FFD60A; --indigo: #5E5CE6; --purple: #BF5AF2; --teal: #40C8E0; --pink: #FF375F;
   --up: #30D158; --down: #FF453A; --ok: #30D158; --warn: #FF9F0A; --bad: #FF453A;
-  --ma1: #98989D; --ma2: #40C8E0; --ma3: #64A0FF; --ma4: #E5E5EA; --rs: #BF5AF2; --pivot: #4ADE80; --draw: #64D2FF; --grid: rgba(235,235,245,.06);
+  --ma1: #98989D; --ma2: #40C8E0; --ma3: #64A0FF; --vavg: #FF9F0A; --ma4: #E5E5EA; --rs: #BF5AF2; --pivot: #4ADE80; --draw: #64D2FF; --grid: rgba(235,235,245,.06);
   --eps: #FB7185; --cmp1: #94A3B8; --cmp2: #38BDF8; --cmp3: #E879F9;
   --p-cwh: #FF9F0A; --p-cup: #FFD60A; --p-dbl: #BF5AF2; --p-flat: #40C8E0; --p-asc: #8E8CFF; --p-htf: #FF375F; --p-3wt: #C8A27A; --p-desc: #FF453A;
   --shadow: none;
@@ -39,7 +39,7 @@
   --sep: rgba(84,84,88,.55); --sep-strong: rgba(84,84,88,.8);
   --blue: #0A84FF; --green: #30D158; --red: #FF453A; --orange: #FF9F0A; --yellow: #FFD60A; --indigo: #5E5CE6; --purple: #BF5AF2; --teal: #40C8E0; --pink: #FF375F;
   --up: #30D158; --down: #FF453A; --ok: #30D158; --warn: #FF9F0A; --bad: #FF453A;
-  --ma1: #98989D; --ma2: #40C8E0; --ma3: #64A0FF; --ma4: #E5E5EA; --rs: #BF5AF2; --pivot: #4ADE80; --draw: #64D2FF; --grid: rgba(235,235,245,.06);
+  --ma1: #98989D; --ma2: #40C8E0; --ma3: #64A0FF; --vavg: #FF9F0A; --ma4: #E5E5EA; --rs: #BF5AF2; --pivot: #4ADE80; --draw: #64D2FF; --grid: rgba(235,235,245,.06);
   --eps: #FB7185; --cmp1: #94A3B8; --cmp2: #38BDF8; --cmp3: #E879F9;
   --p-cwh: #FF9F0A; --p-cup: #FFD60A; --p-dbl: #BF5AF2; --p-flat: #40C8E0; --p-asc: #8E8CFF; --p-htf: #FF375F; --p-3wt: #C8A27A; --p-desc: #FF453A;
   --shadow: none;
@@ -541,3 +541,15 @@ tr.auto td { background: color-mix(in srgb, var(--blue) 6%, transparent); }
 .co-m { max-width: 92%; padding: 9px 12px; border-radius: 14px; font-size: 14px; line-height: 1.45; white-space: pre-wrap; overflow-wrap: break-word; }
 .co-m.user { justify-self: end; background: var(--blue); color: #fff; border-bottom-right-radius: 4px; white-space: normal; }
 .co-m.assistant { justify-self: start; background: var(--fill); border-bottom-left-radius: 4px; }
+
+/* volume: label in the chart's volume pane, the line under the price, the panel block */
+.vol-legend { position: absolute; left: 10px; z-index: 3; pointer-events: none; font-size: 11px; font-family: var(--mono); color: var(--muted); display: flex; flex-wrap: wrap; gap: 0 10px; background: color-mix(in srgb, var(--bg2) 70%, transparent); border-radius: 6px; padding: 1px 6px; max-width: calc(100% - 90px); }
+.vol-legend b { color: var(--ink); font-weight: 600; }
+.vol-legend .up, .vol-line .up { color: var(--up); } .vol-legend .down, .vol-line .down { color: var(--down); } .vol-legend .muted { color: var(--faint); }
+.vol-line { display: flex; flex-wrap: wrap; gap: 2px 12px; font-size: 12.5px; color: var(--muted); margin-top: 2px; }
+.vol-line b { color: var(--ink); font-weight: 600; font-variant-numeric: tabular-nums; }
+.vol-line .hot { font-weight: 600; }
+.px .ext { font-size: 12.5px; color: var(--muted); margin-left: 10px; font-weight: 400; }
+.vol-box { border-top: 1px solid var(--sep); padding-top: 8px; display: grid; gap: 6px; }
+.vol-box h4 { margin: 0; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); font-weight: 600; }
+.vol-weeks { width: 100%; height: 64px; display: block; }

@@ -66,7 +66,7 @@ export const DEMO = [
   { sym: 'FLUX.DEMO', name: 'Flux Medical (demo)', expect: 'htf', story: 'High tight flag: more than doubled, then a tight flag.',
     bars: () => build(66, 12, [...lead(12, 16), [120, 20, 'lin'], [10, 19, 'ease', 0.9], [32, 44, 'in', 2.2], [8, 38.5, 'ease', 1.0], [10, 41, 'ease', 0.7]], { noise: 0.005 }) },
   { sym: 'GLOW.DEMO', name: 'Glow Consumer (demo)', expect: '3wt', story: 'Three weeks tight: weekly closes within 1.5% near highs.',
-    bars: () => build(77, 60, [...lead(60, 80), [140, 118, 'lin', 1.05], [15, 121, 'ease', 0.75], [15, 121.4, 'lin', 0.6]], { noise: 0.0025 }) },
+    bars: () => build(77, 60, [...lead(60, 80), [140, 118, 'lin', 1.05], [15, 121, 'ease', 0.75], [20, 121.4, 'lin', 0.6]], { noise: 0.0025 }) },
   { sym: 'HAZE.DEMO', name: 'Haze Media (demo)', expect: 'desc', story: 'Descending base: lower highs and lower lows below the 50-day line. No buy point.',
     bars: () => build(88, 70, [...lead(70, 95), [100, 120, 'lin'], [20, 100, 'ease', 1.3], [15, 112, 'ease', 0.8], [20, 92, 'ease', 1.3], [15, 102, 'ease', 0.8], [20, 84, 'ease', 1.3], [10, 89, 'ease', 0.8]]) },
   { sym: 'IRIS.DEMO', name: 'Iris Software (demo)', expect: 'breakout', story: 'Fresh breakout from a cup with handle on heavy volume: in the buy zone.',

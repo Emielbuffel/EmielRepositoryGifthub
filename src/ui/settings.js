@@ -23,7 +23,7 @@ export async function initSettings(el) {
       <div class="provider-list" id="stProv">${Object.values(PROVIDERS).map(p => html`
         <label class="provider${settings.provider === p.id ? ' on' : ''}"><input type="radio" name="prov" value="${p.id}" ${settings.provider === p.id ? raw('checked') : ''}><div><b>${p.name}</b><p>${p.blurb}</p>${p.site ? html`<p><a href="${p.site}" target="_blank" rel="noopener">Get a key at ${new URL(p.site).hostname}</a></p>` : ''}</div></label>`)}</div>
       <div id="stKey"></div>
-      <label class="field"><span>Your e-mail for SEC EDGAR (optional). EDGAR provides US earnings history back to about 2009 and asks automated tools to include a contact e-mail; it is sent only to sec.gov.</span><input class="input" id="stSec" type="email" placeholder="you@example.com" value="${settings.secEmail || ''}" autocapitalize="off" spellcheck="false"></label>
+      <label class="field"><span>Your e-mail for SEC EDGAR — needed for the long US earnings history (back to about 2009). The SEC refuses requests without a contact e-mail; it is sent only to sec.gov. Without it, US stocks use the shorter built-in history.</span><input class="input" id="stSec" type="email" placeholder="you@example.com" value="${settings.secEmail || ''}" autocapitalize="off" spellcheck="false"></label>
     </section>
     <section class="card" id="stSite">
       <h2>Phone &amp; automatic updates</h2>

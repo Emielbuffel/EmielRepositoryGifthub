@@ -41,9 +41,14 @@ export function alignQuote(bars, quote) {
   if (!bars.length || !quote || !(quote.price > 0) || !quote.time) return bars;
   const last = bars[bars.length - 1], day = t => Math.floor(t / 86400), qd = day(quote.time + (quote.off || 0)), c = quote.price;
   // a new session has started but the feed gave no bar for it yet: add one, so the day change is vs yesterday's close
+  // (the feed often sends today's volume and range with an empty close: keep them)
+  const ok = v => v > 0 && isFinite(v);
   if (qd > day(last.time) && qd - day(last.time) <= 5 && Math.abs(c / last.close - 1) < 0.25) {
-    return [...bars, { time: qd * 86400, open: c, high: c, low: c, close: c, volume: 0, liveBar: true }];
+    const o = ok(quote.open) ? quote.open : c;
+    return [...bars, { time: qd * 86400, open: o, high: Math.max(o, c, ok(quote.high) ? quote.high : c), low: Math.min(o, c, ok(quote.low) ? quote.low : c), close: c, volume: ok(quote.volume) ? quote.volume : 0, liveBar: true }];
   }
-  if (qd !== day(last.time) || Math.abs(c / last.close - 1) < 0.005) return bars;
-  return [...bars.slice(0, -1), { ...last, close: c, high: Math.max(last.high, c), low: Math.min(last.low, c) }];
+  if (qd !== day(last.time)) return bars;
+  const volume = ok(quote.volume) ? Math.max(last.volume || 0, quote.volume) : last.volume;
+  if (Math.abs(c / last.close - 1) < 0.005) return volume === last.volume ? bars : [...bars.slice(0, -1), { ...last, volume }];
+  return [...bars.slice(0, -1), { ...last, close: c, high: Math.max(last.high, c), low: Math.min(last.low, c), volume }];
 }

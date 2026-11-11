@@ -124,3 +124,23 @@ export function adGrade(bars) {
   const g = r >= 1.6 ? 'A' : r >= 1.2 ? 'B' : r >= 0.85 ? 'C' : r >= 0.6 ? 'D' : 'E';
   return { grade: g, ratio: r };
 }
+
+/**
+ * Joins the built-in (adjusted) EPS history with a longer one (SEC filings or the free feed). The longer history wins
+ * when it has more quarters; otherwise only quarters newer than the built-in ones, and yearly EPS for the years before
+ * them, are added — never the same quarter twice from two sources.
+ */
+export function mergeEarnings(built, long) {
+  const reported = built.filter(r => r.eps != null);
+  let rows = reported.length ? built : [];
+  const longQ = long ? long.filter(r => !r.annual) : [];
+  if (long && longQ.length > reported.length) {
+    const lastT = Math.max(...long.map(r => r.time));
+    rows = [...long, ...built.filter(r => r.eps == null && r.time > lastT)]; // keep the next report date
+  } else if (long && long.length) {
+    // (the built-in list can come newest-first: take the real first and last report dates)
+    const ts = reported.map(r => r.time), t0 = ts.length ? Math.min(...ts) : Infinity, t1 = ts.length ? Math.max(...ts) : -Infinity;
+    rows = [...rows, ...longQ.filter(r => r.time > t1 + 45 * 86400), ...long.filter(r => r.annual && r.time < t0 - 60 * 86400)];
+  }
+  return rows;
+}

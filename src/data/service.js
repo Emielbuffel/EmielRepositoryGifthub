@@ -6,6 +6,7 @@ import { Capacitor } from '@capacitor/core';
 import { snapshotMeta, yahooEps, yahooSplits, yahooCalendar } from './providers.js';
 import { secEarnings } from './sec.js';
 import { mergeBars, fixSpikes } from '../core/bars.js';
+import { mergeEarnings } from '../core/earnings.js';
 
 let SNAP_IDX = null;
 export const snapshotReady = snapshotMeta().then(m => { SNAP_IDX = new Set(Object.keys(m.indexes)); return m; }).catch(() => null);
@@ -43,15 +44,19 @@ const YEARS = 4.3;
 /** Daily bars for a symbol: {sym, name, currency, exchange, bars, fetchedAt, cached, stale?}. */
 export const isDemoSym = sym => /\.DEMO$|^DEMO-/.test(sym);
 
-/** long: the whole available history (used by the chart; the desktop app fetches it from the free feed). */
-export async function daily(sym, { force = false, long = false, years = YEARS } = {}) {
+/**
+ * long: the whole available history (used by the chart; the desktop app fetches it from the free feed).
+ * maxAge: how old saved prices may be (ms) before the feed is asked again; the stock page asks for a fresh quote.
+ */
+export async function daily(sym, { force = false, long = false, years = YEARS, maxAge = FRESH_MS } = {}) {
   const P = isDemoSym(sym) ? PROVIDERS.demo : provider();
   if (P.needsKey && !key()) throw new DataError(`Add your ${P.name} API key in Settings, or switch to demo data.`, 'auth');
   long = long && P.id === 'free' && liveFeeds();
-  // 'v2': price caches from before the source checks are not reused (they could hold a glued-together jump)
-  const ck = P.id + (long ? ':L2:' : ':v2:') + sym;
+  // 'v2'/'L3': older price caches are not reused (they could hold a glued-together jump, or monthly bars that
+  // the feed sent for a full-history request)
+  const ck = P.id + (long ? ':L3:' : ':v2:') + sym;
   const cached = await store.cacheGet(ck);
-  if (cached && !force && Date.now() - cached.fetchedAt < FRESH_MS) return { ...cached, cached: true };
+  if (cached && !force && Date.now() - cached.fetchedAt < maxAge) return { ...cached, cached: true };
   try {
     let bars, meta = {};
     const fromFull = long ? 0 : Date.now() / 1000 - years * 365.25 * 86400;
@@ -67,7 +72,7 @@ export async function daily(sym, { force = false, long = false, years = YEARS } 
       bars = r.bars.filter(b => b.time >= fromFull); meta = r;
     }
     if (bars.length < 60) throw new DataError(`Only ${bars.length} days of history for ${sym}: the detector needs at least 60.`, 'notfound');
-    const doc = { sym, name: meta.name || (cached && cached.name) || '', currency: meta.currency || currencyOf(sym), exchange: meta.exchange || '', bars, splits: meta.splits || (cached && cached.splits) || [], fetchedAt: Date.now(), live: meta.live, builtIn: P.id === 'free' && meta.live === false };
+    const doc = { sym, name: meta.name || (cached && cached.name) || '', currency: meta.currency || currencyOf(sym), exchange: meta.exchange || '', bars, splits: meta.splits || (cached && cached.splits) || [], quote: meta.quote || null, fetchedAt: Date.now(), live: meta.live, builtIn: P.id === 'free' && meta.live === false };
     if (P.id !== 'demo' && meta.live !== false) await store.cacheSet(ck, doc); // built-in data is already on the device
     return doc;
   } catch (e) {
@@ -160,7 +165,7 @@ export async function earnings(sym) {
 
 /** Stock splits for a ticker: from the chart's full history when loaded, else the free feed (cached 30 days). */
 async function splitsFor(sym) {
-  const d = await store.cacheGet('free:L2:' + sym); if (d && d.splits) return d.splits;
+  const d = await store.cacheGet('free:L3:' + sym); if (d && d.splits) return d.splits;
   const ck = 'splits:' + sym, c = await store.cacheGet(ck);
   if (c && Date.now() - c.at < 30 * 864e5) return c.splits;
   const splits = await yahooSplits(sym); await store.cacheSet(ck, { splits, at: Date.now() }); return splits;
@@ -191,17 +196,7 @@ async function freeEarnings(sym, P) {
       } catch (e) { err = err || e; }
     }
   }
-  const reported = built.filter(r => r.eps != null);
-  let rows = reported.length ? built : [];
-  const longQ = long ? long.filter(r => !r.annual) : [];
-  if (long && longQ.length > reported.length) {
-    const lastT = long[long.length - 1].time;
-    rows = [...long, ...built.filter(r => r.eps == null && r.time > lastT)]; // keep the next report date
-  } else if (long && long.length) {
-    // the built-in history is longer: add newer quarters it doesn't have yet, and yearly EPS for the years before it
-    const t0 = reported.length ? reported[0].time : Infinity, t1 = reported.length ? reported[reported.length - 1].time : -Infinity;
-    rows = [...rows, ...longQ.filter(r => r.time > t1 + 45 * 86400), ...long.filter(r => r.annual && r.time < t0 - 60 * 86400)];
-  }
+  let rows = mergeEarnings(built, long);
   // desktop: the next report date and recent estimates for any stock (Yahoo calendar)
   if (isDesktop() && !sym.startsWith('^')) {
     try {

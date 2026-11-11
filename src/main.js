@@ -58,7 +58,7 @@ async function badge() {
 function sideWatch() {
   render($('#sideList'), html`${App.lists.map(l => html`<option value="${l.id}" ${l.id === App.listId ? raw('selected') : ''}>${l.name}</option>`)}`);
   const el = $('#sideWatch');
-  render(el, html`${App.watch.length ? App.watch.map(s => { const q = App.last[s]; return html`<button data-s="${s}" class="${s === App.sym && App.view === 'chart' ? 'on' : ''}"><span class="s">${s.replace('.DEMO', '')}</span><span class="n">${App.names[s] || ''}</span><span class="c num ${q ? (q.ch >= 0 ? 'up' : 'down') : ''}">${q ? pc(q.ch, 1) : ''}</span>${q && q.ph ? html`<span class="ph t-${q.pt || 'mute'}">● ${q.ph}${q.rs ? ' · RS ' + q.rs : ''}</span>` : ''}</button>`; }) : html`<p class="muted tiny" style="padding:0 10px">Star a stock on the Chart tab to add it here.</p>`}`);
+  render(el, html`${App.watch.length ? App.watch.map(s => { const q = App.last[s]; return html`<button data-s="${s}" class="${s === App.sym && App.view === 'chart' ? 'on' : ''}"><span class="s">${s.replace('.DEMO', '')}</span><span class="n">${App.names[s] || ''}</span><span class="c num ${q ? (q.ch >= 0 ? 'up' : 'down') : ''}">${q ? pc(q.ch, 1) : ''}</span>${q && q.ph ? html`<span class="ph t-${q.pt || 'mute'}">● ${q.ph}${q.rs ? ' · RS ' + q.rs : ''}${q.vp != null ? ' · vol ' + pc(q.vp, 0) : ''}</span>` : q && q.vp != null ? html`<span class="ph t-mute">vol ${pc(q.vp, 0)} vs avg</span>` : ''}</button>`; }) : html`<p class="muted tiny" style="padding:0 10px">Star a stock on the Chart tab to add it here.</p>`}`);
   $$('button', el).forEach(b => { b.onclick = () => openStock(b.dataset.s); });
 }
 

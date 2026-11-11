@@ -262,14 +262,22 @@ const YH_INDEX = { GSPC: '^GSPC', IXIC: '^IXIC', NDX: '^NDX', DJI: '^DJI', RUT: 
 const yahooSym = sym => sym.startsWith('^') ? YH_INDEX[sym.slice(1)] || sym : sym;
 async function yahoo(sym, fromT, { max = false } = {}) {
   const now = Math.floor(Date.now() / 1000), from = fromT || now - Math.round(4.3 * 365.25 * 86400);
-  const span = max && !fromT ? 'range=max' : `period1=${from}&period2=${now + 86400}`;
+  // the whole history as explicit dates: Yahoo answers range=max with MONTHLY bars even when daily ones are asked for
+  const span = `period1=${max && !fromT ? 0 : from}&period2=${now + 86400}`;
   const d = await getJSON(`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(yahooSym(sym))}?${span}&interval=1d&includePrePost=false&events=split`);
   const r = d && d.chart && d.chart.result && d.chart.result[0];
   if (!r || !r.timestamp) throw new DataError((d && d.chart && d.chart.error && d.chart.error.description) || 'No data for ' + sym + '.', 'notfound');
+  if (r.meta.dataGranularity && r.meta.dataGranularity !== '1d') throw new DataError(`The feed sent ${r.meta.dataGranularity} bars instead of daily bars for ${sym}.`, 'data');
   const q = r.indicators.quote[0], off = r.meta.gmtoffset || 0;
   const bars = clean(r.timestamp.map((t, i) => ({ time: Math.floor((t + off) / 86400) * 86400, open: q.open[i], high: q.high[i], low: q.low[i], close: q.close[i], volume: q.volume[i] || 0 })));
   const splits = Object.values((r.events && r.events.splits) || {}).map(x => ({ time: x.date, ratio: x.numerator / x.denominator })).filter(x => x.ratio > 0 && x.ratio !== 1).sort((a, b) => a.time - b.time);
-  const quote = { price: r.meta.regularMarketPrice, time: r.meta.regularMarketTime, off };
+  // regular-session quote (the headline price on Yahoo); today's open comes from the feed's own row for today
+  const m = r.meta, li = r.timestamp.length - 1, sameDay = li >= 0 && Math.floor((r.timestamp[li] + off) / 86400) === Math.floor(((m.regularMarketTime || 0) + off) / 86400);
+  const quote = {
+    price: m.regularMarketPrice, time: m.regularMarketTime, off, high: m.regularMarketDayHigh, low: m.regularMarketDayLow, volume: m.regularMarketVolume,
+    open: sameDay ? q.open[li] : null, ext: m.hasPrePostMarketData && m.fulldayPrice > 0 && Math.abs(m.fulldayPrice / m.regularMarketPrice - 1) > 0.0005 ? m.fulldayPrice : null,
+    session: m.currentTradingPeriod && m.currentTradingPeriod.regular ? { start: m.currentTradingPeriod.regular.start, end: m.currentTradingPeriod.regular.end } : null,
+  };
   return { bars: fixSpikes(alignQuote(bars, quote)), splits, quote, currency: r.meta.currency, name: r.meta.longName || r.meta.shortName || '', exchange: r.meta.fullExchangeName || r.meta.exchangeName || '' };
 }
 /**
