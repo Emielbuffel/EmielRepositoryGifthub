@@ -442,6 +442,25 @@ def flemish_government(max_pages=30):
     return out
 
 
+# ---------------------------------------------------------------- IUCN (hrms.iucn.org)
+def iucn():
+    base = "https://hrms.iucn.org"
+    body = fetch(base + "/iresy/index.cfm?event=vac.showOpenList")
+    out = []
+    for row in re.findall(r"<tr>(.*?)</tr>", body, re.S):
+        a = re.search(r'href="(/iresy/index\.cfm\?event=vac\.show&(?:amp;)?vacId=(\d+)[^"]*)"[^>]*>(.*?)</a>(.*?)</td>', row, re.S)
+        if not a:
+            continue
+        cells = re.findall(r"<td[^>]*>(.*?)</td>", row, re.S)
+        unit = [clean(x) for x in re.split(r"<br\s*/?>", a.group(4)) if clean(x)]
+        loc_parts = [clean(x) for x in re.split(r"<br\s*/?>", cells[2]) if clean(x)] if len(cells) > 2 else []
+        loc_parts = [p for p in loc_parts if len(p) < 60][:3]
+        deadline = parse_date(clean(re.split(r"<br", cells[3])[0])) if len(cells) > 3 else None
+        out.append(job("IUCN", a.group(2), a.group(3), base + html.unescape(a.group(1)),
+                       org="IUCN - " + unit[0] if unit else "IUCN", location=", ".join(loc_parts), deadline=deadline))
+    return out
+
+
 def all_sources(profile, reliefweb_appname=""):
     """Return {source name: callable}."""
     pages = {k: tuple(v) for k, v in profile.get("unjobs_pages", {}).items()}
@@ -462,6 +481,8 @@ def all_sources(profile, reliefweb_appname=""):
         "Belgian Foreign Affairs": belgian_foreign_affairs,
         "Flemish government": flemish_government,
         "Enabel": lambda: successfactors("Enabel", "https://jobs.enabel.be", "Enabel (Belgian development agency)"),
+        "IUCN": iucn,
+        "World Economic Forum": lambda: workday("World Economic Forum", "weforum.wd3.myworkdayjobs.com", "weforum", "Forum_Careers", "World Economic Forum"),
         "Impactpool": lambda: impactpool(profile.get("impactpool_queries", [])),
         "ReliefWeb": lambda: reliefweb(reliefweb_appname),
     }

@@ -19,6 +19,8 @@ It runs for free on GitHub Actions, so your computer does not need to be on.
 | [FPS Foreign Affairs](https://diplomatie.belgium.be/nl/werken-voor-fod-buitenlandse-zaken/vacatures) | Belgian diplomacy vacancies |
 | [Vlaanderen.be vacatures](https://www.vlaanderen.be/werken-voor-vlaanderen/vacatures) | Flemish government jobs, incl. Flanders Investment & Trade and the Flemish Department of Foreign Affairs |
 | [Enabel](https://jobs.enabel.be) | Belgian development agency |
+| [IUCN](https://hrms.iucn.org/iresy/index.cfm?event=vac.showOpenList) | All open IUCN vacancies (HQ in Gland counts as Geneva) |
+| [World Economic Forum](https://weforum.wd3.myworkdayjobs.com/Forum_Careers) | WEF jobs (mostly Geneva) |
 | [ReliefWeb](https://reliefweb.int/jobs) | Off until you add a free app name (see below) |
 
 The list of places is in `profile.json`: Geneva, Brussels, Rome, Bhutan, Nepal, the Philippines, Fiji, New Zealand, Australia, Indonesia, Japan and the Pacific islands, plus "home-based" jobs.
@@ -48,6 +50,7 @@ Edit `profile.json` on GitHub (open the file, click the pencil, then "Commit cha
 - `locations`: the place names and city names that are recognised.
 - `keywords`: words from your CV with a weight. A word in the job title counts double.
 - `always_alert`: words for Belgian and Flemish diplomacy (FIT, Foreign Affairs, attaché, economisch vertegenwoordiger …). These jobs always send a high-priority alert, wherever they are.
+- `favourite_organisations`: IUCN and the World Economic Forum get extra points (for your partner: Gavi), when the job also matches your keywords.
 - `interests`: your interest groups (Environment, Forest, Diplomacy, GIS, Evaluation). Each job is labelled with the groups it matches; the dashboard has an Interest filter. Jobs at UN organisations get the label UN and `un_bonus` extra points.
 - `min_score_to_notify`: raise it (for example to 8) for fewer, stronger alerts.
 - `exclude_title`: jobs with these words in the title never send an alert.

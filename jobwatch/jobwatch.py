@@ -52,6 +52,8 @@ class Profile:
         self.always_label = aa.get("label", "")
         self.always_pats = [word_re(w, plural=True) for w in aa.get("words", [])]
         self.un_bonus = raw.get("un_bonus", 0)
+        self.favs = [(re.compile(r"(?<![A-Za-z])" + re.escape(o) + r"(?![A-Za-z])", re.I), b) for o, b in (raw.get("favourite_organisations") or {}).items()]
+        self.p_favs = [(re.compile(r"(?<![A-Za-z])" + re.escape(o) + r"(?![A-Za-z])", re.I), b) for o, b in ((raw.get("partner") or {}).get("favourite_organisations") or {}).items()]
         orgs = raw.get("un_organisations", [])
         self.un_re = re.compile(r"(?<![A-Za-z])(" + "|".join(re.escape(o) for o in orgs) + r")(?![A-Za-z])") if orgs else None
         pr = raw.get("partner") or {}
@@ -104,6 +106,8 @@ class Profile:
                 hits.append(k.strip())
         if s and self.is_un(j):
             s += self.un_bonus
+        if s:
+            s += max([b for rx, b in self.favs if rx.search(f"{j['org']} {j['source']}")] or [0])
         return s, hits
 
     def partner_score(self, j):
@@ -122,6 +126,8 @@ class Profile:
                 hits.append(k)
         if s and (self.is_un(j) or (self.p_org_re and self.p_org_re.search(j["org"] or ""))):
             s += self.un_bonus
+        if s:
+            s += max([b for rx, b in self.p_favs if rx.search(f"{j['org']} {j['source']}")] or [0])
         text = f"{j['title']} {j['category']} {j['summary']}".lower()
         ints = [g for g, pats in self.p_interests.items() if any(p.search(text) for p in pats)]
         return s, hits, ints

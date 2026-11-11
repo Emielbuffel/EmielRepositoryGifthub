@@ -5,7 +5,10 @@
       "geneva",
       "genève",
       "geneve",
-      "genf"
+      "genf",
+      "gland",
+      "nyon",
+      "rolle"
     ],
     "Brussels": [
       "brussels",
@@ -496,7 +499,15 @@
       "volksgezondheid": 4,
       "luchtkwaliteit": 6,
       "luchtverontreiniging": 6,
-      "biostatistiek": 5
+      "biostatistiek": 5,
+      "vaccine": 4,
+      "vaccines": 4,
+      "vaccination": 4,
+      "immunization": 4,
+      "immunisation": 4,
+      "vacuna": 4,
+      "vacunas": 4,
+      "inmunización": 4
     },
     "interests": {
       "Epidemiology": [
@@ -539,6 +550,17 @@
         "one health",
         "health data",
         "health information"
+      ],
+      "Vaccines": [
+        "vaccine",
+        "vaccines",
+        "vaccination",
+        "immunization",
+        "immunisation",
+        "vacuna",
+        "vacunas",
+        "inmunización",
+        "gavi"
       ]
     },
     "organisations": [
@@ -558,8 +580,15 @@
       "Swiss TPH",
       "LSHTM",
       "ISGlobal",
-      "Cayetano"
-    ]
+      "Cayetano",
+      "Gavi",
+      "Gavi, the Vaccine Alliance",
+      "CEPI"
+    ],
+    "favourite_organisations": {
+      "Gavi": 6,
+      "Gavi, the Vaccine Alliance": 6
+    }
   },
   "un_bonus": 3,
   "un_organisations": [
@@ -618,6 +647,13 @@
     "UNIDIR",
     "UNICRI"
   ],
+  "_help_favourites": "Organisations you like a lot: extra points (only when the job also matches at least one of your keywords) and a label on the dashboard.",
+  "favourite_organisations": {
+    "IUCN": 6,
+    "International Union for Conservation of Nature": 6,
+    "World Economic Forum": 4,
+    "WEF": 4
+  },
   "_help_levels": "Grades / contract types you want. Jobs with other grades are hidden by default in the dashboard (not deleted).",
   "levels_wanted": [
     "P1",
@@ -796,7 +832,10 @@
     "biostatistics",
     "environmental health",
     "air quality",
-    "public health"
+    "public health",
+    "IUCN",
+    "World Economic Forum",
+    "Gavi"
   ],
   "_help_ntfy": "Phone alerts: install the free 'ntfy' app and subscribe to this topic name. Keep it secret-ish: anyone who knows it can read your alerts.",
   "ntfy_topic": "jobwatch-eb-160a37bfa7"
