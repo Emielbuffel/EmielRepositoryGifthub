@@ -20,7 +20,7 @@ function base(el, { mini }) {
 }
 
 /** Draws intraday data D into el. mini: a line for the market grid; otherwise candles, volume and VWAP. */
-export function drawIntraday(el, D, { mini = false } = {}) {
+export function drawIntraday(el, D, { mini = false, daily = false } = {}) {
   const chart = base(el, { mini });
   const last = D.bars.length ? D.bars[D.bars.length - 1].close : D.price, up = D.prevClose == null || last >= D.prevClose;
   const col = up ? tok('--up') : tok('--down');
@@ -36,13 +36,16 @@ export function drawIntraday(el, D, { mini = false } = {}) {
       const v = chart.addSeries(HistogramSeries, { priceScaleId: 'vol', priceFormat: { type: 'volume' }, priceLineVisible: false, lastValueVisible: false });
       chart.priceScale('vol').applyOptions({ scaleMargins: { top: 0.8, bottom: 0 } });
       v.setData(D.bars.map(b => ({ time: b.time, value: b.volume, color: (b.close >= b.open ? upC : dnC) + '80' })));
+      if (!daily) {
       // VWAP per session: the average price weighted by volume, a common intraday reference
       let pv = 0, vv = 0, day = null; const vw = [];
       for (const b of D.bars) { const d = Math.floor(b.time / 86400); if (d !== day) { day = d; pv = 0; vv = 0; } pv += (b.high + b.low + b.close) / 3 * b.volume; vv += b.volume; if (vv) vw.push({ time: b.time, value: pv / vv }); }
       chart.addSeries(LineSeries, { color: tok('--purple'), lineWidth: 1.5, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false, title: 'VWAP' }).setData(vw);
+      }
     }
   }
   if (D.prevClose != null) main.createPriceLine({ price: D.prevClose, color: tok('--muted'), lineStyle: LineStyle.Dashed, lineWidth: 1, axisLabelVisible: !mini, title: mini ? '' : 'prev. close' });
+  if (daily) chart.applyOptions({ timeScale: { timeVisible: false } });
   chart.timeScale().fitContent();
   return chart;
 }

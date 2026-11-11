@@ -595,3 +595,4 @@ tr.auto td { background: color-mix(in srgb, var(--blue) 6%, transparent); }
 
 .stock-id .about { font-size: 13px; color: var(--ink2); margin: 1px 0 2px; max-width: 760px; line-height: 1.35; }
 .stock-id .about b { font-weight: 600; color: var(--ink); }
+#sChart[hidden] ~ .vol-legend { display: none; }

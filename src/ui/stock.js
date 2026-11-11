@@ -229,7 +229,7 @@ async function intra(range) {
   $$('[data-it]').forEach(b => b.classList.toggle('on', b.dataset.it === range));
   $$('[data-tf]').forEach(b => b.classList.toggle('on', !range && b.dataset.tf === prefs.tf));
   if (!range) return;
-  if (!isApp()) { render(box, html`<div class="empty">${raw(ICON.info)}<p>Intraday charts come from Yahoo Finance's free feed in the desktop app (browsers block it).</p></div>`); return; }
+  if (!isApp()) { webDays(box, range); return; }
   const sym = V.sym, load = async () => {
     try {
       const D = await yahooIntraday(sym, range === '1d' ? { range: '1d', interval: '5m' } : { range: '5d', interval: '15m' });
@@ -243,6 +243,16 @@ async function intra(range) {
   render(box, html`<div class="empty"><span class="spinner"></span><span>Loading intraday prices…</span></div>`);
   await load();
   IV.timer = setInterval(() => { if (document.visibilityState === 'visible' && !box.hidden) load(); }, 60000);
+}
+
+/* On the web page (claude.ai, iPhone Home Screen) there is no hour-by-hour feed: Yahoo blocks browsers and the FMP
+   connector only gives daily prices. 1D/5D then show the last days as daily candles, with today's live bar when known. */
+function webDays(box, range) {
+  const d = V.data; if (!d || !d.bars.length) { render(box, html`<div class="empty">${raw(ICON.info)}<p>No prices yet.</p></div>`); return; }
+  const k = range === '1d' ? 2 : 5, bars = d.bars.slice(-k);
+  const n = bars.length - 1, last = bars[n], r = d.bars.length > 1 ? last.close / d.bars[d.bars.length - 2].close - 1 : null;
+  box.innerHTML = ''; IV.chart = drawIntraday(box, { bars, prevClose: range === '1d' ? d.bars[d.bars.length - 2]?.close ?? null : null, price: last.close }, { daily: true });
+  status(`${range === '1d' ? 'Today and the day before' : 'Last 5 trading days'} as daily candles (${fD(bars[0].time)} – ${fD(last.time)})${r == null ? '' : ' · ' + (r >= 0 ? '+' : '') + (r * 100).toFixed(2) + '% on the day'}. Hour-by-hour bars only in the Mac app: on this page Yahoo is blocked and your FMP connector gives daily prices only.`, '');
 }
 
 /* a name typed instead of a ticker ("SHARKNINJA"): find the company and open it, or offer the matches */
