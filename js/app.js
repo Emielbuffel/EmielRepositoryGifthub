@@ -80,7 +80,22 @@ function ownerOptions(selected) {
   return Object.keys(OWNERS).map((o) => `<option value="${o}" ${o === selected ? 'selected' : ''}>${h(ownerName(state, o))}</option>`).join('');
 }
 
+const EMBEDDED = (() => { try { return window.self !== window.top; } catch { return true; } })();
+
+/** Inside an embedded page downloads are blocked, so offer the text to copy instead. */
+function copyOut(title, text, hint) {
+  const m = openModal(title, `<p class="muted small">${hint}</p><textarea id="copy-out" rows="8" readonly>${h(text)}</textarea>
+    <div class="actions"><span class="grow"></span><button class="btn" data-close>Close</button><button class="btn primary" id="copy-btn">Copy</button></div>`);
+  const ta = m.querySelector('#copy-out');
+  m.querySelector('#copy-btn').onclick = () => {
+    navigator.clipboard.writeText(text).then(() => toast('Copied', 'ok')).catch(() => { ta.focus(); ta.select(); toast('Select all and copy'); });
+  };
+}
+
 function download(filename, content, type) {
+  if (EMBEDDED && typeof content === 'string') {
+    return copyOut(filename, content, 'Downloads are blocked on this page. Copy the text below and paste it into a note or a file (e.g. in the Notes or Files app).');
+  }
   const blob = content instanceof Blob ? content : new Blob([content], { type });
   const file = new File([blob], filename, { type });
   if (navigator.canShare && navigator.canShare({ files: [file] }) && /iPhone|iPad/.test(navigator.userAgent)) {
@@ -1131,17 +1146,26 @@ async function exportBackup() {
 }
 
 function restoreBackup(fromLockScreen) {
+  const m0 = openModal('Restore a backup', `<p class="muted small">Choose the backup file, or paste the backup text you copied earlier.</p>
+    <div class="actions"><button class="btn primary" id="rb-file">Choose file</button></div>
+    <label>Or paste backup text<textarea id="rb-text" rows="5"></textarea></label>
+    <div class="actions"><span class="grow"></span><button class="btn" data-close>Cancel</button><button class="btn primary" id="rb-go">Use pasted text</button></div>`);
+  m0.querySelector('#rb-go').onclick = () => { const t = m0.querySelector('#rb-text').value.trim(); if (t) handleBackupText(t); };
   const input = document.createElement('input');
   input.type = 'file';
-  input.accept = '.cfbackup,application/json,application/octet-stream';
+  input.accept = '.cfbackup,application/json,application/octet-stream,text/plain';
+  m0.querySelector('#rb-file').onclick = () => input.click();
   input.onchange = async () => {
     const file = input.files[0];
-    if (!file) return;
+    if (file) handleBackupText(await file.text());
+  };
+
+  async function handleBackupText(text) {
     let obj;
     try {
-      obj = JSON.parse(await file.text());
+      obj = JSON.parse(text);
     } catch {
-      return toast('This file is not a valid backup.', 'error');
+      return toast('This is not a valid backup.', 'error');
     }
     const pass = await askText('Backup passcode', 'Enter the passcode that was used when this backup was made');
     if (pass === null) return;
@@ -1162,8 +1186,7 @@ function restoreBackup(fromLockScreen) {
       <div class="actions"><button class="btn" data-close>Cancel</button><button class="btn danger" id="bk-replace">Replace</button><button class="btn primary" id="bk-merge">Merge</button></div>`);
     m.querySelector('#bk-merge').onclick = () => { state = mergeStates(state, incoming); closeModal(); commit(); toast('Backup merged', 'ok'); };
     m.querySelector('#bk-replace').onclick = () => { state = incoming; closeModal(); commit(); toast('Data replaced from backup', 'ok'); };
-  };
-  input.click();
+  }
 }
 
 async function changePasscode() {
