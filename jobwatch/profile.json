@@ -113,7 +113,8 @@
       "home based",
       "homebased",
       "remote",
-      "telecommut"
+      "telecommuting",
+      "telework"
     ]
   },
   "_help_locations": "Locations that trigger a phone notification. The other ones still appear in the dashboard.",
@@ -131,14 +132,14 @@
     "Japan",
     "Pacific Islands"
   ],
-  "_help_keywords": "Words that make a job fit your CV. Weight = how much each one counts.",
+  "_help_keywords": "Words that make a job fit your CV. Weight = how much each one counts. A word in the job title counts double. End a word with * to also match longer words (sustainab* = sustainable, sustainability).",
   "keywords": {
     "evaluation": 5,
     "evaluator": 5,
     "m&e": 4,
     "monitoring and evaluation": 5,
     "meal": 3,
-    "mel ": 2,
+    "mel": 2,
     "impact assessment": 4,
     "impact evaluation": 5,
     "learning": 1,
@@ -178,7 +179,7 @@
     "knowledge management": 2,
     "governance": 2,
     "development": 1,
-    "sustainab": 2
+    "sustainab*": 2
   },
   "_help_levels": "Grades / contract types you want. Jobs with other grades are hidden by default in the dashboard (not deleted).",
   "levels_wanted": [
@@ -211,7 +212,7 @@
     "cleaner",
     "security guard",
     "receptionist",
-    "intern ",
+    "intern",
     "internship",
     "senior director",
     "director",

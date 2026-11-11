@@ -18,7 +18,7 @@ UA = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chr
 TODAY = datetime.now(timezone.utc).date()
 
 
-def fetch(url, data=None, headers=None, timeout=40, retries=2):
+def fetch(url, data=None, headers=None, timeout=25, retries=1):
     h = {"User-Agent": UA, "Accept": "*/*", "Accept-Language": "en"}
     if data is not None:
         h["Content-Type"] = "application/json"
@@ -40,6 +40,15 @@ def fetch(url, data=None, headers=None, timeout=40, retries=2):
             last = e
         time.sleep(2 * (attempt + 1))
     raise RuntimeError(f"{url[:120]} -> {last}")
+
+
+class Budget:
+    """Stops a multi-page source after a number of seconds, keeping what it already has."""
+    def __init__(self, seconds):
+        self.end = time.time() + seconds
+
+    def over(self):
+        return time.time() > self.end
 
 
 def clean(s):
@@ -125,8 +134,11 @@ def unjobs_page(path):
 
 def unjobs(pages):
     """pages: {slug: (place label, number of pages)} from profile.json."""
-    out, seen = [], set()
+    out, seen, budget = [], set(), Budget(300)
     for slugs, (label, npages) in pages.items():
+        if budget.over():
+            print("   UNjobs: time limit reached, rest next hour")
+            break
         slug = None
         for cand in slugs.split("|"):
             try:
@@ -275,8 +287,10 @@ IMPACT_CARD = re.compile(r"<div class='job'>.*?</a></div>", re.S)
 
 
 def impactpool(queries, pages=2):
-    out, seen = [], set()
+    out, seen, budget = [], set(), Budget(150)
     for q in queries:
+        if budget.over():
+            break
         for p in range(1, pages + 1):
             url = "https://www.impactpool.org/search?" + urllib.parse.urlencode({"q": q, "page": p})
             body = fetch(url)

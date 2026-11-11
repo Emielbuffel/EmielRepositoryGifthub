@@ -30,19 +30,22 @@ KEEP_DAYS_WITHOUT_DEADLINE = 35
 
 
 # ------------------------------------------------------------------ classification
-def word_re(word, whole=False):
-    """Match a word or phrase at a word start (so 'gis' does not match 'logistics').
-    whole=True also needs a word end (so 'roma' does not match 'romania')."""
-    return re.compile(r"(?<![a-z0-9])" + re.escape(word.lower().strip()) + (r"(?![a-z0-9])" if whole else ""))
+def word_re(word, plural=False):
+    """Match a whole word or phrase ('gis' does not match 'logistics' or 'gisi'; 'roma' does not match 'romania').
+    plural=True also accepts a plural ending; a trailing * accepts any longer word."""
+    w = word.lower().strip()
+    if w.endswith("*"):
+        return re.compile(r"(?<![a-z0-9])" + re.escape(w[:-1]))
+    return re.compile(r"(?<![a-z0-9])" + re.escape(w) + (r"(?:s|es)?" if plural else "") + r"(?![a-z0-9])")
 
 
 class Profile:
     def __init__(self, raw):
         self.raw = raw
-        self.locations = {name: [word_re(a, True) for a in aliases] for name, aliases in raw["locations"].items()}
+        self.locations = {name: [word_re(a) for a in aliases] for name, aliases in raw["locations"].items()}
         self.notify_locations = set(raw.get("notify_locations", []))
-        self.keywords = [(k, word_re(k), w) for k, w in raw["keywords"].items()]
-        self.exclude = [word_re(x) for x in raw.get("exclude_title", [])]
+        self.keywords = [(k.rstrip("*"), word_re(k, plural=True), w) for k, w in raw["keywords"].items()]
+        self.exclude = [word_re(x, plural=True) for x in raw.get("exclude_title", [])]
         self.min_score = raw.get("min_score_to_notify", 4)
 
     def regions(self, j):
@@ -109,12 +112,20 @@ def type_of(j, level):
     return "Not stated"
 
 
-def fingerprint(j, regions):
-    t = j["title"].lower()
-    t = re.sub(r"\[.*?\]|\(.*?\)", " ", t)
-    t = re.sub(r",[^,]*$", "", t) if "," in t else t
+NOISE_RE = re.compile(r"\b(home[- ]?based|remote|open to internal and external applicants|internal and external|"
+                      r"fixed[- ]term|temporary|national consultant|international consultant)\b")
+
+
+def fingerprint(j, regions, profile):
+    """Same job on two websites -> same key: title without places, grades and brackets, plus the main place."""
+    t = re.sub(r"\[.*?\]|\(.*?\)|#\d+", " ", j["title"].lower())
+    t = LEVEL_RE.sub(" ", t.upper()).lower()
+    for pats in profile.locations.values():
+        for p in pats:
+            t = p.sub(" ", t)
+    t = NOISE_RE.sub(" ", t)
     t = re.sub(r"[^a-z0-9]+", " ", t).strip()
-    return f"{t[:70]}|{(regions or ['?'])[0]}|{(j['org'] or '')[:6].lower()}"
+    return f"{t[:80]}|{(regions or ['?'])[0]}"
 
 
 # ------------------------------------------------------------------ state
@@ -232,6 +243,16 @@ def main():
     dash_url = os.environ.get("DASHBOARD_URL") or profile.raw.get("dashboard_url") or None
     state = load_state()
     first_run = not state["jobs"]
+    rekeyed = {}
+    for rec in state["jobs"].values():
+        k = fingerprint(rec, rec.get("regions") or [], profile)
+        if k in rekeyed:
+            rekeyed[k]["sources"] = sorted(set(rekeyed[k].get("sources", [])) | set(rec.get("sources", [])))
+            rekeyed[k]["first_seen"] = min(rekeyed[k]["first_seen"], rec["first_seen"])
+        else:
+            rekeyed[k] = rec
+    state["jobs"] = rekeyed
+    known_urls = {r["url"] for r in state["jobs"].values()}
 
     srcs = sources.all_sources(profile.raw, os.environ.get("RELIEFWEB_APPNAME", ""))
     raw, report = [], {}
@@ -259,11 +280,13 @@ def main():
         if not j["title"] or not j["url"]:
             continue
         regions = profile.regions(j)
-        fp = fingerprint(j, regions)
+        fp = fingerprint(j, regions, profile)
         if fp in seen_now:
             continue
         seen_now.add(fp)
         old = state["jobs"].get(fp)
+        if not old and j["url"] in known_urls:
+            continue  # seen before under another key
         lvl = level_of(j)
         score, hits = profile.score(j)
         rec = {**j, "regions": regions, "level": lvl, "type": type_of(j, lvl), "score": score, "hits": hits,
