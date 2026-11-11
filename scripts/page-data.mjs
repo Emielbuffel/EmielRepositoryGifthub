@@ -109,6 +109,7 @@ if (FETCH) {
   const wanted = [...new Set([...ADD.filter(s => !series.has(s)), ...grow])];
   let added = 0; await pool(wanted, 2, async sym => { if (await full(sym)) added++; });
   log.push(`added ${added} new stocks (${ADD.length} asked for: ${ADD.join(', ') || 'none'})`);
+  if (ADD.length) log.push(`requested and now built in: ${ADD.filter(s => series.has(s)).join(', ') || 'none'}; requested but failed: ${ADD.filter(s => !series.has(s)).join(', ') || 'none'}`);
 }
 
 /* ---------- write ---------- */
