@@ -287,7 +287,7 @@ IMPACT_CARD = re.compile(r"<div class='job'>.*?</a></div>", re.S)
 
 
 def impactpool(queries, pages=2):
-    out, seen, budget = [], set(), Budget(150)
+    out, seen, budget = [], set(), Budget(260)
     for q in queries:
         if budget.over():
             break

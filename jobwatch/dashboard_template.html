@@ -305,7 +305,7 @@ window.JOBWATCH = /*__JOBWATCH_DATA__*/null;
     store.set("filters:" + tab, st);
     document.querySelectorAll(".tab").forEach(b => { b.setAttribute("aria-selected", b.dataset.tab === tab ? "true" : "false"); });
     $("tabs").hidden = !D.partner_on;
-    $("tabnote").textContent = tab === "partner" ? "Vacancies scored on your partner's profile: environmental epidemiology, biostatistics, air pollution, public health."
+    $("tabnote").textContent = tab === "partner" ? "Scored on your partner's CV: environmental epidemiology and the exposome, biostatistics, global and public health (ORAS-CONHU, PAHO), vaccines and infectious diseases."
       : tab === "together" ? "Duty stations with matching vacancies for both of you, and the jobs there for each of you." : "";
     $("tabnote").hidden = tab === "me";
     renderStats();
