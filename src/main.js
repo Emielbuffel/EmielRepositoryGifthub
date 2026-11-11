@@ -10,6 +10,7 @@ import { initMarket } from './ui/market.js';
 import { initScreener } from './ui/screener.js';
 import { initPortfolio } from './ui/portfolio.js';
 import { initPrune } from './ui/prune.js';
+import { initTaxes } from './ui/taxes.js';
 import { initFundTab } from './ui/fundtab.js';
 import { initBalance } from './ui/balance.js';
 import { initPlan } from './ui/plan.js';
@@ -24,8 +25,8 @@ import { startLive } from './data/live.js';
 import './data/plans.js'; // registers buying-plan checks with the alerts
 import { toast } from './ui/dom.js';
 
-const INIT = { chart: initStock, market: initMarket, screener: initScreener, fund: initFundTab, portfolio: initPortfolio, prune: initPrune, balance: initBalance, plan: initPlan, learn: initLearn, settings: initSettings };
-const TITLES = { chart: 'Chart', market: 'Market', screener: 'Screener', fund: 'Fundamentals', portfolio: 'Portfolio', prune: 'Sell ideas', balance: 'Balance sheet & cash flow', plan: 'Financial plan', learn: 'Learn', settings: 'Settings' };
+const INIT = { chart: initStock, market: initMarket, screener: initScreener, fund: initFundTab, portfolio: initPortfolio, prune: initPrune, taxes: initTaxes, balance: initBalance, plan: initPlan, learn: initLearn, settings: initSettings };
+const TITLES = { chart: 'Chart', market: 'Market', screener: 'Screener', fund: 'Fundamentals', portfolio: 'Portfolio', prune: 'Sell ideas', taxes: 'Dividends & taxes', balance: 'Balance sheet & cash flow', plan: 'Financial plan', learn: 'Learn', settings: 'Settings' };
 const started = new Set();
 
 async function show(view) {

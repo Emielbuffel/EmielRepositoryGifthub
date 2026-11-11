@@ -17,7 +17,8 @@ export function allowedExposure(market, maxMargin = 0.5) {
  * acct: {stocks, cash} in the plan currency (cash < 0 = margin loan). S: {posPct, maxMargin}. market: 'up'|'press'|'corr'|null.
  * Returns everything the app shows about size, room and margin.
  */
-export function sizing(acct, S, market = 'up') {
+export function sizing(acct, S, mkt = 'up') {
+  const market = mkt && typeof mkt === 'object' ? mkt.us : mkt, phase = mkt && typeof mkt === 'object' ? mkt.phase || market : market;
   const stocks = Math.max(0, acct.stocks || 0), cash = acct.cash || 0, equity = stocks + cash;
   const posPct = S.posPct || 0.2, maxMargin = S.maxMargin ?? 0.5;
   const allowed = allowedExposure(market, maxMargin), noMarginAllowed = allowedExposure('up', 0);
@@ -30,9 +31,13 @@ export function sizing(acct, S, market = 'up') {
   const notes = [];
   if (equity <= 0) notes.push(['bad', 'Your own money is zero or negative: the margin loan is larger than your stocks.']);
   if (marginPct != null && marginPct > maxMargin + 1e-9) notes.push(['bad', `Margin is ${Math.round(marginPct * 100)}% of your own money, above your ${Math.round(maxMargin * 100)}% limit: sell or add cash to bring it down.`]);
-  if (loan > 0 && market && market !== 'up') notes.push(['bad', `You use margin (${Math.round(marginPct * 100)}%) while the market is ${market === 'corr' ? 'in a correction' : 'under pressure'}: the book uses margin only in a bull market — pay it back first by selling your weakest stocks.`]);
+  if (loan > 0 && market === 'corr') notes.push(['bad', `Correction: no margin. Close the positions bought on margin first (repay ${Math.round(loan).toLocaleString('en-US')}), then sell the weakest until you are at most 20% invested.`]);
+  else if (loan > 0 && market === 'press') notes.push(['bad', `Uptrend under pressure: no new margin, and pay the loan back (${Math.round(loan).toLocaleString('en-US')}) by selling your weakest stocks first.`]);
+  if (market === 'corr' && !loan && exposure != null && exposure > 0.2 + 0.05) notes.push(['bad', `Correction: the book says 0–20% invested. Close positions — the ones at a loss and the weakest first (Sell ideas tab).`]);
+  if (phase === 'rally') notes.push(['warn', `Rally attempt (day ${mkt.rallyDay}) inside a correction: no buys and no margin yet. A follow-through day — from day 4, a major index up about 1% or more on higher volume — would confirm a new bull market. Prepare your watchlist now.`]);
+  if (phase === 'new') notes.push(['ok', `New uptrend: a follow-through day ${mkt.ftdAgo === 0 ? 'today' : mkt.ftdAgo + ' session' + (mkt.ftdAgo === 1 ? '' : 's') + ' ago'} confirmed a bull market starting. Buying is allowed and margin up to your ${Math.round(maxMargin * 100)}% limit; the book: start with your best setups and add (and use margin) as those first buys work.`]);
   if (exposure != null && exposure > allowed + 0.05) notes.push(['warn', `You are ${Math.round(exposure * 100)}% invested; the market status allows about ${Math.round(allowed * 100)}% now.`]);
-  return { stocks, cash, equity, position, exposure, allowed, maxPositions, fullNoMargin, room, cashFree, loan, marginPct, marginRoom, maxMargin, posPct, market: market || 'up', notes,
+  return { stocks, cash, equity, position, exposure, allowed, maxPositions, fullNoMargin, room, cashFree, loan, marginPct, marginRoom, maxMargin, posPct, market: market || 'up', phase: phase || 'up', marginAllowed: (market || 'up') === 'up' && maxMargin > 0, notes,
     // how a fall in your stocks hits your own money at today's exposure, and at the full margin limit
     leverageNow: exposure || 0, leverageMax: 1 + maxMargin };
 }

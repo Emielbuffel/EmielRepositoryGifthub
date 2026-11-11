@@ -26,7 +26,7 @@ export async function strategy() {
   if (S.capitalMode !== 'manual') {
     try { const a = await accountValue(S.ccy); if (a.rows.length || a.cashKnown) { S.acct = a; S.auto = true; if (a.equity > 0) S.capital = a.equity; } } catch (e) { /* prices not available: keep the number */ }
   }
-  S.sz = sizing(S.acct ? { stocks: S.acct.stocks, cash: S.acct.cash } : { stocks: 0, cash: S.capital }, S, App.mkt && App.mkt.us);
+  S.sz = sizing(S.acct ? { stocks: S.acct.stocks, cash: S.acct.cash } : { stocks: 0, cash: S.capital }, S, App.mkt || 'up');
   S.maxStocks = S.sz.maxPositions;
   return S;
 }

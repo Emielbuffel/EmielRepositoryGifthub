@@ -50,7 +50,7 @@ portfolio; the buying-plan settings). Use its numbers instead of inventing any. 
 export function coachContext({ stock, mkt, holdings, strategy }) {
   const ctx = {};
   if (stock) ctx.stock = stock;
-  if (mkt) ctx.market = { us: mkt.us === 'up' ? 'confirmed uptrend' : mkt.us === 'press' ? 'uptrend under pressure' : 'correction' };
+  if (mkt) ctx.market = { us: mkt.us === 'up' ? 'confirmed uptrend' : mkt.us === 'press' ? 'uptrend under pressure' : 'correction', phase: mkt.phase === 'new' ? `new uptrend: follow-through day ${mkt.ftdAgo} sessions ago` : mkt.phase === 'rally' ? `rally attempt day ${mkt.rallyDay}, no follow-through day yet` : undefined, marginAllowed: mkt.us === 'up' };
   if (holdings && holdings.length) ctx.portfolio = { positions: holdings.length, symbols: holdings.map(h => h.sym).slice(0, 12) };
   if (strategy && strategy.sz) { const z = strategy.sz; ctx.account = { ownMoney: Math.round(z.equity), stocks: Math.round(z.stocks), cash: Math.round(z.cash), marginLoan: Math.round(z.loan), marginPctOfOwn: z.marginPct != null ? Math.round(z.marginPct * 100) + '%' : null, invested: z.exposure != null ? Math.round(z.exposure * 100) + '%' : null, allowedNow: Math.round(z.allowed * 100) + '%', maxPositionsNow: z.maxPositions, marginLimit: Math.round(z.maxMargin * 100) + '%', valueFrom: strategy.auto ? 'stocks at today\'s prices + cash' : 'fixed number in settings', warnings: z.notes.map(n => n[1]) }; }
   if (strategy) ctx.plan = { capital: strategy.capital, ccy: strategy.ccy, perPosition: Math.round(strategy.posPct * 100) + '%', pyramid: strategy.tranches.map(t => Math.round(t * 100) + '%').join('/'), stop: Math.round(strategy.stop * 100) + '%', noBuyDaysBeforeEarnings: strategy.earningsDays };

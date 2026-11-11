@@ -17,6 +17,7 @@ const RULES = [
   ['withdrawal', /terugstorting|withdrawal|auszahlung|retrait|prelievo|retirada|opname/i],
   ['deposit', /storting|deposit|einzahlung|versement|dep[óo]sito|ingreso|bijschrijving/i],
 ];
+export const TOB = /beurstaks|beursbelasting|\bTOB\b|taxe sur les op[ée]rations de bourse|stock exchange tax|tax on stock exchange|b[öo]rsen(umsatz)?steuer/i;
 const TRADE = /(koop|buy|kauf|achat|acquisto|compra|verkoop|sell|verkauf|vente|vendita|venta)\s+([\d.,]+)\s+(?:@|zu je|à|a)\s+([\d.,]+)\s+([A-Z]{3}|GBX)/i;
 const SELLW = /^(verkoop|sell|verkauf|vente|vendita|venta)$/i;
 
@@ -25,6 +26,8 @@ export const KIND_LABEL = { deposit: 'Deposit', withdrawal: 'Withdrawal', buy: '
 export function classify(desc) {
   const m = TRADE.exec(desc);
   if (m) return { kind: SELLW.test(m[1]) ? 'sell' : 'buy', qty: num(m[2]), price: num(m[3]), pcur: m[4].toUpperCase() };
+  // the Belgian stock-exchange tax (TOB) on each buy and sell, kept apart from other taxes
+  if (TOB.test(desc)) return { kind: 'tax', sub: 'tob' };
   for (const [k, re] of RULES) if (re.test(desc)) return { kind: k };
   return { kind: 'other' };
 }

@@ -59,5 +59,9 @@ export function combine(results) {
   const rank = { corr: 0, press: 1, up: 2 };
   const xs = results.filter(Boolean); if (!xs.length) return null;
   const w = xs.reduce((a, b) => rank[b.state] < rank[a.state] ? b : a);
-  return { us: w.state, usLabel: STATUS[w.state][0] };
+  // phase: a NEW uptrend in the first 15 sessions after a follow-through day (a bull market starting), a rally attempt
+  // during a correction (no follow-through day yet), or the plain state
+  const ftdAgo = w.lastFtd != null && w.state === 'up' ? w.n - w.lastFtd : null;
+  const phase = w.state === 'up' ? (ftdAgo != null && ftdAgo <= 15 ? 'new' : 'bull') : w.state === 'corr' && w.rallyDay != null ? 'rally' : w.state;
+  return { us: w.state, usLabel: STATUS[w.state][0], phase, ftdAgo, rallyDay: w.state === 'corr' ? w.rallyDay : null };
 }

@@ -65,6 +65,7 @@ async function load(force = false, quiet = false) {
     M.loadedFor = key;
     App.mktRes = M.rows;
     App.mkt = combine(M.rows.filter(r => r.k === 'IXIC' || r.k === 'GSPC').map(r => r.R)); // US status = weaker of Nasdaq and S&P 500
+    phaseAlert(App.mkt);
     emit('market');
   } catch (e) {
     M.rows = null; M.err = e;
@@ -231,4 +232,22 @@ function charts() {
     chart.timeScale().setVisibleLogicalRange(range);
     M.charts.push({ chart, redraw: () => chart.timeScale().setVisibleLogicalRange(range) });
   }
+}
+
+/** A notification when the market phase changes: what it means for buying, margin and open positions. */
+const PHASE_MSG = {
+  new: ['Follow-through day: a new bull market is starting', 'Buying is allowed again, and margin up to your limit. Start with your best setups near their buy points and add as they work.'],
+  bull: ['Confirmed uptrend', 'Buying allowed; margin up to your limit for proper breakouts.'],
+  press: ['Uptrend under pressure', 'No new margin and pay back any loan; buy less, take some profits, tighten stops (40–60% invested).'],
+  rally: ['Rally attempt in a correction', 'No buys yet. Watch for a follow-through day from day 4 of the rally; prepare your watchlist.'],
+  corr: ['Market in correction', 'No new buys and no margin. Close the positions bought on margin and bring the account to 0–20% invested — losers and the weakest first (Sell ideas tab).'],
+};
+async function phaseAlert(m) {
+  if (!m || !m.phase || isDemo()) return;
+  const prev = await store.get('mktPhase', null);
+  await store.set('mktPhase', m.phase);
+  if (!prev || prev === m.phase || (prev === 'new' && m.phase === 'bull')) return;
+  const [title, body] = PHASE_MSG[m.phase] || [];
+  if (!title) return;
+  try { const { pushEvent } = await import('../data/alerts.js'); await pushEvent({ sym: 'Market', name: 'US market', kind: 'signal', title: 'Market: ' + title, body, level: m.phase === 'corr' || m.phase === 'press' ? 'stop' : m.phase === 'rally' ? 'hold' : 'add' }); } catch (e) { /* notifications unavailable */ }
 }

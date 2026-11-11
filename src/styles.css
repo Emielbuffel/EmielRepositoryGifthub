@@ -582,3 +582,13 @@ tr.auto td { background: color-mix(in srgb, var(--blue) 6%, transparent); }
 /* trade plan on a phone: the price moves into the line under each step */
 .show-m { display: none; }
 @media (max-width: 560px) { .tbl.tp .hide-m { display: none; } .tbl.tp .show-m { display: inline; } .tbl.tp td, .tbl.tp th { padding-left: 6px; padding-right: 6px; } }
+
+.tp-alert { margin: 4px 0; padding: 8px 10px; border-radius: 8px; background: color-mix(in srgb, var(--down) 10%, transparent); font-size: 13px; }
+
+/* Dividends & taxes */
+.drop { display: flex; gap: 12px; align-items: center; border: 1.5px dashed var(--sep-strong); border-radius: 12px; padding: 16px; cursor: pointer; }
+.drop:hover, .drop.over { border-color: var(--blue); background: color-mix(in srgb, var(--blue) 6%, transparent); }
+.drop svg { width: 26px; height: 26px; flex: none; color: var(--blue); }
+.warn-row td { background: color-mix(in srgb, var(--warn) 8%, transparent); }
+.sm-select { padding: 4px 8px; font-size: 12.5px; width: auto; }
+#txStocks td:first-child { white-space: normal; max-width: 260px; word-break: break-word; }

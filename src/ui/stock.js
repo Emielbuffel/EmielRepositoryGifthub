@@ -561,14 +561,15 @@ function histCard() {
 /** Your account, the market's limit and how this position would be paid (cash first, then margin). */
 function accountBlock(S, T, n0, pc0) {
   const z = S.sz; if (!z) return '';
-  const own = (App.holdings || []).filter(h => h.shares > 0).length, mk = z.market === 'corr' ? 'in a correction' : z.market === 'press' ? 'under pressure' : 'in a confirmed uptrend';
+  const own = (App.holdings || []).filter(h => h.shares > 0).length, mk = z.phase === 'rally' ? 'in a correction with a rally attempt' : z.market === 'corr' ? 'in a correction' : z.market === 'press' ? 'under pressure' : z.phase === 'new' ? 'in a new uptrend (after a follow-through day)' : 'in a confirmed uptrend';
   const f = fundTrade(z, T.target), lev = (z.stocks + T.target) / Math.max(1, z.equity);
   return html`<h4 class="tp-h">0 · Your account and this trade</h4>
     <ul class="plan tp-list">
       <li>${S.auto ? html`Own money <b>${n0(z.equity)}</b> = stocks ${n0(z.stocks)} + cash ${z.cash < 0 ? html`<span class="t-warn">−${n0(-z.cash)} (margin loan)</span>` : n0(z.cash)}, at today's prices.` : html`Portfolio value <b>${n0(z.equity)}</b> (the fixed number in Settings → Buying plan; enter your holdings and cash on the Portfolio tab to let the app work it out).`} A position is ${pc0(S.posPct)} of it: <b>${n0(z.position)}</b> — it grows and shrinks with the account.</li>
       <li>Market ${mk}: up to <b>${pc0(z.allowed)}</b> invested${z.market === 'up' && z.maxMargin > 0 ? ` (100% + up to ${pc0(z.maxMargin)} margin)` : ', no margin'} = <b>${z.maxPositions} position${z.maxPositions === 1 ? "" : "s"}</b>. You hold ${own} stock${own === 1 ? '' : 's'}${z.exposure != null ? `, ${pc0(z.exposure)} invested` : ''}; room for about ${n0(z.room)} more.</li>
       <li>This position would be paid ${f.fromCash ? html`<b>${n0(f.fromCash)}</b> from cash` : ''}${f.fromCash && f.fromMargin ? ' + ' : ''}${f.fromMargin ? html`<b class="t-warn">${n0(f.fromMargin)}</b> on margin (loan after: ${pc0(f.marginAfter)} of your own money, limit ${pc0(z.maxMargin)})` : ''}${!f.fromCash && !f.fromMargin ? 'from neither cash nor margin' : ''}.${f.short >= 1 ? html` <b class="t-bad">${n0(f.short)} short</b>: ${z.market !== 'up' ? 'no margin while the market is ' + mk + ' — ' : ''}sell your weakest stock first (Sell ideas tab) or buy a smaller first step.` : ''}${f.fromMargin ? html` With ${pc0(lev)} invested, a 10% fall in your stocks costs about ${pc0(lev * 0.1)} of your own money, plus interest on the loan.` : ''}</li>
-      ${z.notes.map(([t, x]) => html`<li class="t-${t === 'bad' ? 'bad' : 'warn'}">${x}</li>`)}
+      ${z.notes.map(([t, x]) => html`<li class="t-${t === 'bad' ? 'bad' : t === 'ok' ? 'ok' : 'warn'}">${x}</li>`)}
+      <li class="small"><b>Margin rule${z.marginAllowed ? html` — <span class="t-ok">allowed now</span>` : html` — <span class="t-bad">not now</span>`}:</b> only in a confirmed uptrend, including a new one right after a follow-through day, up to ${pc0(z.maxMargin)} of your own money. Uptrend under pressure: no new margin, pay the loan back. Correction: no margin at all, close the positions bought on margin, at most 20% invested. At DEGIRO the loan shows as negative cash; keep the "free space" (vrije ruimte) well above zero, because DEGIRO can sell positions itself when it turns negative. Margin interest is charged on the loan.</li>
     </ul>`;
 }
 
@@ -586,6 +587,7 @@ function tradePlanBlock(B) {
     html`At <b>+${pc0(S.add3[0])}–${pc0(S.zone)}</b>. Above ${fp(T.zoneTop)} (+${pc0(S.zone)}) the stock is extended: no more buying.`];
   return html`<div class="tplan" id="tpBox">
     <div class="card-head" style="margin-top:4px"><h3 style="margin:0">Trade plan</h3><span class="muted tiny">Position ${n0(T.target)} ${ccy} = ${pc0(S.posPct)} of ${n0(S.capital)} ${ccy}${S.auto ? ' (your account today)' : ''}</span></div>
+    ${S.sz && S.sz.market === 'corr' ? html`<p class="tp-alert t-bad"><b>Market in correction:</b> no new buys and no margin — this plan is for when a follow-through day confirms a new uptrend. The book: 0–20% invested now.</p>` : ''}
     ${accountBlock(S, T, n0, pc0)}
     <h4 class="tp-h">1 · Buying: when and how much</h4>
     <div class="tbl-wrap"><table class="tbl tp"><thead><tr><th>Step</th><th class="n">Share</th><th class="n">Amount</th><th class="n">≈ Shares</th><th class="n hide-m">Price</th></tr></thead><tbody>

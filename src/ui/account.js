@@ -23,7 +23,7 @@ const n0 = (x, d = 0) => (x == null || !isFinite(x) ? '—' : x.toLocaleString('
 const sign = x => (x > 0 ? '+' : '');
 
 /** Lookup (cur, t) → base units per 1 cur, from weekly FX maps (fallback: today's factor). */
-async function fxLookup(curs, base) {
+export async function fxLookup(curs, base) {
   const M = new Map();
   for (const c of new Set(curs)) {
     if (!c || c === base) continue;
@@ -266,7 +266,7 @@ async function monthsCard() {
 }
 
 /* ---------- dividends, costs and taxes (from the account statement) ---------- */
-function monthChart(months, base) {
+export function monthChart(months, base) {
   // net dividends up; costs, taxes and dividend tax stacked down
   const n = months.length, bw = 18, gap = 8, W = Math.max(300, n * (bw + gap) + 60), H = 200, top = 14, bot = 30;
   const up = months.map(([, v]) => Math.max(0, v.dividend)), dn = months.map(([, v]) => -(Math.min(0, v.fee) + Math.min(0, v.tax) + Math.min(0, v.divtax)));

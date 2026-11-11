@@ -96,3 +96,10 @@ test('sizingChecks: 20% limit measured against the whole account', () => {
   assert.ok(!m.some(x => x.sym === 'MA'));
   assert.ok(m.some(x => x.sym === 'BIG' && x.kind === 'size' && /24% of your account, above your 20% limit/.test(x.text)));
 });
+
+test('nextStep: no buy signals while the market is in a correction', async () => {
+  const { nextStep } = await import('../src/core/strategy.js');
+  const st = nextStep({}, { pivot: 100, buys: [] }, { close: 101, now: 1e9, market: 'corr' });
+  assert.equal(st.code, 'mkt-corr');
+  assert.equal(nextStep({}, { pivot: 100, buys: [] }, { close: 101, now: 1e9, market: 'up' }).code, 'buy1');
+});

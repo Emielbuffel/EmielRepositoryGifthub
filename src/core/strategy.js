@@ -108,6 +108,7 @@ export function nextStep(plan, pos, q) {
     const nx = P.sellSteps.find(([lvl], k) => sold < Math.round(total * P.sellSteps.slice(0, k + 1).reduce((t, x) => t + x[1], 0)) - 0.5);
     if (nx) return out('wait-take', 'hold', `Next sale at +${Math.round(nx[0] * 100)}%`, `Part of the profit is taken. Sell the next ${nx[1] === 1 / 3 ? 'third' : Math.round(nx[1] * 100) + '%'} at ${r2(avg * (1 + nx[0]))}. Sell line: ${stop}.`, { stop });
   }
+  if (step && q.market === 'corr' && up != null && up >= 0) return out('mkt-corr', 'warn', 'No buys: market in correction', `The market is in a correction: no new buys and no margin (the book: 0–20% invested). Wait for a follow-through day; ${n ? 'keep the stop on what you hold' : 'keep the buy point on your watchlist'}.`);
   if (step) {
     const amt = step.amount, sh = sharesFor(amt, c, q.fx || 1);
     const inRange = n === 0 ? up >= 0 && up <= P.zone : up >= (n === 1 ? P.add2[0] : P.add3[0]) && up <= P.zone;
