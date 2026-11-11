@@ -14,6 +14,7 @@ export const ALERT_TYPES = {
   below: { label: 'Closes below', dir: 'down' },
   stop: { label: 'Stop: closes below', dir: 'down' },
   plan: { label: 'Buying plan', dir: null }, // events raised by buying plans (see plans.js)
+  signal: { label: 'Buy zone / add-on', dir: null }, // buy-zone and add-on points on stocks you own (see live.js)
 };
 
 // Buying plans register here (plans.js imports this module, so it can't be imported back).
@@ -77,7 +78,7 @@ export async function checkBars(sym, bars, name = '') {
 }
 
 export function describe(a, name = '') {
-  if (a.type === 'plan') return a.body || a.title || '';
+  if (a.type === 'plan' || a.type === 'signal') return a.body || a.title || '';
   const what = a.type === 'breakout' ? `broke out above ${a.level}` : a.type === 'stop' ? `hit its stop (${a.level})` : a.type === 'above' ? `closed above ${a.level}` : `closed below ${a.level}`;
   return `${a.sym}${name ? ' (' + name + ')' : ''} ${what}: close ${a.close}${a.volRatio ? `, volume ×${a.volRatio.toFixed(1)} of average${a.volRatio >= 1.5 ? '' : ' (below the +50% a confirmed breakout needs)'}` : ''}.`;
 }

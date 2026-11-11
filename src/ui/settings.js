@@ -24,6 +24,10 @@ export async function initSettings(el) {
         <label class="provider${settings.provider === p.id ? ' on' : ''}"><input type="radio" name="prov" value="${p.id}" ${settings.provider === p.id ? raw('checked') : ''}><div><b>${p.name}</b><p>${p.blurb}</p>${p.site ? html`<p><a href="${p.site}" target="_blank" rel="noopener">Get a key at ${new URL(p.site).hostname}</a></p>` : ''}</div></label>`)}</div>
       <div id="stKey"></div>
       <label class="field"><span>Your e-mail for SEC EDGAR — needed for the long US earnings history (back to about 2009). The SEC refuses requests without a contact e-mail; it is sent only to sec.gov. Without it, US stocks use the shorter built-in history.</span><input class="input" id="stSec" type="email" placeholder="you@example.com" value="${settings.secEmail || ''}" autocapitalize="off" spellcheck="false"></label>
+      <h3 style="margin:6px 0 0">Automatic updates</h3>
+      <p class="small muted" style="margin:0">In the desktop app prices refresh by themselves: about every 90 seconds for your watchlists and holdings while their market is open (every 30 minutes otherwise), every minute on the open chart, every 5 minutes on the Market tab.</p>
+      <label class="field"><span>Screener: scan again automatically every</span><select class="input" id="stAuto">${[[15, '15 minutes'], [30, '30 minutes'], [60, 'hour'], [0, 'never (only when I press Run scan)']].map(([v, l]) => html`<option value="${v}" ${(settings.autoScan ?? 30) === v ? raw('selected') : ''}>${l}</option>`)}</select></label>
+      <label class="chk"><input type="checkbox" id="stNotW" ${settings.notifyWatch === false ? '' : raw('checked')}> Also notify when a watchlist stock breaks out into its buy zone (stocks you own always get buy-zone and add-on notifications)</label>
     </section>
     <section class="card" id="stSite">
       <h2>Phone &amp; automatic updates</h2>
@@ -134,6 +138,8 @@ export async function initSettings(el) {
     };
     inp.click();
   };
+  $('#stAuto', el).onchange = async () => { settings.autoScan = +$('#stAuto', el).value; await saveSettings(); toast(settings.autoScan ? `The screener rescans every ${settings.autoScan} minutes.` : 'Automatic scans are off.'); };
+  $('#stNotW', el).onchange = async () => { settings.notifyWatch = $('#stNotW', el).checked; await saveSettings(); };
   $('#stSec', el).onchange = async () => { const v = $('#stSec', el).value.trim(); if (v && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v)) { toast('That does not look like an e-mail address.'); return; } settings.secEmail = v; await saveSettings(); toast(v ? 'Saved. SEC requests now include your e-mail.' : 'Removed.'); };
   $$('input[name=prov]', el).forEach(r => {
     r.onchange = async () => {

@@ -561,3 +561,10 @@ tr.auto td { background: color-mix(in srgb, var(--blue) 6%, transparent); }
 .tbl.tp .tp-sum td { border-top: 1px solid var(--sep-strong); }
 .tp-list { margin: 0; }
 .tbl.tp td.tp-px { white-space: normal; min-width: 80px; }
+
+/* sidebar watchlist tabs */
+.side-label > span { font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.side-tabs { display: flex; flex-wrap: wrap; gap: 4px; padding: 2px 8px 6px; }
+.side-tab { border: 0; background: var(--fill); color: var(--ink2); font: inherit; font-size: 12px; padding: 3px 9px; border-radius: 999px; cursor: pointer; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.side-tab.on { background: var(--blue); color: #fff; }
+.side-tab.add { background: none; color: var(--blue); }

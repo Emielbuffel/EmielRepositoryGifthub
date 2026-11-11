@@ -18,7 +18,8 @@ import { openSearch } from './ui/search.js';
 import { alertsCenter } from './ui/alertsui.js';
 import { manageLists } from './ui/lists.js';
 import { onAlerts, triggeredCount, checkAll, describe } from './data/alerts.js';
-import { useList } from './app.js';
+import { useList, saveLists } from './app.js';
+import { startLive } from './data/live.js';
 import './data/plans.js'; // registers buying-plan checks with the alerts
 import { toast } from './ui/dom.js';
 
@@ -44,7 +45,6 @@ function nav() {
   $('#searchBtn').innerHTML = ICON.search; $('#searchBtn').onclick = openSearch;
   $('#alertBtn').innerHTML = ICON.bell + '<span class="badge" id="alertBadge" hidden></span>'; $('#alertBtn').onclick = async () => { await alertsCenter(); badge(); };
   $('#sideEdit').onclick = manageLists;
-  $('#sideList').onchange = () => useList($('#sideList').value);
   $('#coachBtn').innerHTML = ICON.coach; $('#coachBtn').onclick = () => import('./ui/coachui.js').then(m => m.openCoach());
   $('#settingsBtn').innerHTML = ICON.settings; $('#settingsBtn').onclick = () => go('settings');
   render($('#sideFoot'), html`Version ${VERSION} · Not investment advice`);
@@ -55,10 +55,21 @@ async function badge() {
   b.hidden = !n; b.textContent = n;
 }
 
+const SIDE = { tab: 'list' };
 function sideWatch() {
-  render($('#sideList'), html`${App.lists.map(l => html`<option value="${l.id}" ${l.id === App.listId ? raw('selected') : ''}>${l.name}</option>`)}`);
+  // one tab per watchlist, a tab for the stocks you own, and a button for a new list
+  const hold = [...new Set((App.holdings || []).map(h => h.sym))], onHold = SIDE.tab === 'hold' && hold.length;
+  render($('#sideTabs'), html`${App.lists.map(l => html`<button class="side-tab${!onHold && l.id === App.listId ? ' on' : ''}" role="tab" data-list="${l.id}" title="${l.syms.length} stocks">${l.name}</button>`)}${hold.length ? html`<button class="side-tab${onHold ? ' on' : ''}" role="tab" data-list="__hold" title="The stocks in your portfolio">My stocks</button>` : ''}<button class="side-tab add" data-list="__new" aria-label="New watchlist">+ New</button>`);
+  $$('[data-list]', $('#sideTabs')).forEach(b => { b.onclick = async () => {
+    const id = b.dataset.list;
+    if (id === '__hold') { SIDE.tab = 'hold'; sideWatch(); return; }
+    SIDE.tab = 'list';
+    if (id === '__new') { const nid = 'w' + Date.now().toString(36); await saveLists([...App.lists, { id: nid, name: 'List ' + (App.lists.length + 1), syms: [] }]); await useList(nid); manageLists(); toast('New list created: give it a name, then add stocks with the ☆ button on a chart.'); return; }
+    if (id !== App.listId) useList(id); else sideWatch();
+  }; });
+  const syms = onHold ? hold : App.watch;
   const el = $('#sideWatch');
-  render(el, html`${App.watch.length ? App.watch.map(s => { const q = App.last[s]; return html`<button data-s="${s}" class="${s === App.sym && App.view === 'chart' ? 'on' : ''}"><span class="s">${s.replace('.DEMO', '')}</span><span class="n">${App.names[s] || ''}</span><span class="c num ${q ? (q.ch >= 0 ? 'up' : 'down') : ''}">${q ? pc(q.ch, 1) : ''}</span>${q && q.ph ? html`<span class="ph t-${q.pt || 'mute'}">● ${q.ph}${q.rs ? ' · RS ' + q.rs : ''}${q.vp != null ? ' · vol ' + pc(q.vp, 0) : ''}</span>` : q && q.vp != null ? html`<span class="ph t-mute">vol ${pc(q.vp, 0)} vs avg</span>` : ''}</button>`; }) : html`<p class="muted tiny" style="padding:0 10px">Star a stock on the Chart tab to add it here.</p>`}`);
+  render(el, html`${syms.length ? syms.map(s => { const q = App.last[s]; return html`<button data-s="${s}" class="${s === App.sym && App.view === 'chart' ? 'on' : ''}"><span class="s">${s.replace('.DEMO', '')}</span><span class="n">${App.names[s] || ''}</span><span class="c num ${q ? (q.ch >= 0 ? 'up' : 'down') : ''}">${q ? pc(q.ch, 1) : ''}</span>${q && q.ph ? html`<span class="ph t-${q.pt || 'mute'}">● ${q.ph}${q.rs ? ' · RS ' + q.rs : ''}${q.vp != null ? ' · vol ' + pc(q.vp, 0) : ''}</span>` : q && q.vp != null ? html`<span class="ph t-mute">vol ${pc(q.vp, 0)} vs avg</span>` : ''}</button>`; }) : html`<p class="muted tiny" style="padding:0 10px">${onHold ? 'No holdings yet.' : 'Empty list. Open a stock and tap ☆ “Add to list” to put it here.'}</p>`}`);
   $$('button', el).forEach(b => { b.onclick = () => openStock(b.dataset.s); });
 }
 
@@ -135,10 +146,11 @@ async function boot() {
   await detectRelay(); // web version on its own site: live data through the site's relay
   updates();
   await loadState();
+  if (!App.holdings) App.holdings = await store.get(isDemo() ? 'holdings.demo' : 'holdings.real', []); // for 'My stocks' and the holdings checks
   nav();
   on(type => {
     if (type === 'view') show(App.view);
-    if (type === 'watch' || type === 'quote' || type === 'stock' || type === 'view') sideWatch();
+    if (type === 'watch' || type === 'quote' || type === 'stock' || type === 'view' || type === 'holdings') sideWatch();
     if (type === 'provider') banner();
   });
   banner(); sideWatch();
@@ -146,6 +158,8 @@ async function boot() {
   App.view = INIT[start] ? start : 'chart';
   await show(App.view);
   if (App.view !== 'market') { started.add('market'); initMarket($('#view-market')); } // loads the market status for the checklist
+  // live feeds: the screener scans by itself, and prices, alerts and holdings signals stay fresh in the background
+  if (isApp() && !isDemo()) { if (App.view !== 'screener') { started.add('screener'); initScreener($('#view-screener')); } startLive(); }
   window.addEventListener('scroll', () => $('.topbar').classList.toggle('scrolled', window.scrollY > 4), { passive: true });
   document.addEventListener('keydown', e => {
     if (e.key === '/' && !/input|textarea|select/i.test(document.activeElement.tagName) && $('#sheet').hidden) { e.preventDefault(); openSearch(); }

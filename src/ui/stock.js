@@ -27,7 +27,7 @@ import { stockNews, lastSeen, markSeen, newsSettings } from '../data/news.js';
 import { enrich, epsPoints, nextReport, canslimCA, adGrade, yearly } from '../core/earnings.js';
 import { analyseIndex, STATUS, EXPOSURE } from '../core/market.js';
 import * as store from '../data/store.js';
-import { App, on, openStock, saveWatch, rememberName, rememberQuote, go, useList } from '../app.js';
+import { App, on, openStock, saveWatch, rememberName, rememberQuote, go, useList, emit } from '../app.js';
 import { StockChart, patternsToShow, outcome, PAT_LABEL, patColor, CMP_COLORS } from './chart.js';
 import { tok } from './dom.js';
 import { $, $$, html, raw, render, esc, money, ICON, toast, ago } from './dom.js';
@@ -310,10 +310,12 @@ function liveStatus(d, src) {
 /* While the market is open, refresh today's price and volume about every minute (desktop app, live feed only). */
 async function liveTick() {
   const d = V.data, q = d && d.quote, s = q && q.session, now = Date.now() / 1000;
-  if (!s || now < s.start || now > s.end + 300 || document.visibilityState !== 'visible' || IV.range) return;
+  const trading = s && now >= s.start && now <= s.end + 300;
+  if (!d || document.visibilityState !== 'visible' || IV.range || (!trading && Date.now() - (d.fetchedAt || 0) < 30 * 60e3)) return;
+  if (isDemoSym(V.sym) || !isApp()) return;
   const el = $('#sPx'); if (!el || !el.offsetParent) return;
   const sym = V.sym, seq = V.seq;
-  let nd; try { nd = await daily(sym, { long: true, maxAge: 30e3 }); } catch (e) { return; }
+  let nd; try { nd = await daily(sym, { long: true, maxAge: trading ? 30e3 : 60e3 }); } catch (e) { return; }
   if (seq !== V.seq || sym !== V.sym || !nd || nd.stale) return;
   V.data = nd; V.R = PAT.scan(nd.bars); V.phase = isIndexSym(sym) ? null : patternPhase(V.R, nd.bars); V.sells = sellPoints(nd.bars, V.R);
   const n = nd.bars.length - 1;
@@ -335,7 +337,7 @@ async function tags() {
   // setup score: base, strength, trend, demand, earnings and market in one number
   const sr = screenRow(sym, '', V.data.bars, V.R, V.bench ? V.bench.bars : null);
   let sc = null;
-  if (sr) { sr.rs = rs; const q = enrich(V.earn || []).pop(); sc = setupScore(sr, q ? q.yoy : null, App.mkt); V.score = sc; }
+  if (sr) { sr.rs = rs; sr.cu = V.data.currency; const q = enrich(V.earn || []).pop(); sc = setupScore(sr, q ? q.yoy : null, App.mkt); V.score = sc; emit('row', { row: sr }); }
   renderPanel(V);
   render(el, html`${phaseTag(V.phase)}${sc ? html`<span class="tag ${sc.score >= 70 ? 't-ok' : sc.score >= 45 ? 't-warn' : 't-mute'}" title="${sc.parts.map(p => `${p[0]} ${p[1]}/${p[2]} (${p[3]})`).join(' · ')}">Setup ${sc.score}</span>` : ''}${rs != null ? html`<span class="tag ${rs >= 80 ? 't-ok' : rs >= 50 ? 't-blue' : 't-mute'}" title="12-month price strength, latest quarter double-weighted, ranked 1–99 among ${n} stocks. The app's own measure.">RS ${rs}</span>` : ''}${sector ? html`<span class="tag t-mute">${sector}</span>` : ''}`);
 }

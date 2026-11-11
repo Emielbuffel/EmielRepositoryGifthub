@@ -17,6 +17,7 @@ import { earnings } from '../data/service.js';
 import { nextReport } from '../core/earnings.js';
 import { allPlans, journal, strategy } from '../data/plans.js';
 import { saveWatch } from '../app.js';
+import { isApp } from '../data/net.js';
 
 const M = { rows: null, charts: [], loading: false, loadedFor: null };
 
@@ -47,6 +48,8 @@ export function initMarket(el) {
   on(type => { if (type === 'scan') { sectors(); exposure(); routine(); } if (['plans', 'journal', 'watch', 'holdings'].includes(type) && M.rows) routine(); if (type === 'theme' && M.rows && App.view === 'market') charts(); if (type === 'provider') { M.loadedFor = null; if (App.view === 'market') load(); else preload(); } if (type === 'view' && App.view === 'market') { load(); marketIntraday(); M.charts.forEach(c => c.redraw && c.redraw()); } });
   preload();
   if (App.view === 'market') marketIntraday();
+  // the desktop app keeps the market status current by itself (every 5 minutes)
+  if (isApp() && !isDemo()) setInterval(() => { if (document.visibilityState === 'visible' || window.desktop) load(true, App.view !== 'market'); }, 5 * 60e3);
 }
 
 /** Loads the market quietly so the market item of the checklist is known on the Chart tab too. */
@@ -57,7 +60,7 @@ async function load(force = false, quiet = false) {
   if (M.loading || (!force && M.loadedFor === key && M.rows)) { if (!quiet) draw(); return; }
   M.loading = true;
   try {
-    const series = await marketSeries();
+    const series = await marketSeries(force && isApp() ? { maxAge: 2 * 60e3 } : {});
     M.rows = series.map(s => ({ ...s, R: s.bars ? analyseIndex(s.bars) : null }));
     M.loadedFor = key;
     App.mktRes = M.rows;

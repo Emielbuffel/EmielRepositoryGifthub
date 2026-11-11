@@ -109,8 +109,8 @@ export const defaultBenchmark = sym => compareOptions(sym)[0].id;
  * then a US-listed ETF that tracks it. Returns {id, name, bars, sym, proxy, note}.
  */
 /** long: load the whole history (the chart in the desktop app), so comparisons and the RS line cover a long chart. */
-export async function indexSeries(id, demo = isDemo(), { long = false } = {}) {
-  const o = { long };
+export async function indexSeries(id, demo = isDemo(), { long = false, maxAge } = {}) {
+  const o = { long, ...(maxAge != null ? { maxAge } : {}) };
   if (demo) { const s = DEMO_IDX[id] || 'DEMO-500'; const d = await daily(s); return { id, name: d.name, bars: d.bars, sym: s, proxy: false }; }
   if (id.startsWith('S:')) { const t = id.slice(2), d = await daily(t, o); return { id, name: SECTORS[t] + ' ETF (' + t + ')', bars: d.bars, sym: t, proxy: false }; }
   const ix = INDEXES[id];
@@ -134,11 +134,11 @@ export async function benchmarkFor(sym, id, opts = {}) {
 }
 
 /* ---------- market indexes ---------- */
-export async function marketSeries() {
+export async function marketSeries({ maxAge } = {}) {
   const out = [];
   const list = isDemo() ? [{ k: 'IXIC', region: 'US' }, { k: 'GSPC', region: 'US' }] : MARKET;
   // all indexes at once (nine of them load much faster in parallel)
-  out.push(...await Promise.all(list.map(m => indexSeries(m.k).then(d => ({ k: m.k, region: m.region, label: m.label, ...d }), e => ({ k: m.k, name: INDEXES[m.k].name, region: m.region, label: m.label, error: e })))));
+  out.push(...await Promise.all(list.map(m => indexSeries(m.k, isDemo(), { maxAge }).then(d => ({ k: m.k, region: m.region, label: m.label, ...d }), e => ({ k: m.k, name: INDEXES[m.k].name, region: m.region, label: m.label, error: e })))));
   return out;
 }
 

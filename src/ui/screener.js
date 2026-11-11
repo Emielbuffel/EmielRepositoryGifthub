@@ -18,7 +18,10 @@ import { factor } from '../data/fx.js';
 
 export const US_LARGE = ['AAPL', 'MSFT', 'NVDA', 'AMZN', 'GOOGL', 'META', 'AVGO', 'TSLA', 'JPM', 'LLY', 'V', 'UNH', 'XOM', 'MA', 'COST', 'HD', 'PG', 'JNJ', 'NFLX', 'WMT', 'ABBV', 'CRM', 'ORCL', 'AMD', 'BAC', 'KO', 'MRK', 'CVX', 'PEP', 'ADBE', 'TMO', 'LIN', 'CSCO', 'ACN', 'MCD', 'ABT', 'WFC', 'DIS', 'INTU', 'TXN', 'QCOM', 'IBM', 'AMAT', 'GE', 'CAT', 'NOW', 'ISRG', 'UBER', 'PANW', 'BKNG'];
 const ST = { near: ['Near buy point', 'ok'], forming: ['Base forming', 'warn'], buyzone: ['Buy zone', 'ok'], extended: ['Extended', 'warn'], below: ['Below buy point', 'warn'], stop: ['Stop hit', 'bad'], faulty: ['Faulty base', 'bad'] };
+const INPAT = r => r.p && ['near', 'forming', 'buyzone'].includes(r.p.st) && !r.p.f;
 const PRESETS = [
+  ['pat', 'In a pattern', INPAT],
+  ['bz', 'In buy zone', r => r.p && r.p.st === 'buyzone'],
   ['all', 'All', () => true],
   ['bo', 'Breakouts', r => r.p && r.p.st === 'buyzone' && r.p.bo <= 5],
   ['near', 'Near buy point', r => r.p && r.p.st === 'near'],
@@ -33,7 +36,7 @@ const COLS = [
   ['rs', 'Strength', 'n'], ['g', 'Sector'], ['vr', 'Vol ×', 'n'], ['ph', 'Phase'], ['p', 'Pattern'], ['di', 'To buy pt', 'n'], ['hi', 'Off high', 'n'], ['eg', 'EPS g', 'n'], ['sg', 'Sales g', 'n'], ['nm', 'Net m', 'n'], ['sig', 'Signals'], ['sp', '60 days'],
 ];
 const FF = { eg: null, sg: null, nm: null, de: null, acc: false, up3: false, fcf: false }, FUND = {};
-const S = { rows: [], at: null, running: false, cancel: false, sort: 'sc', asc: false, ccy: '', fx: {}, preset: 'all', q: '', minRs: 0, sector: '', source: null, custom: '' };
+const S = { rows: [], at: null, running: false, cancel: false, sort: 'sc', asc: false, ccy: '', fx: {}, preset: 'pat', q: '', minRs: 0, sector: '', source: null, custom: '' };
 
 export async function initScreener(el) {
   S.custom = await store.get('screen.custom', 'AAPL MSFT NVDA');
@@ -87,9 +90,28 @@ export async function initScreener(el) {
     i.oninput = i.onchange = () => { FF[k] = i.type === 'checkbox' ? i.checked : (i.value === '' ? null : +i.value); store.set('screen.ff', FF); table(); }; });
   $('#scFundLoad').onclick = loadFund;
   $('#scFundClear').onclick = () => { Object.keys(FF).forEach(k => { FF[k] = typeof FF[k] === 'boolean' ? false : null; }); $$('[data-ff]').forEach(i => { if (i.type === 'checkbox') i.checked = false; else i.value = ''; }); store.set('screen.ff', FF); table(); };
-  on((type, data) => { if (type === 'sector') { S.sector = data || ''; S.preset = 'all'; presets(); table(); } if (type === 'market' && S.rows.length) { score(); table(); } if (type === 'provider') reset(); if (type === 'view' && App.view === 'screener') { sources(); if (!S.rows.length && (isDemo() || (provider().id === 'free' && !isApp())) && !S.running) run(); } });
+  on((type, data) => { if (type === 'row' && data && data.row) syncRow(data.row); if (type === 'sector') { S.sector = data || ''; S.preset = 'all'; presets(); table(); } if (type === 'market' && S.rows.length) { score(); table(); } if (type === 'provider') reset(); if (type === 'watch' && App.view === 'screener') sources(); if (type === 'view' && App.view === 'screener') { sources(); if (!S.rows.length && (isDemo() || (provider().id === 'free' && !isApp())) && !S.running) run(); else autoScan(); } });
   await reset();
   if (App.view === 'screener' && (isDemo() || (provider().id === 'free' && !isApp())) && !S.rows.length) run();
+  // automatic scans: when the tab opens with an old scan, and in the background every few minutes
+  setInterval(() => autoScan(), 5 * 60e3); setTimeout(() => autoScan(), 20e3);
+}
+
+/** Rescans the chosen list when the last scan is older than the setting (default 30 minutes; desktop app). */
+export function autoScan() {
+  if (S.running || !isApp() || provider().id === 'demo' || settings.autoScan === 0) return;
+  const every = (settings.autoScan || 30) * 60e3;
+  if (S.at && Date.now() - S.at < every) return;
+  if (document.visibilityState !== 'visible' && !window.desktop) return;
+  run({ auto: true });
+}
+
+/** Puts the chart's fresh analysis of a stock into its screener row, so both always show the same state. */
+function syncRow(row) {
+  const i = S.rows.findIndex(r => r.s === row.s); if (i < 0) return;
+  const old = S.rows[i]; S.rows[i] = { ...row, rs: old.rs, rsh: row.rsh ?? old.rsh, g: old.g, cu: old.cu || row.cu, nm: row.nm || old.nm };
+  score(); store.set('screen.' + provider().id, { rows: S.rows, at: S.at });
+  if (App.view === 'screener') { tiles(); table(); }
 }
 
 async function reset() {
@@ -121,13 +143,15 @@ function list(src) {
   if (src === 'usall') return USALL.slice();
   if (src === 'demo') return DEMO.map(d => d.sym);
   if (src === 'watch') return App.watch.slice();
+  if (src.startsWith('l:')) { const l = (App.lists || []).find(x => x.id === src.slice(2)); return l ? l.syms.slice() : []; }
+  if (src === 'alllists') return [...new Set((App.lists || []).flatMap(l => l.syms))];
   if (src === 'portfolio') return (App.holdings || []).map(h => h.sym);
   if (src === 'us50') return US_LARGE;
   if (src === 'custom') return [...new Set(S.custom.toUpperCase().split(/[\s,;]+/).filter(Boolean))].slice(0, 300);
   return [];
 }
 function sources() {
-  const opts = [['watch', `Your watchlist (${App.watch.length})`], ['portfolio', `Your portfolio (${(App.holdings || []).length})`]];
+  const opts = [['watch', `Watchlist shown in the sidebar (${App.watch.length})`], ...(App.lists || []).filter(l => l.id !== App.listId).map(l => ['l:' + l.id, `Watchlist: ${l.name} (${l.syms.length})`]), ...((App.lists || []).length > 1 ? [['alllists', `All your watchlists (${new Set(App.lists.flatMap(l => l.syms)).size})`]] : []), ['portfolio', `Your portfolio (${(App.holdings || []).length})`]];
   if (isDemo()) opts.unshift(['demo', `Demo stocks (${DEMO.length}, fictional)`]);
   else if (isApp() && UNI.length) {
     // desktop app: the whole universe with live prices
@@ -145,19 +169,20 @@ function sources() {
 function note() {
   const n = list(S.source).length, P = provider();
   const per = P.id === 'twelvedata' ? 7.6 : P.id === 'demo' ? 0 : 0.3;
-  $('#scNote').textContent = P.id === 'demo' ? 'Runs on the demo stocks instantly.' : P.id === 'free' && isApp() ? `${n} stocks · live prices from the free feed (2 years per stock, cached for 3 hours). First scan about ${Math.max(1, Math.round(n / 12 / 60))} min, repeats are much faster.` : P.id === 'free' ? `${n} stocks · uses the built-in data (the desktop app adds live prices and the full universe). A full scan takes about ${Math.max(1, Math.round(n / 25))} s.` :
+  $('#scNote').textContent = P.id === 'demo' ? 'Runs on the demo stocks instantly.' : P.id === 'free' && isApp() ? `${n} stocks · live prices from the free feed (at most 15 minutes old). Rescans automatically every ${settings.autoScan || 30} minutes while the app is open (Settings → Market data). First scan about ${Math.max(1, Math.round(n / 12 / 60))} min, repeats are much faster.` : P.id === 'free' ? `${n} stocks · uses the built-in data (the desktop app adds live prices and the full universe). A full scan takes about ${Math.max(1, Math.round(n / 25))} s.` :
     `${n} stocks · uses up to ${n + 1} requests on your ${P.short} plan the first time (cached prices are reused for 3 hours)${per > 1 ? ` · about ${Math.ceil(n * per / 60)} min on the free plan (8 requests a minute)` : ''}.`;
-  $('#scAt').textContent = S.at ? 'Last scan ' + ago(S.at) : '';
+  $('#scAt').textContent = S.at ? 'Last scan ' + ago(S.at) + (S.running ? ' · scanning now…' : '') : '';
 }
 
-async function run() {
+const FRESH = 15 * 60e3;
+async function run({ auto = false } = {}) {
   if (S.running) return;
   if (S.source === 'usall' && !USALL.length) {
     try { toast('Loading the SEC list of US-listed companies…'); const l = listedCommon(await secCompanies(secAgent())); l.forEach(x => { if (!NAME[x.s]) NAME[x.s] = x.n; }); USALL = l.map(x => x.s); sources(); }
     catch (e) { toast(e.message, 6000); return; }
   }
   const syms = list(S.source);
-  if (!syms.length) { toast('Nothing to scan: add stocks to this list first.'); return; }
+  if (!syms.length) { if (!auto) toast('Nothing to scan: add stocks to this list first.'); return; }
   S.running = true; S.cancel = false;
   $('#scProg').hidden = false; $('#scRun').disabled = true;
   const rows = [], errors = [];
@@ -168,7 +193,7 @@ async function run() {
   const one = async (sym, retry = true) => {
     if (S.cancel) return;
     try {
-      const d = await daily(sym, live ? { years: 2 } : {});
+      const d = await daily(sym, live ? { years: 2, maxAge: FRESH } : {});
       const r = screenRow(sym, d.name || App.names[sym] || NAME[sym] || '', d.bars, PAT.scan(d.bars), benchC, { noVol: NV.has(sym) && !d.live });
       if (r) { r.cu = d.currency; r.g = SECTOR[sym] || ''; rows.push(r); }
       else errors.push(sym + ' (too little history)');
@@ -188,7 +213,7 @@ async function run() {
   setTimeout(() => emit('scan'), 0);
   await store.set('screen.' + provider().id, { rows, at: S.at });
   $('#scProg').hidden = true; $('#scRun').disabled = false;
-  if (errors.length) toast(`${rows.length} scanned; ${errors.length} skipped (${errors.slice(0, 2).join('; ')}${errors.length > 2 ? '…' : ''})`, 6000);
+  if (errors.length && !auto) toast(`${rows.length} scanned; ${errors.length} skipped (${errors.slice(0, 2).join('; ')}${errors.length > 2 ? '…' : ''})`, 6000);
   tiles(); table(); note();
 }
 
@@ -196,9 +221,9 @@ function tiles() {
   const R = S.rows, el = $('#scTiles');
   if (!R.length) { render(el, html`<div class="tile"><div class="empty">${raw(ICON.screener)}<p>No scan yet. Pick a list and press Run scan.</p></div></div>`); return; }
   const T = [
-    ['Breakouts', 't-ok', R.filter(r => r.p && r.p.st === 'buyzone' && r.p.bo <= 5).sort((a, b) => a.p.bo - b.p.bo), r => r.p.bo === 0 ? 'today' : r.p.bo + 'd ago'],
-    ['Near a buy point', 't-blue', R.filter(r => r.p && r.p.st === 'near').sort((a, b) => b.p.di - a.p.di), r => pc(r.p.di)],
-    ['Volume surges (2×+)', 't-warn', R.filter(r => r.vr >= 2).sort((a, b) => b.vr - a.vr), r => '×' + r.vr.toFixed(1) + ' ' + (r.d1 >= 0 ? '▲' : '▼')],
+    ['In buy zone (broke out)', 't-ok', R.filter(r => r.p && r.p.st === 'buyzone').sort((a, b) => a.p.bo - b.p.bo), r => (r.p.bo === 0 ? 'today' : r.p.bo + 'd ago') + ' · ' + pc(r.p.di)],
+    ['Base ready, near buy point', 't-blue', R.filter(r => r.p && r.p.st === 'near' && !r.p.f).sort((a, b) => b.p.di - a.p.di), r => pc(r.p.di) + ' to go'],
+    ['Volume surges in a base', 't-warn', R.filter(r => r.vr >= 2 && INPAT(r)).sort((a, b) => b.vr - a.vr), r => '×' + r.vr.toFixed(1) + ' ' + (r.d1 >= 0 ? '▲' : '▼')],
     ['Sell signals', 't-bad', R.filter(r => r.sell.length).sort((a, b) => b.sell.length - a.sell.length), r => r.sell[0]],
   ];
   render(el, html`${T.map(([t, c, rows, v]) => html`<div class="tile"><h3><span class="${c}">●</span>${t}<span class="count">${rows.length}</span></h3>

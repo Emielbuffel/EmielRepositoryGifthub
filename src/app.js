@@ -72,7 +72,7 @@ export async function rememberQuote(sym, close, chg, extra = {}) {
 }
 /** Many at once (after a scan): [{s, c, ch, ph, pt, rs}]. */
 export async function rememberQuotes(list) {
-  for (const x of list) App.last[x.s] = { ...(App.last[x.s] || {}), c: x.c, ch: x.ch, ph: x.ph, pt: x.pt, rs: x.rs, ...(x.vp != null ? { vp: x.vp } : {}) };
+  for (const { s, ...x } of list) { Object.keys(x).forEach(k => { if (x[k] === undefined || (k === 'rs' && x[k] == null && App.last[s] && App.last[s].rs != null)) delete x[k]; }); App.last[s] = { ...(App.last[s] || {}), ...x }; }
   await store.set('lastQuotes', App.last); emit('quote');
 }
 
