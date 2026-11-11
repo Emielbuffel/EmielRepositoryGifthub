@@ -100,9 +100,19 @@ function draw(el, sym, F) {
   // five-year evolution in one line: revenue and EPS growth per year, margin then vs now
   const yrs5 = (F.annual || []).filter(r => r.rev != null || r.eps != null).slice(-6);
   const cagr = (a, b, n) => a > 0 && b > 0 && n > 0 ? Math.pow(b / a, 1 / n) - 1 : null;
-  const n5 = yrs5.length - 1, rC = n5 > 0 ? cagr(yrs5[0].rev, yrs5[n5].rev, n5) : null, eC = n5 > 0 ? cagr(yrs5[0].eps, yrs5[n5].eps, n5) : null;
-  const m0 = n5 > 0 ? margins(yrs5[0]).net : null, m1 = n5 > 0 ? margins(yrs5[n5]).net : null;
-  const evo5 = n5 >= 2 ? html`<p class="small evo5" style="margin:0"><b>${n5}-year evolution:</b> revenue ${rC != null ? sgn(rC, 1) + ' a year (' + amt(yrs5[0].rev, cur) + ' → ' + amt(yrs5[n5].rev, cur) + ')' : '—'} · EPS ${eC != null ? sgn(eC, 1) + ' a year' : '—'}${m0 != null && m1 != null ? ` · net margin ${pct(m0, 1)} → ${pct(m1, 1)}` : ''}.</p>` : '';
+  const n5 = yrs5.length - 1, yr = r => String(r.end).slice(0, 4);
+  // growth from the first to the last year that has the figure (a source may leave a year blank)
+  const span = (key, from = 0) => { let i = from, j = n5; while (i < j && !(yrs5[i][key] > 0)) i++; while (j > i && !(yrs5[j][key] > 0)) j--; return j > i && yrs5[i][key] > 0 && yrs5[j][key] > 0 ? { i, j, g: cagr(yrs5[i][key], yrs5[j][key], j - i) } : null; };
+  const E = n5 > 0 ? span('eps') : null, eC = E ? E.g : null;
+  // a jump in revenue against the direction of profit means the source changed its revenue basis (e.g. gross vs
+  // net revenue at a payments company): compare revenue and margins only from that year on
+  let r0 = 0;
+  for (let i = 1; i <= n5; i++) { const a = yrs5[i - 1], b = yrs5[i], q = a.rev > 0 && b.rev > 0 ? b.rev / a.rev : 1, up = b.net != null && a.net != null ? b.net >= a.net : null; if ((q < 0.5 && up === true) || (q > 3 && up === false)) r0 = i; }
+  const R = n5 > 0 ? span('rev', r0) : null, rC = R ? R.g : null;
+  const m0 = R ? margins(yrs5[R.i]).net : null, m1 = R ? margins(yrs5[R.j]).net : null;
+  const basisNote = r0 ? ` Revenue before ${String(yrs5[r0].end).slice(0, 4)} is on a different basis in the source (${amt(yrs5[r0 - 1].rev, cur)} → ${amt(yrs5[r0].rev, cur)}), so revenue growth and margins start in ${String(yrs5[r0].end).slice(0, 4)}.` : '';
+  const shortNote = n5 < 4 && !/^SEC/.test(F.src || '') ? ` The free data has ${n5 + 1} years for this company${/^[A-Z]{1,5}$/.test(sym || '') ? ' (US stocks: add your e-mail in Settings → Market data for the SEC history back to about 2009)' : ''}.` : '';
+  const evo5 = n5 >= 2 ? html`<p class="small evo5" style="margin:0"><b>Evolution ${yr(yrs5[0])}–${yr(yrs5[n5])}:</b> revenue ${rC != null ? sgn(rC, 1) + ' a year (' + yr(yrs5[R.i]) + ' ' + amt(yrs5[R.i].rev, cur) + ' → ' + yr(yrs5[R.j]) + ' ' + amt(yrs5[R.j].rev, cur) + ')' : '—'} · EPS ${eC != null ? sgn(eC, 1) + ' a year (' + yr(yrs5[E.i]) + ' ' + yrs5[E.i].eps.toFixed(2) + ' → ' + yr(yrs5[E.j]) + ' ' + yrs5[E.j].eps.toFixed(2) + ')' : '—'}${m0 != null && m1 != null ? ` · net margin ${pct(m0, 1)} → ${pct(m1, 1)}` : ''}.<span class="muted">${basisNote}${shortNote}</span></p>` : '';
   render(el, html`${head}${evo5}
     <div class="kpis">
       ${kp(mode === 'y' ? 'Revenue (year)' : 'Revenue (last quarter)', amt(mode === 'y' ? z.rev : lastQ.rev, cur), g != null && mode !== 'y' ? sgn(g) + ' vs a year ago' : '', g > 0 ? 'up' : g < 0 ? 'down' : '')}

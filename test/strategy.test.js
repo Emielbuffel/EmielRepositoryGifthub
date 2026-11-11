@@ -43,9 +43,33 @@ test('nextStep: book sell rules (stop from cost, raised stops, profits, 8-week r
   assert.equal(nextStep({}, full, { now: t0 + 10 * wk, close: 96, peak: 117 }).code, 'stop');
   // after a 20% gain it moves to breakeven
   assert.equal(nextStep({}, full, { now: t0 + 10 * wk, close: 101, peak: 122 }).code, 'stop');
-  // +20% within 8 weeks: hold; after 8 weeks: take profits
-  assert.equal(nextStep({}, full, { now: t0 + 4 * wk, close: 123 }).code, 'hold8');
-  assert.equal(nextStep({}, full, { now: t0 + 10 * wk, close: 123 }).code, 'profit');
+  // +20% within 3 weeks of the first buy: hold 8 weeks; reached slowly (or after 8 weeks): take the first third
+  assert.equal(nextStep({}, full, { now: t0 + 4 * wk, close: 123, t20: t0 + 2 * wk }).code, 'hold8');
+  assert.equal(nextStep({}, full, { now: t0 + 10 * wk, close: 123, t20: t0 + 2 * wk }).code, 'take1');
+  const t1 = nextStep({}, full, { now: t0 + 6 * wk, close: 123, t20: t0 + 5 * wk });
+  assert.equal(t1.code, 'take1'); assert.equal(t1.shares, 67); // a third of 200 shares
+});
+
+test('nextStep: a third at +20%, a third at +25%, the rest rides the 50-day line', () => {
+  const t0 = 1e9, wk = 604800, buys = [{ t: t0, price: 100, shares: 150 }];
+  const q = { now: t0 + 10 * wk, t20: t0 + 6 * wk, s50: 110 };
+  assert.equal(nextStep({}, { pivot: 100, buys, sold: 50 }, { ...q, close: 122 }).code, 'wait-take'); // first third sold
+  const t2 = nextStep({}, { pivot: 100, buys, sold: 50 }, { ...q, close: 126 });
+  assert.equal(t2.code, 'take2'); assert.equal(t2.shares, 50);
+  assert.equal(nextStep({}, { pivot: 100, buys, sold: 100 }, { ...q, close: 130 }).code, 'runner');
+  assert.equal(nextStep({}, { pivot: 100, buys, sold: 100 }, { ...q, close: 108 }).code, 'runner-sell'); // under the 50-day line
+});
+
+test('tradePlan: buy steps with shares in the plan currency, expected average, stop, profit steps', async () => {
+  const { tradePlan } = await import('../src/core/strategy.js');
+  const T = tradePlan({ capital: 200000, posPct: 0.2 }, 100, 0.5); // a 100-unit stock, 1 unit = 0.5 EUR
+  assert.equal(T.target, 40000);
+  assert.deepEqual(T.buys.map(b => b.amount), [20000, 14000, 6000]);
+  assert.equal(T.buys[0].shares, 400); // 20,000 EUR / (100 × 0.5)
+  assert.ok(T.avg > 100 && T.avg < 101.5);
+  assert.ok(Math.abs(T.stop - T.avg * 0.93) < 0.01);
+  assert.deepEqual(T.sells.map(x => x.gain), [0.2, 0.25]);
+  assert.equal(T.sells[0].shares + T.sells[1].shares + T.runner.shares, T.shares);
 });
 
 test('sizingChecks: shift from laggards into leaders', () => {

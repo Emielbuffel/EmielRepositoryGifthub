@@ -1,5 +1,5 @@
 // Buying-plan sheet (from the chart) and the trade forms.
-import { pyramid, nextStep, sharesFor } from '../core/strategy.js';
+import { pyramid, nextStep, sharesFor, tradePlan } from '../core/strategy.js';
 import { strategy, planFor, createPlan, updatePlan, deletePlan, recordTrade, tradesFor, deleteTrade, checkPlan } from '../data/plans.js';
 import { factor } from '../data/fx.js';
 import { App, emit } from '../app.js';
@@ -34,17 +34,19 @@ export async function planSheet(ctx) {
         ${py.steps.map((s, i) => html`<tr><td>${i === 0 ? 'Buy 1 (breakout)' : 'Add ' + (i + 1)}</td><td class="n">${Math.round(s.pct * 100)}%</td><td class="n">${n0(s.amount)} ${S.ccy}</td><td class="n">${fp(s.from)} – ${fp(s.to)}</td><td class="n">${sharesFor(s.amount, close, fx)}</td>
           <td>${done[i] ? html`<span class="t-ok">✓ ${done[i].shares} @ ${fp(done[i].price)}</span>` : plan ? html`<button class="btn sm" data-buy="${i + 1}">Record buy</button>` : ''}</td></tr>`)}
         <tr><td>Stop</td><td></td><td></td><td class="n t-bad">${fp(st && st.stop ? st.stop : py.stop)}</td><td></td><td class="muted tiny">${st && st.stop && st.stop !== py.stop ? 'current sell line' : '−' + Math.round(S.stop * 100) + '% from the buy point'}</td></tr>
+        ${sellRows(S, pivot, done, plan, fx, fp)}
       </tbody></table></div>` : ''}
       ${plan ? html`<div class="toolbar">${done.length > 3 || done.length === 3 ? html`<button class="btn sm" data-buy="4">Record follow-on buy</button>` : ''}<button class="btn sm" id="plSell">Record sell</button><span class="spacer"></span><button class="btn sm danger" id="plDel">Delete plan</button></div>` : ''}
       <div class="section-title" style="margin:6px 0">Journal for ${ctx.sym}</div>
       ${trades.length ? html`<div class="results">${trades.map(t => html`<div class="row" style="padding:8px 14px;border-top:.5px solid var(--sep)"><span class="small"><b class="${t.side === 'buy' ? 't-ok' : 't-warn'}">${t.side === 'buy' ? 'Bought' + (t.step ? ' (' + (t.step > 3 ? 'follow-on' : 'step ' + t.step) + ')' : '') : 'Sold'}</b> ${t.shares} @ ${fp(t.price)} · ${fDs(t.t)}${t.reason ? ' · ' + t.reason : ''}${t.note ? html`<br><span class="muted tiny">${t.note}</span>` : ''}</span><button class="btn sm danger" data-deltr="${t.id}" aria-label="Delete trade">×</button></div>`)}</div>` : html`<p class="muted small" style="margin:0">No trades recorded for this stock yet.</p>`}
-      <p class="muted tiny" style="margin:0">The plan alerts you (bell menu and a notification) when buy 1, add 2, add 3, a 50-day follow-on buy or the stop becomes due. No buys are suggested within ${S.earningsDays} days before an earnings report.</p>`);
+      <p class="muted tiny" style="margin:0">The plan alerts you (bell menu and a notification) when buy 1, add 2, add 3, a 50-day follow-on buy, a profit step (⅓ at +20%, ⅓ at +25% on your average price), the 50-day exit for the rest, or the stop becomes due. No buys are suggested within ${S.earningsDays} days before an earnings report.</p>`);
     $('#plForm', sh).onsubmit = async e => {
       e.preventDefault(); const v = +$('#plPivot', sh).value; if (!(v > 0)) return;
       if (plan) await updatePlan(plan.id, { pivot: v, lastCode: null }); else await createPlan({ sym: ctx.sym, name: ctx.name, pivot: v, base: ctx.baseName, cur: ctx.cur });
       toast(plan ? 'Buy point updated.' : 'Plan started: you will get alerts for each step.'); draw();
     };
     $$('[data-buy]', sh).forEach(b => { b.onclick = () => tradeForm(ctx, { side: 'buy', step: +b.dataset.buy, price: close, shares: sharesFor((py.steps[+b.dataset.buy - 1] || py.steps[2]).amount, close, fx) }, draw); });
+    $$('[data-sellstep]', sh).forEach(b => { b.onclick = () => tradeForm(ctx, { side: 'sell', price: close, shares: +b.dataset.sellstep, reason: 'Profit' }, draw); });
     $('#plSell', sh) && ($('#plSell', sh).onclick = () => tradeForm(ctx, { side: 'sell', price: close, shares: done.reduce((s, x) => s + x.shares, 0) - (plan.sold || 0) }, draw));
     $('#plDel', sh) && ($('#plDel', sh).onclick = async () => { if (confirm('Delete this plan? Journal entries stay.')) { await deletePlan(plan.id); draw(); } });
     $$('[data-deltr]', sh).forEach(b => { b.onclick = async () => { if (confirm('Delete this journal entry? Holdings are not changed back.')) { await deleteTrade(b.dataset.deltr); draw(); } }; });
@@ -71,4 +73,19 @@ export function tradeForm(ctx, init, after) {
     await recordTrade({ sym: ctx.sym, side: init.side, step: init.step, shares: +F.get('shares'), price: +F.get('price'), t: tOf(F.get('date')), cur: ctx.cur, reason: F.get('reason') || '', note: F.get('note') || '' });
     toast(init.side === 'buy' ? 'Buy recorded in the journal and your holdings.' : 'Sell recorded.'); emit('trades'); after && after();
   };
+}
+
+/** Profit steps for the sheet: a third at +20%, a third at +25% (on the real average price once bought), the rest
+ *  rides the 50-day line. */
+function sellRows(S, pivot, done, plan, fx, fp) {
+  const T = tradePlan(S, pivot, fx), total = done.reduce((t, b) => t + b.shares, 0);
+  const avg = total ? done.reduce((t, b) => t + b.price * b.shares, 0) / total : T.avg, sold = plan ? plan.sold || 0 : 0;
+  let cum = 0;
+  return html`${(S.sellSteps || [[0.2, 1 / 3], [0.25, 1 / 3]]).map(([g, f], i) => {
+    cum += f; const target = total ? Math.round(total * cum) : null, sh = total ? Math.round(total * f) : T.sells[i] && T.sells[i].shares;
+    const did = total && sold >= target - 0.5;
+    return html`<tr><td>Sell ${i + 1} (+${Math.round(g * 100)}%)</td><td class="n">${f > 0.33 && f < 0.34 ? '⅓' : Math.round(f * 100) + '%'}</td><td></td><td class="n t-ok">${fp(Math.round(avg * (1 + g) * 100) / 100)}</td><td class="n">${sh || ''}</td>
+      <td>${did ? html`<span class="t-ok">✓ sold</span>` : total ? html`<button class="btn sm" data-sellstep="${sh}">Record sale</button>` : html`<span class="muted tiny">on the expected average ${fp(T.avg)}</span>`}</td></tr>`;
+  })}
+  <tr><td>The rest</td><td class="n">⅓</td><td></td><td class="n">50-day line</td><td class="n">${total ? Math.max(0, total - Math.round(total * cum)) : T.runner.shares}</td><td class="muted tiny">sell on a heavy-volume close below it or a climax top; 8-week hold if +20% came within 3 weeks</td></tr>`;
 }

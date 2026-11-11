@@ -16,7 +16,8 @@ import { listMenu } from './lists.js';
 import { alertSheet } from './alertsui.js';
 import { planSheet } from './plansui.js';
 import { planFor, tradesFor, strategy } from '../data/plans.js';
-import { pyramid, sharesFor, DEFAULT_PLAN } from '../core/strategy.js';
+import { pyramid, sharesFor, DEFAULT_PLAN, tradePlan } from '../core/strategy.js';
+import { factor } from '../data/fx.js';
 import { sellPoints, SELL_LABEL } from '../core/sells.js';
 import { checkBars, activeFor, onAlerts, addAlert, describe as describeAlert } from '../data/alerts.js';
 import { daily, benchmarkFor, indexSeries, compareOptions, defaultBenchmark, earnings, isIndexSym, provider, isDemo, isDemoSym, DataError, settings, saveSettings } from '../data/service.js';
@@ -175,6 +176,9 @@ async function loadPlan(sym, seq) {
   const [plan, trades, S] = await Promise.all([planFor(sym), tradesFor(sym), strategy()]);
   if (seq !== V.seq) return;
   V.plan = plan; V.trades = trades; V.strategy = S;
+  try { const f = await factor(V.data ? V.data.currency : '', S.ccy); V.fx = f ? f.v : 1; V.fxLive = !!(f && f.live); } catch (e) { V.fx = null; }
+  if (seq !== V.seq) return;
+  if ($('#tpBox')) cards();
   if (plan && plan.pivot) { const py = pyramid(S, plan.pivot); V.planLv = { pivot: plan.pivot, add2: py.steps[1] && py.steps[1].from, add3: py.steps[2] && py.steps[2].from, stop: plan.lastStep && plan.lastStep.stop ? plan.lastStep.stop : py.stop, done: plan.buys.length }; } else V.planLv = null;
   const st = plan && plan.lastStep;
   render($('#sPlan'), html`${raw(ICON.layers)}<span>${plan ? (st ? st.title : 'Plan') : 'Plan'}</span>`);
@@ -349,7 +353,8 @@ function autoPlan() {
   const B = baseState(V.R, V.data.bars), p = B.p && B.p.pivot ? B.p : null;
   if (!p) return null;
   const S = V.strategy || DEFAULT_PLAN, piv = p.pivot;
-  return { pivot: piv, stop: piv * (1 - S.stop), stopPct: S.stop, add2: piv * (1 + S.add2[0]), add3: piv * (1 + S.add3[0]), t20: piv * 1.2, t25: piv * 1.25 };
+  const T = tradePlan(S, piv, V.fx || 1);
+  return { pivot: piv, stop: T.stop, stopPct: S.stop, add2: piv * (1 + S.add2[0]), add3: piv * (1 + S.add3[0]), t20: T.sells[0] && T.sells[0].price, t25: T.sells[1] && T.sells[1].price };
 }
 /** Snaps a tapped price to the bar's high or low when the tap is close to it (easier drawing). */
 function snapPrice(time, price) {
@@ -553,21 +558,36 @@ function histCard() {
 function tradePlanBlock(B) {
   const p = B.p && B.p.pivot ? B.p : null;
   if (!p || V.mkt || isDemoSym(V.sym)) return '';
-  const S = V.strategy || DEFAULT_PLAN, py = pyramid(S, p.pivot), cur = V.data.currency;
-  const n0 = x => Math.round(x).toLocaleString('en-US');
-  const sh = amt => Math.max(1, Math.floor(amt / p.pivot));
-  const open = V.plan && !V.plan.closed;
-  return html`<div class="tplan">
-    <div class="card-head" style="margin-top:4px"><h3 style="margin:0">Trade strategy at the buy point</h3><span class="muted tiny">${n0(py.target)} ${S.ccy} per position · max 8 stocks</span></div>
-    <ol class="plan">
-      <li><b>Buy 1 — ${Math.round(S.tranches[0] * 100)}%</b> (${n0(py.steps[0].amount)} ${S.ccy} ≈ ${sh(py.steps[0].amount)} shares): on the breakout above <b>${fp(p.pivot)}</b>, closing above it on volume at least 1.4× the 50-day average (40–50% above it). Weak volume → half size or wait.</li>
-      ${py.steps[1] ? html`<li><b>Add 2 — ${Math.round(S.tranches[1] * 100)}%</b> (${n0(py.steps[1].amount)} ${S.ccy}): at +${Math.round(S.add2[0] * 100)}–${Math.round(S.add2[1] * 100)}% above the buy point (${fp(p.pivot * (1 + S.add2[0]))}).</li>` : ''}
-      ${py.steps[2] ? html`<li><b>Add 3 — ${Math.round(S.tranches[2] * 100)}%</b> (${n0(py.steps[2].amount)} ${S.ccy}): at +${Math.round(S.add3[0] * 100)}–${Math.round(S.zone * 100)}% (${fp(p.pivot * (1 + S.add3[0]))}). Above +5% the stock is extended: no new buys.</li>` : ''}
-      <li><b>Stop:</b> ${fp(py.stop)} (−${Math.round(S.stop * 100)}%), no exceptions. Raise it to just below the buy point at +15%, to breakeven at +20%.</li>
-      <li><b>Take profits:</b> most at +20–25% (${fp(p.pivot * 1.2)}–${fp(p.pivot * 1.25)}) — unless it gains 20% within 3 weeks: then hold at least 8 weeks.</li>
-      <li><b>Before you buy:</b> market in an uptrend, RS 80+, no earnings in the next ${S.earningsDays} days.</li>
-    </ol>
-    <div class="toolbar">${open ? html`<span class="small t-ok">Plan open: ${V.plan.buys.length} buy${V.plan.buys.length === 1 ? '' : 's'} recorded.</span>` : html`<button class="btn sm primary" id="tpStart">Start this plan (alerts at every step)</button>`}<span class="muted tiny">Levels are drawn on the chart (Patterns → Trade plan levels).</span></div>
+  const S = V.strategy || DEFAULT_PLAN, fx = V.fx || 1, T = tradePlan(S, p.pivot, fx), cur = V.data.currency, ccy = S.ccy;
+  const n0 = x => Math.round(x).toLocaleString('en-US'), pc0 = x => Math.round(x * 100) + '%';
+  const open = V.plan && !V.plan.closed, fxNote = cur !== ccy ? (V.fx ? ` Shares use the ${V.fxLive ? 'live' : 'reference'} ${cur}→${ccy} rate.` : ` Shares assume 1 ${cur} = 1 ${ccy} (no rate loaded).`) : '';
+  const fast = new Date((Date.now() / 1000 + T.fastWeeks * 7 * 86400) * 1000);
+  const w = ['Buy 1 · breakout', 'Buy 2 · add', 'Buy 3 · last add'];
+  const when = [
+    html`The day it <b>closes above ${fp(p.pivot)}</b> on volume ≥ 1.4× the 50-day average (40–50% above). Weak volume: buy half of this step and wait for confirmation.`,
+    html`Only after Buy 1 holds above the buy point, when the price is <b>+${pc0(S.add2[0])}–${pc0(S.add2[1])}</b> above it.`,
+    html`At <b>+${pc0(S.add3[0])}–${pc0(S.zone)}</b>. Above ${fp(T.zoneTop)} (+${pc0(S.zone)}) the stock is extended: no more buying.`];
+  return html`<div class="tplan" id="tpBox">
+    <div class="card-head" style="margin-top:4px"><h3 style="margin:0">Trade plan</h3><span class="muted tiny">Position ${n0(T.target)} ${ccy} = ${pc0(S.posPct)} of ${n0(S.capital)} ${ccy} · max 8 stocks</span></div>
+    <h4 class="tp-h">1 · Buying: when and how much</h4>
+    <div class="tbl-wrap"><table class="tbl tp"><thead><tr><th>Step</th><th class="n">Share</th><th class="n">Amount</th><th class="n">≈ Shares</th><th class="n">Price</th></tr></thead><tbody>
+      ${T.buys.map((b, i) => html`<tr class="tp-main"><td><b>${w[i] || 'Buy ' + (i + 1)}</b></td><td class="n">${pc0(b.pct)}</td><td class="n">${n0(b.amount)} ${ccy}</td><td class="n">${b.shares}</td><td class="n tp-px">${fp(b.from)}–<wbr>${fp(b.to)}</td></tr><tr class="tp-why"><td colspan="5">${when[i] || ''}</td></tr>`)}
+      <tr class="tp-sum tp-main"><td><b>Full position</b></td><td class="n">100%</td><td class="n">${n0(T.target)} ${ccy}</td><td class="n">${T.shares}</td><td class="n">avg ≈ ${fp(T.avg)}</td></tr><tr class="tp-why"><td colspan="5">Early entry (optional): start with up to a third of Buy 1 at a handle or trend-line break, the rest at the breakout.</td></tr>
+    </tbody></table></div>
+    <h4 class="tp-h">2 · Protecting the money</h4>
+    <ul class="plan tp-list">
+      <li><b class="t-bad">Stop ${fp(T.stop)}</b> — ${pc0(S.stop)} below your average price: sell <b>everything</b>, no exceptions. Most you can lose ≈ <b>${n0(T.risk)} ${ccy}</b> (${(T.risk / S.capital * 100).toFixed(1)}% of the portfolio).</li>
+      <li><b>Failed breakout:</b> a close back under ${fp(T.failed)} (2% under the buy point) soon after buying → sell.</li>
+      <li><b>At ${fp(T.raise15.price)} (+15%)</b> raise the stop to <b>${fp(T.raise15.to)}</b>, just under the buy point. <b>At ${fp(T.raise20.price)} (+20%)</b> raise it to <b>${fp(T.raise20.to)}</b> (breakeven): a 20% winner must never become a loss.</li>
+    </ul>
+    <h4 class="tp-h">3 · Taking profits: when and how much</h4>
+    <div class="tbl-wrap"><table class="tbl tp"><thead><tr><th>Step</th><th class="n">Price</th><th class="n">Sell</th><th class="n">≈ Shares</th><th class="n">≈ Profit</th></tr></thead><tbody>
+      ${T.sells.map((x, i) => html`<tr><td><b>Sell ${i + 1}</b> at +${pc0(x.gain)}</td><td class="n t-ok">${fp(x.price)}</td><td class="n">${x.frac === 1 / 3 ? '⅓' : pc0(x.frac)}</td><td class="n">${x.shares}</td><td class="n">${n0(x.profit)} ${ccy}</td></tr>`)}
+      <tr class="tp-main"><td><b>The rest</b></td><td class="n">50-day line</td><td class="n">${T.runner.frac ? (T.runner.frac > 0.33 && T.runner.frac < 0.34 ? '⅓' : pc0(T.runner.frac)) : '—'}</td><td class="n">${T.runner.shares}</td><td class="n">—</td></tr><tr class="tp-why"><td colspan="5">Hold while it stays above the 50-day line; sell on a heavy-volume close below it, or a climax top (the biggest gain since the breakout, an exhaustion gap, 25%+ above the 50-day line after a fast run).</td></tr>
+    </tbody></table></div>
+    <p class="small" style="margin:0"><b>Exception (the book's 8-week rule):</b> if the stock gains 20% within ${T.fastWeeks} weeks of the breakout (e.g. by ${fD(Math.floor(fast / 1000))} if you buy today), sell nothing for at least 8 weeks from the breakout — these are often the biggest winners. The stop still applies.</p>
+    <p class="muted tiny" style="margin:0">Before buying: market in an uptrend, RS 80+, no earnings within ${S.earningsDays} days. Each sale costs the stock-exchange tax (TOB) and, since 2026, 10% Belgian capital-gains tax on the gain: bundle sales where you can.${fxNote} Source: O'Neil's <i>How to Make Money in Stocks</i> and IBD (buy point, 5% zone, 7–8% stop, most profits at 20–25%, 8-week rule) plus your webinar notes (50/35/15 pyramid). Splitting "most profits" into ⅓ at +20%, ⅓ at +25% and ⅓ riding the 50-day line is the app's way to apply that rule.</p>
+    <div class="toolbar">${open ? html`<span class="small t-ok">Plan open: ${V.plan.buys.length} buy${V.plan.buys.length === 1 ? '' : 's'}${V.plan.sold ? ', ' + V.plan.sold + ' shares sold' : ''} recorded.${V.plan.lastStep ? ' Next: ' + V.plan.lastStep.title + '.' : ''}</span>` : html`<button class="btn sm primary" id="tpStart">Start this plan (alerts at every step)</button>`}<span class="muted tiny">Levels are drawn on the chart (Patterns → Trade plan levels).</span></div>
   </div>`;
 }
 

@@ -118,7 +118,10 @@ export async function checkPlan(sym, bars, name = '') {
   let fx = 1; try { const f = await factor(p.cur || '', S.ccy); if (f) fx = f.v; } catch (e) { /* plan currency = listing currency */ }
   const first = p.buys.length ? p.buys[0].t : null;
   const peak = first ? Math.max(...bars.filter(x => x.time >= first).map(x => x.close), 0) : 0; // highest close since the first buy
-  const st = nextStep(S, p, { close: c[n], s50: s50[n], s50prev: s50[n - 5], nextReport: nr, now: bars[n].time, market: App.mkt && App.mkt.us, fx, peak });
+  // the first close at +20% on the average price (for the book's 8-week rule)
+  const sh = p.buys.reduce((t, b) => t + b.shares, 0), avg = sh ? p.buys.reduce((t, b) => t + b.price * b.shares, 0) / sh : null;
+  const hit = avg && first ? bars.find(x => x.time >= first && x.close >= avg * (1 + (S.profit || [0.2])[0])) : null;
+  const st = nextStep(S, p, { close: c[n], s50: s50[n], s50prev: s50[n - 5], nextReport: nr, now: bars[n].time, market: App.mkt && App.mkt.us, fx, peak, t20: hit ? hit.time : null });
   const due = ['buy', 'add', 'stop', 'warn'].includes(st.level);
   if (st.code !== p.lastCode) {
     p.lastCode = st.code; p.lastStep = { ...st, at: Date.now(), close: c[n] }; await store.set(k('plans'), plans);

@@ -553,3 +553,11 @@ tr.auto td { background: color-mix(in srgb, var(--blue) 6%, transparent); }
 .vol-box { border-top: 1px solid var(--sep); padding-top: 8px; display: grid; gap: 6px; }
 .vol-box h4 { margin: 0; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); font-weight: 600; }
 .vol-weeks { width: 100%; height: 64px; display: block; }
+
+/* trade plan card */
+.tplan .tp-h { margin: 6px 0 0; font-size: 13px; font-weight: 600; color: var(--ink2); }
+.tbl.tp tr.tp-main td { border-bottom: 0; padding-bottom: 2px; }
+.tbl.tp tr.tp-why td { font-size: 12px; color: var(--muted); padding-top: 0; white-space: normal; }
+.tbl.tp .tp-sum td { border-top: 1px solid var(--sep-strong); }
+.tp-list { margin: 0; }
+.tbl.tp td.tp-px { white-space: normal; min-width: 80px; }

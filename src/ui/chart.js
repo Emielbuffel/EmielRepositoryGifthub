@@ -367,9 +367,9 @@ export class StockChart {
       if (!this.boLevels) this.addPL({ price: a.stop, color: bad, lineStyle: LineStyle.Dashed, title: `Stop −${Math.round(a.stopPct * 100)}%` });
       if (a.add2) this.addPL({ price: a.add2, color: blue, lineStyle: LineStyle.Dotted, title: 'Add 2' });
       if (a.add3) this.addPL({ price: a.add3, color: blue, lineStyle: LineStyle.Dotted, title: 'Add 3' });
-      if (!this.boLevels) {
-        this.addPL({ price: a.t20, color: tok('--up'), lineStyle: LineStyle.Dotted, title: '+20% target' });
-        this.addPL({ price: a.t25, color: tok('--up'), lineStyle: LineStyle.Dotted, title: '+25%' });
+      if (!this.boLevels && a.t20) {
+        this.addPL({ price: a.t20, color: tok('--up'), lineStyle: LineStyle.Dotted, title: 'Sell ⅓ +20%' });
+        this.addPL({ price: a.t25, color: tok('--up'), lineStyle: LineStyle.Dotted, title: 'Sell ⅓ +25%' });
       }
     }
     // buying plan levels and the trades in the journal

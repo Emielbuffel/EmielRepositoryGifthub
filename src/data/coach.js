@@ -36,7 +36,7 @@ Position target ~20% of the portfolio for top conviction, ~12.5% neutral default
 NO new positions in the 2 weeks before an earnings report. Trades via DEGIRO; Belgian taxes: TOB per trade and 10% capital-gains tax since 2026 — bundle trades, weigh taxes when selling winners.
 
 SELL RULES: -7-8% stop always. Failed breakout = close ~2%+ back under the buy point soon after. Heavy-volume close under the 50-day line after a run;
-close under the 200-day line; RS line at a new low. Take most profits at +20-25% — unless +20% within 3 weeks of breakout: then hold at least 8 weeks.
+close under the 200-day line; RS line at a new low. Take most profits at +20-25% — unless +20% within 3 weeks of breakout: then hold at least 8 weeks. The app's concrete version: sell 1/3 at +20% and 1/3 at +25% on the average price, let the last 1/3 ride while it holds above the 50-day line (sell it on a heavy-volume close below it or a climax top). Raise the stop to just under the buy point at +15% and to breakeven at +20%. Say clearly that the 1/3-1/3-1/3 split is the app's way to apply the book's rule, not a quote from the book.
 Climax top: biggest daily gain since breakout, exhaustion gap, or 25%+ above the 50-day line after a fast run.
 
 MARKET RULES: distribution day = index -0.2%+ on higher volume (counts 25 sessions or until +5%). 5+ distribution days or a 50-day break = under pressure.
@@ -70,7 +70,7 @@ export function askOffline(q0, ctx) {
       '• Always: sell at −7–8% below your cost, no exceptions' + (P ? ` (your setting: −${P.stop}).` : '.'),
       '• Failed breakout: a close ~2%+ back under the buy point soon after the breakout.',
       '• Weakness: a heavy-volume close under the 50-day line after a long run, a close under the 200-day line, or the RS line at a new low.',
-      '• Profits: take most at +20–25% — unless it gained 20% within 3 weeks of the breakout: then hold at least 8 weeks.',
+      '• Profits: take most at +20–25% — the app sells ⅓ at +20% and ⅓ at +25% on your average price and lets the last ⅓ ride above the 50-day line. Exception: +20% within 3 weeks of the breakout → hold at least 8 weeks.',
       s && s.signals && s.signals.length ? `Right now the app flags: ${s.signals.join('; ')}.` : '');
   } else if (has(q, 'early', 'vroege', 'pocket pivot', 'shakeout', 'trendline', 'downtrend')) {
     out.push('Early entries (before the official breakout): a downtrend-line break in the handle, a bounce off the 21/50-day line, a small shelf, a pocket pivot, three weeks tight, or a shakeout-and-rally.',
