@@ -39,6 +39,9 @@ To open it: Actions tab → latest **Job watch** run → download **dashboard** 
 Edit `profile.json` on GitHub (open the file, click the pencil, then "Commit changes"):
 
 - `notify_locations`: places that send a phone alert.
+- `top_score` (20): jobs with at least this CV score send an urgent alert (red, louder). In the ntfy app you can give urgent alerts their own sound.
+- `priority_locations` (Italy, Rome, Geneva): matches there send a high-priority alert.
+- `top_score_anywhere`: set to true to also get top-score jobs outside your places.
 - `locations`: the place names and city names that are recognised.
 - `keywords`: words from your CV with a weight. A word in the job title counts double.
 - `min_score_to_notify`: raise it (for example to 8) for fewer, stronger alerts.

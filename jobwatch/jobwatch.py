@@ -47,6 +47,20 @@ class Profile:
         self.keywords = [(k.rstrip("*"), word_re(k, plural=True), w) for k, w in raw["keywords"].items()]
         self.exclude = [word_re(x, plural=True) for x in raw.get("exclude_title", [])]
         self.min_score = raw.get("min_score_to_notify", 4)
+        self.top_score = raw.get("top_score", 20)
+        self.priority_locations = set(raw.get("priority_locations", []))
+        self.top_anywhere = bool(raw.get("top_score_anywhere", False))
+
+    def tier(self, j):
+        """3 = top match, 2 = priority place, 1 = normal match, 0 = no alert."""
+        if j["excluded"]:
+            return 0
+        in_places = bool(set(j["regions"]) & self.notify_locations)
+        if j["score"] >= self.top_score and (in_places or self.top_anywhere):
+            return 3
+        if not in_places or j["score"] < self.min_score:
+            return 0
+        return 2 if set(j["regions"]) & self.priority_locations else 1
 
     def regions(self, j):
         """Places from the profile found in the job's location (or, failing that, its title)."""
@@ -202,14 +216,22 @@ def notify(new_matches, topic, first_run, total, dash_url):
         ntfy(topic, f"Job watch is on: {len(new_matches)} matching vacancies open now",
              f"Tracking {total} vacancies. Best matches:\n{top}\n\nFrom now on you get one alert per new match.", click=dash_url, tags="tada")
         return
-    if len(new_matches) <= 6:
-        for j in new_matches:
-            ntfy(topic, f"{', '.join(j['regions'])}: {j['title']}", describe(j), click=j["url"],
-                 tags="star" if j["score"] >= 10 else "briefcase", priority=4 if j["score"] >= 10 else 3)
+    loud = [j for j in new_matches if j["tier"] >= 2]
+    normal = [j for j in new_matches if j["tier"] < 2]
+    for j in loud[:15]:
+        top = j["tier"] == 3
+        ntfy(topic, f"{'TOP MATCH ' + str(j['score']) if top else 'Match ' + str(j['score'])} · {', '.join(j['regions']) or j['location']}: {j['title']}",
+             describe(j), click=j["url"], tags="rotating_light,star" if top else "star", priority=5 if top else 4)
+        time.sleep(1)
+    if len(loud) > 15:
+        ntfy(topic, f"{len(loud) - 15} more priority matches", "Open the dashboard to see them all.", click=dash_url, priority=4)
+    if len(normal) <= 5:
+        for j in normal:
+            ntfy(topic, f"{', '.join(j['regions'])}: {j['title']}", describe(j), click=j["url"], tags="briefcase", priority=3)
             time.sleep(1)
     else:
-        top = "\n".join(f"• {j['title']} — {j['org'] or j['source']} ({', '.join(j['regions'])})" for j in new_matches[:12])
-        ntfy(topic, f"{len(new_matches)} new matching vacancies", top, click=dash_url or new_matches[0]["url"], tags="briefcase", priority=4)
+        lst = "\n".join(f"• {j['title']} — {j['org'] or j['source']} ({', '.join(j['regions'])})" for j in normal[:12])
+        ntfy(topic, f"{len(normal)} new matching vacancies", lst, click=dash_url or normal[0]["url"], tags="briefcase", priority=3)
     text = "\n\n".join(f"{j['title']}\n{describe(j)}\n{j['url']}" for j in new_matches)
     email(f"Job watch: {len(new_matches)} new matching vacancies", text)
 
@@ -223,6 +245,8 @@ def build_dashboard(state, profile):
         "generated": NOW.isoformat(timespec="minutes"),
         "notify_locations": profile.raw.get("notify_locations", []),
         "min_score": profile.min_score,
+        "top_score": profile.top_score,
+        "priority_locations": sorted(profile.priority_locations),
         "sources": state.get("last_sources", {}),
         "jobs": jobs,
     }
@@ -245,7 +269,8 @@ def main():
     first_run = not state["jobs"]
     rekeyed = {}
     for rec in state["jobs"].values():
-        k = fingerprint(rec, rec.get("regions") or [], profile)
+        rec["regions"] = profile.regions(rec)
+        k = fingerprint(rec, rec["regions"], profile)
         if k in rekeyed:
             rekeyed[k]["sources"] = sorted(set(rekeyed[k].get("sources", [])) | set(rec.get("sources", [])))
             rekeyed[k]["first_seen"] = min(rekeyed[k]["first_seen"], rec["first_seen"])
@@ -304,7 +329,8 @@ def main():
         rec["first_seen"] = now_s
         rec["sources"] = [j["source"]]
         state["jobs"][fp] = rec
-        rec["alert"] = bool(set(regions) & profile.notify_locations) and score >= profile.min_score and not rec["excluded"]
+        rec["tier"] = profile.tier(rec)
+        rec["alert"] = rec["tier"] > 0
         if rec["alert"]:
             new_matches.append(rec)
 

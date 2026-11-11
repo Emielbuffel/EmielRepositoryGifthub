@@ -16,6 +16,31 @@
       "rome",
       "roma"
     ],
+    "Italy": [
+      "italy",
+      "italia",
+      "milan",
+      "milano",
+      "florence",
+      "firenze",
+      "turin",
+      "torino",
+      "brindisi",
+      "naples",
+      "napoli",
+      "bologna",
+      "trieste",
+      "perugia",
+      "venice",
+      "venezia",
+      "ispra",
+      "bari",
+      "genoa",
+      "genova",
+      "palermo",
+      "catania",
+      "sicily"
+    ],
     "Bhutan": [
       "bhutan",
       "thimphu"
@@ -122,6 +147,7 @@
     "Geneva",
     "Brussels",
     "Rome",
+    "Italy",
     "Bhutan",
     "Nepal",
     "Philippines",
@@ -238,6 +264,14 @@
     "warehouse"
   ],
   "min_score_to_notify": 4,
+  "_help_priority": "Extra-loud alerts. top_score: jobs with at least this CV score get an urgent alert. priority_locations: places whose matches get a high-priority alert. top_score_anywhere: true = also alert for top-score jobs outside your places.",
+  "top_score": 20,
+  "priority_locations": [
+    "Italy",
+    "Rome",
+    "Geneva"
+  ],
+  "top_score_anywhere": false,
   "_help_unjobs": "UNjobs.org pages that are checked every hour: page name -> [label, number of pages of 25 jobs]. Several spellings separated by | are tried until one works.",
   "unjobs_pages": {
     "gva|geneva": [
