@@ -1,0 +1,1 @@
+{"type":"module","private":true,"name":"cashflow-compass","scripts":{"test":"node --test tests/*.test.mjs"}}
