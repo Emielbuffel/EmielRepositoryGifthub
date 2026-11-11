@@ -53,6 +53,27 @@ Edit `profile.json` on GitHub (open the file, click the pencil, then "Commit cha
 - `exclude_title`: jobs with these words in the title never send an alert.
 - `unjobs_pages`: the UNjobs.org country pages that are read every hour.
 
+## 4. Deadline reminders on your Mac and iPhone
+
+For jobs with a CV score of 20 or more in one of your alert places (`notify_locations`), and not in French, the job watch:
+
+1. finds the deadline (from the job list, or else from the job page itself),
+2. sends you an ntfy message "Reminder set",
+3. adds a reminder to the list **Job deadlines** in Apple Reminders, with an alert at 09:00 the day before the deadline and the link to apply,
+4. sends an urgent ntfy alert "Deadline tomorrow" at that same moment (this works even without the Mac part).
+
+**Install the Mac part once:** download `jobwatch/mac/install-reminders.sh` from GitHub, then in Terminal run:
+
+```bash
+bash ~/Downloads/install-reminders.sh
+```
+
+Click **OK** when macOS asks if Terminal or osascript may control Reminders. After that it checks every hour by itself. Reminders sync to your iPhone through iCloud.
+
+To remove it: `bash ~/Downloads/uninstall-reminders.sh` (your reminders stay).
+
+The Mac must be switched on and awake at least once every 12 hours; ntfy keeps the reminder list for 12 hours and the job watch sends it again every hour.
+
 ## Optional extras
 
 Add these under **Settings → Secrets and variables → Actions** in the GitHub repository:

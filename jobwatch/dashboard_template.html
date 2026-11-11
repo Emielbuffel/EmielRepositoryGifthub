@@ -317,6 +317,7 @@ window.JOBWATCH = /*__JOBWATCH_DATA__*/null;
     if (j.score >= (D.top_score || 20)) tags.appendChild(el("span", "tag top", "Top match"));
     if (j.level && !j.type.toLowerCase().includes(j.level.toLowerCase().slice(0, 7))) tags.appendChild(el("span", "tag mono", j.level));
     if (j.type !== "Not stated") tags.appendChild(el("span", "tag", j.type));
+    if (j.lang && j.lang !== "en") tags.appendChild(el("span", "tag mono", j.lang.toUpperCase()));
     (j.interests || []).forEach(g => tags.appendChild(el("span", "tag int", g)));
     (j.hits || []).slice(0, 4).forEach(h => tags.appendChild(el("span", "tag hit", h)));
     main.appendChild(tags);

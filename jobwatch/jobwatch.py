@@ -20,6 +20,8 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import sources  # noqa: E402
+import reminders  # noqa: E402
+from lang import guess as guess_lang  # noqa: E402
 
 DATA = HERE / "data" / "jobs.json"
 DASH_TEMPLATE = HERE / "dashboard_template.html"
@@ -198,7 +200,7 @@ def expired(j):
 
 
 # ------------------------------------------------------------------ notifications
-def ntfy(topic, title, message, click=None, tags="briefcase", priority=3):
+def ntfy(topic, title, message, click=None, tags="briefcase", priority=3, raw=False):
     if not topic:
         return
     body = {"topic": topic, "title": title[:250], "message": message[:3900], "tags": tags.split(","), "priority": priority}
@@ -344,7 +346,7 @@ def main():
             continue  # seen before under another key
         lvl = level_of(j)
         score, hits = profile.score(j)
-        rec = {**j, "regions": regions, "level": lvl, "type": type_of(j, lvl), "score": score, "hits": hits, "interests": profile.interests_of(j),
+        rec = {**j, "regions": regions, "level": lvl, "type": type_of(j, lvl), "score": score, "hits": hits, "interests": profile.interests_of(j), "lang": guess_lang(f"{j['title']} {j['summary']}"),
                "excluded": profile.excluded(j)}
         rec.pop("sid", None)
         if old:
@@ -375,6 +377,13 @@ def main():
 
     if do_notify:
         notify(new_matches, topic, first_run, len(state["jobs"]), dash_url)
+    try:
+        rem = reminders.update(state, profile, NOW, ntfy, topic, dry=not do_notify)
+        print(f"Deadline reminders active: {len(rem)}")
+        for r in sorted(rem.values(), key=lambda r: r["deadline"]):
+            print(f"  {r['deadline']} remind {r['remind'][:16]} | {r['name'][:90]}")
+    except Exception as e:
+        print(f"!! reminders failed: {e}")
     save_state(state)
     build_dashboard(state, profile)
 
