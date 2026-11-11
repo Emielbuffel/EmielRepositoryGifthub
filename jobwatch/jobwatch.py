@@ -56,6 +56,7 @@ class Profile:
         self.un_re = re.compile(r"(?<![A-Za-z])(" + "|".join(re.escape(o) for o in orgs) + r")(?![A-Za-z])") if orgs else None
         self.exclude = [word_re(x, plural=True) for x in raw.get("exclude_title", [])]
         self.min_score = raw.get("min_score_to_notify", 4)
+        self.exclude_languages = set(raw.get("exclude_languages", []))
         self.top_score = raw.get("top_score", 20)
         self.priority_locations = set(raw.get("priority_locations", []))
         self.top_anywhere = bool(raw.get("top_score_anywhere", False))
@@ -309,6 +310,9 @@ def main():
         else:
             rekeyed[k] = rec
     state["jobs"] = rekeyed
+    state["jobs"] = {k: r for k, r in state["jobs"].items()
+                     if guess_lang(f"{r['title']} {r.get('summary', '')}") not in profile.exclude_languages}
+    state["reminders"] = {k: r for k, r in (state.get("reminders") or {}).items() if k in state["jobs"]}
     known_urls = {r["url"] for r in state["jobs"].values()}
 
     srcs = sources.all_sources(profile.raw, os.environ.get("RELIEFWEB_APPNAME", ""))
@@ -332,9 +336,12 @@ def main():
     print(f"Fetched {len(raw)} jobs in {time.time() - t0:.0f}s")
 
     now_s = NOW.isoformat(timespec="minutes")
-    new_matches, seen_now = [], set()
+    new_matches, seen_now, dropped_lang = [], set(), 0
     for j in raw:
         if not j["title"] or not j["url"]:
+            continue
+        if guess_lang(f"{j['title']} {j['summary']}") in profile.exclude_languages:
+            dropped_lang += 1
             continue
         regions = profile.regions(j)
         fp = fingerprint(j, regions, profile)
@@ -371,6 +378,7 @@ def main():
     state["last_sources"] = report
     state["updated"] = now_s
     state["runs"] = (state.get("runs") or [])[-47:] + [{"at": now_s, "fetched": len(raw), "new_matches": len(new_matches)}]
+    print(f"Left out {dropped_lang} vacancies in {', '.join(sorted(profile.exclude_languages)) or '-'}")
     print(f"New matching vacancies: {len(new_matches)}; removed expired: {before - len(state['jobs'])}; tracked: {len(state['jobs'])}")
     for j in sorted(new_matches, key=lambda j: -j["score"])[:40]:
         print(f"  [{j['score']:>3}] {', '.join(j['regions'])} | {j['title']} | {j['org'] or j['source']}")

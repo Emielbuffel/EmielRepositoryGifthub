@@ -51,6 +51,7 @@ Edit `profile.json` on GitHub (open the file, click the pencil, then "Commit cha
 - `interests`: your interest groups (Environment, Forest, Diplomacy, GIS, Evaluation). Each job is labelled with the groups it matches; the dashboard has an Interest filter. Jobs at UN organisations get the label UN and `un_bonus` extra points.
 - `min_score_to_notify`: raise it (for example to 8) for fewer, stronger alerts.
 - `exclude_title`: jobs with these words in the title never send an alert.
+- `exclude_languages` (now: fr): vacancies in these languages are left out completely. Spanish, Portuguese and Dutch jobs stay.
 - `unjobs_pages`: the UNjobs.org country pages that are read every hour.
 
 ## 4. Deadline reminders on your Mac and iPhone
