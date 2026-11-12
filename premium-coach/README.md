@@ -27,4 +27,23 @@ A learning app and trading plan for collecting option premiums in a defensive wa
 
 Your data (journal, checklists, settings) is saved only in the browser you use.
 
+## Live market data
+
+`fetch_data.py` collects:
+
+- share and index prices, 50- and 200-day lines, 52-week highs and S&P 500 / Nasdaq distribution days from Yahoo Finance;
+- real option prices (bid, ask, last for every strike and expiry) for Euronext Amsterdam and Brussels stocks from Beursgenoten.nl.
+
+It stores them in `data.json`, puts them into `app.html` and rebuilds `index.html`. The data is a snapshot: it is as fresh as the last run.
+
+To refresh on your Mac (Python 3 is needed; macOS offers to install it the first time):
+
+```bash
+python3 premium-coach/fetch_data.py
+```
+
+Then open `index.html` again.
+
+AEX, Euro Stoxx 50 and German (Eurex) stocks show live share prices with *estimated* premiums, because there is no free source of their option prices that the script can read.
+
 This is a learning tool, not financial advice.
