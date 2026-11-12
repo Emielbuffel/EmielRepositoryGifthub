@@ -17,6 +17,7 @@ import { listMenu } from './lists.js';
 import { alertSheet } from './alertsui.js';
 import { planSheet } from './plansui.js';
 import { planFor, tradesFor, strategy } from '../data/plans.js';
+import { degiroOrders } from '../core/degiro.js';
 import { pyramid, sharesFor, DEFAULT_PLAN, tradePlan } from '../core/strategy.js';
 import { fundTrade } from '../core/sizing.js';
 import { factor } from '../data/fx.js';
@@ -656,6 +657,11 @@ function tradePlanBlock(B) {
       ${T.sells.map((x, i) => html`<tr><td><b>Sell ${i + 1}</b> at +${pc0(x.gain)}</td><td class="n t-ok">${fp(x.price)}</td><td class="n">${x.frac === 1 / 3 ? '⅓' : pc0(x.frac)}</td><td class="n">${x.shares}</td><td class="n hide-m">${n0(x.profit)} ${ccy}</td></tr>`)}
       <tr class="tp-main"><td><b>The rest</b></td><td class="n">50-day line</td><td class="n">${T.runner.frac ? (T.runner.frac > 0.33 && T.runner.frac < 0.34 ? '⅓' : pc0(T.runner.frac)) : '—'}</td><td class="n">${T.runner.shares}</td><td class="n hide-m">—</td></tr><tr class="tp-why"><td colspan="5">Hold while it stays above the 50-day line; sell on a heavy-volume close below it, or a climax top (the biggest gain since the breakout, an exhaustion gap, 25%+ above the 50-day line after a fast run).</td></tr>
     </tbody></table></div>
+    <h4 class="tp-h">4 · Orders to place in DEGIRO</h4>
+    <div class="tbl-wrap"><table class="tbl tp"><thead><tr><th>Step</th><th>Order</th><th class="n">Shares</th><th class="n">Stop</th><th class="n">Limit</th><th class="hide-m">Valid</th></tr></thead><tbody>
+      ${degiroOrders(T, p.pivot, S, V.data.bars[V.data.bars.length - 1].close).map(o => html`<tr class="tp-main"><td><b>${o.step}</b></td><td><span class="${o.side === 'Buy' ? 't-ok' : 't-bad'}">${o.side}</span> · ${o.type}</td><td class="n">${o.shares || '—'}</td><td class="n">${o.stop != null ? fp(o.stop) : '—'}</td><td class="n">${o.limit != null ? fp(o.limit) : '—'}</td><td class="hide-m">${o.valid === 'GTC' ? 'Until cancelled' : 'Day'}</td></tr><tr class="tp-why"><td colspan="6"><b>${o.when}.</b> ${o.why}</td></tr>`)}
+    </tbody></table></div>
+    <p class="muted tiny" style="margin:0">DEGIRO order types: Market, Limit, Stop Loss, Stop Limit, Trailing Stop (some exchanges only); "until cancelled" (GTC) orders can expire on some exchanges — check your open orders now and then. Prices in ${cur}. Shares follow your plan; DEGIRO's own order screen shows the costs before you confirm.</p>
     <p class="small" style="margin:0"><b>Exception (the book's 8-week rule):</b> if the stock gains 20% within ${T.fastWeeks} weeks of the breakout (e.g. by ${fD(Math.floor(fast / 1000))} if you buy today), sell nothing for at least 8 weeks from the breakout — these are often the biggest winners. The stop still applies.</p>
     <p class="muted tiny" style="margin:0">Before buying: market in an uptrend, RS 80+, no earnings within ${S.earningsDays} days. Each sale costs the stock-exchange tax (TOB) and, since 2026, 10% Belgian capital-gains tax on the gain: bundle sales where you can.${fxNote} Source: O'Neil's <i>How to Make Money in Stocks</i> and IBD (buy point, 5% zone, 7–8% stop, most profits at 20–25%, 8-week rule) plus your webinar notes (50/35/15 pyramid). Splitting "most profits" into ⅓ at +20%, ⅓ at +25% and ⅓ riding the 50-day line is the app's way to apply that rule.</p>
     <div class="toolbar">${open ? html`<span class="small t-ok">Plan open: ${V.plan.buys.length} buy${V.plan.buys.length === 1 ? '' : 's'}${V.plan.sold ? ', ' + V.plan.sold + ' shares sold' : ''} recorded.${V.plan.lastStep ? ' Next: ' + V.plan.lastStep.title + '.' : ''}</span>` : html`<button class="btn sm primary" id="tpStart">Start this plan (alerts at every step)</button>`}<span class="muted tiny">Levels are drawn on the chart (Patterns → Trade plan levels).</span></div>

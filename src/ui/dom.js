@@ -57,6 +57,7 @@ export const ICON = {
   chart: P('<path d="M4 19V5"/><path d="M4 19h16"/><path d="M7 15l3.5-4 3 2.5L19 7"/>'),
   market: P('<path d="M3 12h3l2.5-6 4 12 3-8 1.5 2H21"/>'),
   screener: P('<path d="M4 5h16l-6 7.5V19l-4-2v-4.5z"/>'),
+  news: P('<rect x="4" y="5" width="13" height="15" rx="2"/><path d="M17 9h2.5a.5.5 0 0 1 .5.5V18a2 2 0 0 1-4 0M7.5 9h6M7.5 12.5h6M7.5 16h4"/>'),
   review: P('<path d="M4 19h16"/><path d="M7 15l3-4 3 2 4-6"/><circle cx="17" cy="7" r="1.2"/>'),
   taxes: P('<path d="M7 3h7l4 4v14H7z"/><path d="M14 3v4h4"/><path d="M10 12h5M10 15.5h5M10 8.5h2"/>'),
   prune: P('<circle cx="6" cy="6" r="2.6"/><circle cx="6" cy="18" r="2.6"/><path d="M8.2 7.4 20 17.5M8.2 16.6 20 6.5"/>'),

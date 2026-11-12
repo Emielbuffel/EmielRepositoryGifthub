@@ -8,6 +8,7 @@ export const VIEWS = [
   { id: 'screener', label: 'Screener', icon: 'screener' },
   { id: 'fund', label: 'Fundamentals', icon: 'fund' },
   { id: 'portfolio', label: 'Portfolio', icon: 'portfolio' },
+  { id: 'news', label: 'News', icon: 'news' },
   { id: 'prune', label: 'Sell ideas', icon: 'prune' },
   { id: 'taxes', label: 'Dividends & taxes', icon: 'taxes' },
   { id: 'review', label: 'Trade review', icon: 'review' },
