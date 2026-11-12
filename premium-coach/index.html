@@ -1,0 +1,791 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><style>[hidden]{display:none!important}</style>
+<title>Premium Coach</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;700;800&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: a Mac-style app window. Fixed sidebar of sections on the left, one working pane on the right; on a phone the sidebar becomes a scrolling tab strip. */
+:root{
+  --bg:#f3f5f7; --panel:#ffffff; --sunk:#e9edf1; --line:#d6dde4;
+  --fg:#16212b; --muted:#5a6a78; --accent:#0f7a6c; --accent-soft:#d9f0ec; --on-accent:#ffffff;
+  --go:#1d7f45; --go-soft:#dcf2e4; --warn:#a2650a; --warn-soft:#fbeed6; --stop:#b3261e; --stop-soft:#f8dedc;
+  --f-display:"Manrope",ui-sans-serif,system-ui,-apple-system,sans-serif;
+  --f-body:"Inter",ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
+  --f-mono:"JetBrains Mono",ui-monospace,"SF Mono",Menlo,monospace;
+  --r:10px;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0f151b; --panel:#17202a; --sunk:#111920; --line:#2a3744;
+  --fg:#e5ecf2; --muted:#93a4b3; --accent:#3cc2ad; --accent-soft:#143a36; --on-accent:#06201c;
+  --go:#5fd38b; --go-soft:#173826; --warn:#f0b351; --warn-soft:#3b2c12; --stop:#ff8a80; --stop-soft:#43201d; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0f151b; --panel:#17202a; --sunk:#111920; --line:#2a3744;
+  --fg:#e5ecf2; --muted:#93a4b3; --accent:#3cc2ad; --accent-soft:#143a36; --on-accent:#06201c;
+  --go:#5fd38b; --go-soft:#173826; --warn:#f0b351; --warn-soft:#3b2c12; --stop:#ff8a80; --stop-soft:#43201d; color-scheme:dark}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{background:var(--bg);color:var(--fg);font-family:var(--f-body);font-size:15px;line-height:1.55;margin:0}
+h1,h2,h3,h4{font-family:var(--f-display);text-wrap:balance;margin:0;line-height:1.2}
+h1{font-size:1.75rem;font-weight:800;letter-spacing:-.01em}
+h2{font-size:1.25rem;font-weight:800}
+h3{font-size:1.05rem;font-weight:700}
+p{margin:0}
+a{color:var(--accent)}
+.num,td.n,.mono{font-family:var(--f-mono);font-variant-numeric:tabular-nums}
+.app{display:grid;grid-template-columns:232px minmax(0,1fr);min-height:100%}
+.side{background:var(--sunk);border-right:1px solid var(--line);padding-block:20px;padding-left:max(14px,env(safe-area-inset-left,0px));padding-right:14px;position:sticky;top:0;height:100vh;overflow-y:auto}
+.brand{display:flex;gap:10px;align-items:center;padding:0 8px 18px}
+.brand svg{flex:none}
+.brand b{font-family:var(--f-display);font-size:1.05rem;display:block}
+.brand small{color:var(--muted);font-size:.75rem}
+.nav{display:flex;flex-direction:column;gap:2px}
+.nav button{all:unset;cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 10px;border-radius:7px;color:var(--fg);font-weight:500}
+.nav button:hover{background:var(--line)}
+.nav button[aria-current="page"]{background:var(--accent);color:var(--on-accent)}
+.nav button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.nav .count{font-family:var(--f-mono);font-size:.72rem;opacity:.8}
+.side .foot{margin-top:22px;padding:12px 10px;font-size:.75rem;color:var(--muted);border-top:1px solid var(--line)}
+main{padding-block:28px 60px;padding-left:max(16px,4vw);padding-right:max(16px,env(safe-area-inset-right,0px),4vw);min-width:0}
+.view{max-width:1040px;display:flex;flex-direction:column;gap:22px}
+.eyebrow{font-size:.72rem;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);font-weight:600}
+.lede{color:var(--muted);max-width:68ch}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:18px;min-width:0}
+.grid2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+.grid3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
+.stack{display:flex;flex-direction:column;gap:10px}
+.row{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.prose{max-width:70ch;display:flex;flex-direction:column;gap:12px}
+.prose ul,.prose ol{margin:0;padding-left:1.2em;display:flex;flex-direction:column;gap:6px}
+.prose h3{margin-top:6px}
+.tip{background:var(--accent-soft);border-radius:8px;padding:12px 14px}
+.warnbox{background:var(--warn-soft);border-radius:8px;padding:12px 14px}
+.stopbox{background:var(--stop-soft);border-radius:8px;padding:12px 14px}
+.chip{display:inline-flex;align-items:center;gap:6px;font-size:.75rem;font-weight:600;padding:3px 9px;border-radius:999px;white-space:nowrap}
+.chip.go{background:var(--go-soft);color:var(--go)}
+.chip.warn{background:var(--warn-soft);color:var(--warn)}
+.chip.stop{background:var(--stop-soft);color:var(--stop)}
+.chip.info{background:var(--sunk);color:var(--muted);border:1px solid var(--line)}
+label{font-size:.82rem;color:var(--muted);font-weight:500;display:flex;flex-direction:column;gap:4px}
+input,select,textarea{font:inherit;color:var(--fg);background:var(--panel);border:1px solid var(--line);border-radius:7px;padding:7px 9px;min-width:0}
+textarea{width:100%;min-height:90px;font-family:var(--f-mono);font-size:.8rem}
+input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.btn{font:inherit;font-weight:600;cursor:pointer;border-radius:7px;padding:8px 14px;border:1px solid var(--line);background:var(--panel);color:var(--fg)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
+.btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.btn.small{padding:4px 10px;font-size:.8rem}
+.seg{display:flex;flex-wrap:wrap;gap:6px}
+.seg button{font:inherit;font-size:.85rem;cursor:pointer;border:1px solid var(--line);background:var(--panel);color:var(--fg);border-radius:999px;padding:6px 12px}
+.seg button[aria-pressed="true"]{background:var(--fg);color:var(--bg);border-color:var(--fg)}
+.form{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px}
+.tablewrap{overflow-x:auto;border:1px solid var(--line);border-radius:var(--r);background:var(--panel)}
+table{border-collapse:collapse;width:100%;font-size:.88rem}
+th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-size:.72rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:600;background:var(--sunk)}
+tr:last-child td{border-bottom:0}
+td.n,th.n{text-align:right}
+.verdict{border-radius:var(--r);padding:18px 20px;display:flex;flex-direction:column;gap:6px;border:1px solid var(--line)}
+.verdict.go{background:var(--go-soft)} .verdict.warn{background:var(--warn-soft)} .verdict.stop{background:var(--stop-soft)}
+.verdict .big{font-family:var(--f-display);font-weight:800;font-size:1.4rem}
+.verdict.go .big{color:var(--go)} .verdict.warn .big{color:var(--warn)} .verdict.stop .big{color:var(--stop)}
+.kv{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:12px}
+.kv div{background:var(--sunk);border-radius:8px;padding:10px 12px}
+.kv span{display:block;font-size:.72rem;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
+.kv b{font-family:var(--f-mono);font-size:1.05rem;font-variant-numeric:tabular-nums}
+.matrix td,.matrix th{text-align:center} .matrix td:first-child,.matrix th:first-child{text-align:left}
+.lessons{display:grid;grid-template-columns:260px minmax(0,1fr);gap:18px;align-items:start}
+.lesson-list{display:flex;flex-direction:column;gap:14px;position:sticky;top:12px}
+.lesson-list h4{font-size:.72rem;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:4px}
+.lesson-list button{all:unset;cursor:pointer;display:flex;gap:8px;align-items:flex-start;padding:6px 8px;border-radius:6px;font-size:.88rem}
+.lesson-list button:hover{background:var(--sunk)}
+.lesson-list button[aria-current="true"]{background:var(--accent-soft);font-weight:600}
+.lesson-list button:focus-visible{outline:2px solid var(--accent)}
+.dot{width:16px;height:16px;border-radius:50%;border:2px solid var(--line);flex:none;margin-top:2px;display:grid;place-items:center;font-size:10px}
+.dot.done{background:var(--go);border-color:var(--go);color:var(--panel)}
+.quiz{display:flex;flex-direction:column;gap:14px;border-top:1px solid var(--line);padding-top:16px}
+.q{display:flex;flex-direction:column;gap:8px}
+.q .opts{display:flex;flex-direction:column;gap:6px}
+.q .opts button{all:unset;cursor:pointer;border:1px solid var(--line);border-radius:7px;padding:8px 12px;font-size:.9rem;background:var(--panel)}
+.q .opts button:hover{border-color:var(--accent)}
+.q .opts button:focus-visible{outline:2px solid var(--accent)}
+.q .opts button.right{background:var(--go-soft);border-color:var(--go)}
+.q .opts button.wrong{background:var(--stop-soft);border-color:var(--stop)}
+.q .why{font-size:.88rem;color:var(--muted)}
+.progress{height:8px;background:var(--sunk);border-radius:99px;overflow:hidden}
+.progress i{display:block;height:100%;background:var(--accent);border-radius:99px}
+.checklist{display:flex;flex-direction:column;gap:8px}
+.checklist label{flex-direction:row;align-items:flex-start;gap:10px;color:var(--fg);font-size:.9rem;font-weight:400}
+.checklist input{margin-top:4px}
+.checklist small{display:block;color:var(--muted)}
+.steps{counter-reset:s;display:flex;flex-direction:column;gap:12px;list-style:none;padding:0;margin:0}
+.steps li{counter-increment:s;display:grid;grid-template-columns:34px minmax(0,1fr);gap:12px}
+.steps li::before{content:counter(s);font-family:var(--f-mono);font-weight:600;width:28px;height:28px;border-radius:50%;background:var(--accent-soft);color:var(--accent);display:grid;place-items:center;font-size:.85rem}
+.payoff svg{width:100%;height:auto;display:block}
+.payoff .axis{stroke:var(--line)} .payoff .zero{stroke:var(--muted);stroke-dasharray:4 4}
+.payoff .line{stroke:var(--accent);fill:none;stroke-width:2.5}
+.payoff text{fill:var(--muted);font-family:var(--f-mono);font-size:11px}
+.payoff .gain{fill:var(--go-soft)} .payoff .loss{fill:var(--stop-soft)}
+.toast{position:fixed;right:max(18px,env(safe-area-inset-right,0px));bottom:calc(18px + env(safe-area-inset-bottom,0px));background:var(--fg);color:var(--bg);padding:10px 16px;border-radius:8px;font-size:.88rem;z-index:20}
+.muted{color:var(--muted)} .small{font-size:.82rem}
+.disclaimer{font-size:.8rem;color:var(--muted);border-top:1px solid var(--line);padding-top:14px;max-width:80ch}
+@media (max-width:860px){
+  .app{grid-template-columns:minmax(0,1fr)}
+  .side{position:sticky;top:env(safe-area-inset-top,0px);height:auto;z-index:5;border-right:0;border-bottom:1px solid var(--line);padding-block:10px;padding-right:max(16px,env(safe-area-inset-right,0px))}
+  .brand{padding-bottom:8px} .side .foot{display:none}
+  .nav{flex-direction:row;overflow-x:auto;gap:4px;padding-bottom:4px}
+  .nav button{white-space:nowrap} .nav .count{display:none}
+  .lessons,.grid2,.grid3{grid-template-columns:minmax(0,1fr)}
+  .lesson-list{position:static}
+  main{padding-left:max(16px,env(safe-area-inset-left,0px))}
+}
+@media (prefers-reduced-motion:no-preference){.nav button,.q .opts button,.btn{transition:background .15s,border-color .15s}}
+</style>
+</head><body>
+
+<div class="app">
+  <aside class="side">
+    <div class="brand">
+      <svg width="34" height="34" viewBox="0 0 34 34" aria-hidden="true"><rect width="34" height="34" rx="9" fill="var(--accent)"/><path d="M7 23 L13 17 L18 20 L27 10" stroke="var(--on-accent)" stroke-width="2.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/><circle cx="27" cy="10" r="2.6" fill="var(--on-accent)"/></svg>
+      <div><b>Premium Coach</b><small>O'Neil-style option income</small></div>
+    </div>
+    <nav class="nav" id="nav" aria-label="Sections"></nav>
+    <div class="foot">For learning only. Not financial advice. Always check prices, contract specs and fees in DEGIRO itself.</div>
+  </aside>
+  <main id="main"></main>
+</div>
+<div class="toast" id="toast" hidden></div>
+
+<script>
+/* ---------- storage helpers (per-browser, safe) ---------- */
+const store={get(k,d){try{const v=localStorage.getItem('pc.'+k);return v==null?d:JSON.parse(v)}catch(e){return d}},
+set(k,v){try{localStorage.setItem('pc.'+k,JSON.stringify(v))}catch(e){}}};
+const $=s=>document.querySelector(s);
+const eur=v=>isFinite(v)?new Intl.NumberFormat('en-IE',{style:'currency',currency:'EUR',maximumFractionDigits:0}).format(v):'–';
+const eur2=v=>isFinite(v)?new Intl.NumberFormat('en-IE',{style:'currency',currency:'EUR',minimumFractionDigits:2,maximumFractionDigits:2}).format(v):'–';
+const pct=(v,d=1)=>isFinite(v)?(v*100).toFixed(d)+'%':'–';
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+function toast(msg){const t=$('#toast');t.textContent=msg;t.hidden=false;clearTimeout(toast.t);toast.t=setTimeout(()=>t.hidden=true,2400)}
+
+/* ---------- settings shared across views ---------- */
+const S=Object.assign({regime:'uptrend',vol:'normal',account:50000},store.get('settings',{}));
+function saveS(){store.set('settings',S)}
+
+/* ---------- market regimes: the heart of the plan ---------- */
+const REGIMES={
+ uptrend:{name:'Confirmed uptrend',tone:'go',big:'Green light: sell puts on leaders, at support',
+  oneil:'O\'Neil: this is the only market where you buy new stocks. 3 out of 4 stocks follow the market, so the wind is at your back.',
+  putsStock:'go',putsIndex:'go',cc:'warn',spread:'go',cash:'info',
+  maxObl:.60,maxPos:.20,delta:'0.15 – 0.25',dte:'30 – 45 days',
+  actions:['Sell cash-secured puts on strong stocks that pull back to their 50-day line or 10-week line.','Choose a strike where you would be happy to buy the stock (near support, below the last base).','Covered calls only far above the price (delta 0.10–0.15), or not at all: in an uptrend you want to keep your winners.','Take profit when 50% of the premium is earned.']},
+ pressure:{name:'Uptrend under pressure',tone:'warn',big:'Yellow light: smaller, safer, further away',
+  oneil:'O\'Neil / IBD: distribution days are piling up. Do not add much new risk. Be more careful with new buys.',
+  putsStock:'warn',putsIndex:'warn',cc:'go',spread:'go',cash:'go',
+  maxObl:.30,maxPos:.10,delta:'0.10 – 0.15',dte:'21 – 35 days',
+  actions:['No new puts on volatile stocks. Only on the strongest, calmest leaders, or on the index.','Prefer put credit spreads: your maximum loss is fixed.','Sell covered calls on stocks you own (delta 0.20–0.30). The premium is a small cushion.','Close puts early if the stock breaks its 50-day line on heavy volume.']},
+ correction:{name:'Market in correction',tone:'stop',big:'Red light: no new puts. Protect cash.',
+  oneil:'O\'Neil: in a correction, raise cash and stop buying. Selling a put is a promise to buy, so you do not make that promise now.',
+  putsStock:'stop',putsIndex:'stop',cc:'go',spread:'warn',cash:'go',
+  maxObl:0,maxPos:0,delta:'– (no new puts)',dte:'–',
+  actions:['No new short puts. High premiums now are a warning, not a gift.','Manage what is open: close losing puts by your exit rules, do not hope.','Covered calls on stocks you still own are fine (delta 0.25–0.35). Or follow O\'Neil and sell the stock.','Build your watchlist: note which stocks hold up best. They are often the next leaders.']},
+ rally:{name:'Rally attempt (no follow-through yet)',tone:'stop',big:'Red light: wait for the follow-through day',
+  oneil:'O\'Neil: a bounce is not a new uptrend. Wait for a follow-through day: a big gain on higher volume on day 4 or later.',
+  putsStock:'stop',putsIndex:'stop',cc:'go',spread:'stop',cash:'go',
+  maxObl:0,maxPos:0,delta:'–',dte:'–',
+  actions:['Do not sell puts yet. Many rally attempts fail.','Write down the day count of the rally attempt.','Prepare a list of stocks near new highs with strong relative strength.']},
+ newup:{name:'New uptrend (just after follow-through)',tone:'warn',big:'Yellow-green: start small with the best leaders',
+  oneil:'O\'Neil: the follow-through day says it is time to buy again, but start with small positions and add only when they work.',
+  putsStock:'warn',putsIndex:'go',cc:'stop',spread:'go',cash:'info',
+  maxObl:.30,maxPos:.10,delta:'0.15 – 0.20',dte:'30 – 45 days',
+  actions:['Sell 1 or 2 puts on the stocks that held up best during the correction.','Volatility is often still high, so premiums are good. Keep the size small anyway.','Do not sell covered calls on new leaders now: they can run.','Add more only after 2–3 weeks without new distribution days.']}
+};
+const VOL={
+ low:{name:'Calm (VSTOXX/VIX below 14)',note:'Premiums are small. Be picky. It is fine to sell fewer puts, or none, rather than go closer to the price for more money.',mult:1},
+ normal:{name:'Normal (14 – 22)',note:'Normal premiums. Use the regular plan.',mult:1},
+ high:{name:'High (22 – 30)',note:'Nice premiums, but they are high because big moves are expected. Cut size by half and keep strikes further away.',mult:.5},
+ extreme:{name:'Panic (above 30)',note:'The market is scared. Do not open new short puts, even in an "uptrend". Wait until volatility calms down.',mult:0}
+};
+const CHIP={go:'Yes',warn:'Small / careful',stop:'No',info:'Optional'};
+
+/* ---------- stock universe (European, options listed on Euronext Amsterdam or Eurex) ---------- */
+const UNIVERSE=[
+ {t:'AEX',n:'AEX index – Mini option',x:'Euronext Amsterdam',k:'Index',v:'Low',m:10,note:'€10 per index point. Cash-settled, European style. Most defensive choice: no single-company risk.'},
+ {t:'OESX',n:'Euro Stoxx 50 index option',x:'Eurex',k:'Index',v:'Low',m:10,note:'€10 per index point. Cash-settled, European style. 50 large eurozone companies.'},
+ {t:'AEX-L',n:'AEX index – standard option',x:'Euronext Amsterdam',k:'Index',v:'Low',m:100,note:'€100 per index point. One put = a very big obligation. Usually too large for a small account.'},
+ {t:'SHELL',n:'Shell',x:'Euronext Amsterdam',k:'Energy',v:'Low',m:100,note:'Large, dividend payer. Follows oil prices.'},
+ {t:'UNA',n:'Unilever',x:'Euronext Amsterdam',k:'Consumer staples',v:'Low',m:100,note:'Classic defensive stock. Slow, steady.'},
+ {t:'AD',n:'Ahold Delhaize',x:'Euronext Amsterdam',k:'Consumer staples',v:'Low',m:100,note:'Supermarkets. Low volatility, lower premiums.'},
+ {t:'KPN',n:'KPN',x:'Euronext Amsterdam',k:'Telecom',v:'Low',m:100,note:'Low share price, so one contract is a small obligation. Small premiums.'},
+ {t:'INGA',n:'ING Groep',x:'Euronext Amsterdam',k:'Banks',v:'Medium',m:100,note:'Liquid options. Banks drop hard in a crisis.'},
+ {t:'WKL',n:'Wolters Kluwer',x:'Euronext Amsterdam',k:'Information services',v:'Medium',m:100,note:'Quality company. Check the trend first: only sell puts when it is above its 50- and 200-day lines.'},
+ {t:'ASML',n:'ASML Holding',x:'Euronext Amsterdam',k:'Semiconductors',v:'High',m:100,note:'Often a real O\'Neil-type leader, but one put is a huge obligation (price × 100).'},
+ {t:'ASM',n:'ASM International',x:'Euronext Amsterdam',k:'Semiconductors',v:'High',m:100,note:'Growth leader type. Large swings around earnings.'},
+ {t:'BESI',n:'BE Semiconductor',x:'Euronext Amsterdam',k:'Semiconductors',v:'High',m:100,note:'Very volatile. Only for small size in a confirmed uptrend.'},
+ {t:'ADYEN',n:'Adyen',x:'Euronext Amsterdam',k:'Payments',v:'High',m:null,note:'Very high share price. Check the contract size in DEGIRO; one contract can be a very large obligation.'},
+ {t:'SAP',n:'SAP',x:'Eurex',k:'Software',v:'Medium',m:100,note:'Large quality growth stock. Check the contract size in DEGIRO.'},
+ {t:'SIE',n:'Siemens',x:'Eurex',k:'Industrials',v:'Medium',m:100,note:'Large and liquid. Check the contract size in DEGIRO.'},
+ {t:'ALV',n:'Allianz',x:'Eurex',k:'Insurance',v:'Low',m:100,note:'Defensive insurer with a big dividend. Check ex-dividend dates.'},
+ {t:'MUV2',n:'Munich Re',x:'Eurex',k:'Insurance',v:'Low',m:100,note:'Defensive. High share price, so the obligation is large.'},
+ {t:'DTE',n:'Deutsche Telekom',x:'Eurex',k:'Telecom',v:'Low',m:100,note:'Defensive, lower share price.'},
+ {t:'IFX',n:'Infineon',x:'Eurex',k:'Semiconductors',v:'High',m:100,note:'Cyclical chip stock. Big moves.'},
+ {t:'RHM',n:'Rheinmetall',x:'Eurex',k:'Defence',v:'High',m:null,note:'Was a big momentum leader. Very volatile. Check the contract size.'}
+];
+const CHECKS=[
+ {id:'m',g:'IBD / O\'Neil',t:'M – The market is in a confirmed uptrend (or a new uptrend)',s:'See the Today page. If not, stop here.'},
+ {id:'l',g:'IBD / O\'Neil',t:'L – It is a leader: Relative Strength (RS) rating 80 or higher',s:'In IBD / MarketSmith. No IBD? Check it is beating the AEX / Euro Stoxx 50 over 6–12 months.'},
+ {id:'t',g:'IBD / O\'Neil',t:'Price is above its 50-day and 200-day moving average',s:'Leaders stay above these lines. Below = no puts.'},
+ {id:'h',g:'IBD / O\'Neil',t:'Price is within about 15% of its 52-week high',s:'O\'Neil bought stocks near new highs, not falling ones.'},
+ {id:'c',g:'IBD / O\'Neil',t:'C & A – Earnings are growing (quarterly and yearly)',s:'O\'Neil wants +25% or more. For defensive stocks, steady growth is acceptable.'},
+ {id:'i',g:'IBD / O\'Neil',t:'I – Big funds are buying (more up days on high volume than down days)',s:'IBD Accumulation/Distribution rating A or B.'},
+ {id:'own',g:'Options & safety',t:'I would be happy to own this stock at the strike price',s:'The most important rule for selling puts.'},
+ {id:'fit',g:'Options & safety',t:'One contract fits my plan (obligation below my max per position)',s:'Obligation = strike × contract size. Use the calculator.'},
+ {id:'earn',g:'Options & safety',t:'No earnings report before the expiry date',s:'Earnings can make a stock jump 10–20% in one day.'},
+ {id:'liq',g:'Options & safety',t:'The option is liquid: small gap between bid and ask, open interest present',s:'A wide gap costs you money when you get in and out.'},
+ {id:'sect',g:'Options & safety',t:'I have at most 1 other position in the same sector',s:'Spreading risk: chips, banks and energy move as a group.'}
+];
+
+/* ---------- lessons ---------- */
+const LESSONS=[
+{m:'1. Option basics',id:'what',t:'What is an option?',b:`
+<p>An option is a <b>contract</b> between two people about a stock (or an index).</p>
+<ul><li>The <b>buyer</b> pays money now and gets a <b>right</b>: to buy or sell the stock at a fixed price, until a fixed date.</li>
+<li>The <b>seller</b> (also called the <i>writer</i>) receives that money now and takes on an <b>obligation</b>: to do the deal if the buyer wants it.</li></ul>
+<p>The money the buyer pays is the <b>premium</b>. This app is about being the seller: you collect the premium, like an insurance company collects insurance payments.</p>
+<div class="tip"><b>Insurance picture.</b> When you sell a put, you insure someone else's shares against a fall. You get the premium. Most months nothing happens and you keep it. Sometimes there is a "storm" and you must pay out. Your job is to sell insurance only in good weather, on good houses, and never too much of it.</div>`,
+q:[{q:'You sell an option. What do you receive and what do you take on?',o:['A right, and you pay a premium','The premium, and you take on an obligation','Shares, and you pay a fee'],a:1,w:'The seller receives the premium and must do the deal if the buyer asks.'},
+{q:'Who decides whether the option is used (exercised)?',o:['The buyer','The seller','The broker'],a:0,w:'The buyer owns the right. The seller must follow.'}]},
+{m:'1. Option basics',id:'callput',t:'Calls and puts',b:`
+<p>There are two kinds of options:</p>
+<ul><li><b>Call</b> = the right to <b>buy</b> the stock at the strike price. Buyers of calls hope the stock goes <i>up</i>.</li>
+<li><b>Put</b> = the right to <b>sell</b> the stock at the strike price. Buyers of puts hope the stock goes <i>down</i> (or want protection).</li></ul>
+<p>So there are four positions. As a premium collector, you use only two of them:</p>
+<div class="tablewrap"><table><thead><tr><th>Position</th><th>You…</th><th>Used here?</th></tr></thead><tbody>
+<tr><td>Buy a call</td><td>pay premium, hope for a rise</td><td>No</td></tr>
+<tr><td>Buy a put</td><td>pay premium, hope for a fall / protection</td><td>Only as the safety leg of a spread</td></tr>
+<tr><td><b>Sell a put</b></td><td>get premium, may have to <b>buy</b> the stock at the strike</td><td><b>Yes – main strategy</b></td></tr>
+<tr><td><b>Sell a call</b></td><td>get premium, may have to <b>sell</b> the stock at the strike</td><td><b>Yes – only if you own the shares (covered)</b></td></tr>
+</tbody></table></div>`,
+q:[{q:'You sell a put on ING with strike €20. ING falls to €17 at expiry. What happens?',o:['Nothing, you keep the premium','You probably have to buy ING at €20','You have to sell ING at €20'],a:1,w:'The put buyer will sell to you at €20, because the market price is lower. You keep the premium, which lowers your real buy price.'},
+{q:'Why do we only sell calls on shares we already own?',o:['Because it is cheaper','Because a "naked" call has no limit on the loss if the stock rockets up','Because DEGIRO forbids all calls'],a:1,w:'A stock can rise without limit. If you must deliver shares you do not own, your loss has no ceiling.'}]},
+{m:'1. Option basics',id:'terms',t:'Strike, expiry, premium, contract size',b:`
+<ul><li><b>Strike</b>: the fixed price in the contract.</li>
+<li><b>Expiry</b>: the last day of the contract. In Europe, monthly options usually stop trading on the third Friday of the month.</li>
+<li><b>Premium</b>: the price of the option, shown <i>per share</i>.</li>
+<li><b>Contract size (multiplier)</b>: how many shares one contract covers. For most stock options on Euronext Amsterdam and Eurex this is 100 shares, but always check it in DEGIRO.</li></ul>
+<div class="tip"><b>Example.</b> A put on Shell, strike €30, premium €0.60, contract size 100.<br>You receive 0.60 × 100 = <b>€60</b> per contract.<br>Your obligation is 30 × 100 = <b>€3,000</b>: you must be able to pay that if you are assigned.</div>
+<p>The obligation (strike × contract size) is the most important number for a defensive trader. In this app we always keep enough cash to pay it. That is called a <b>cash-secured put</b>.</p>`,
+q:[{q:'Put on a €80 stock, strike €75, premium €1.50, size 100. How much cash should you keep aside?',o:['€150','€7,500','€8,000'],a:1,w:'Strike × size = 75 × 100 = €7,500. You receive €150 premium.'},
+{q:'A premium of €0.45 on a 100-share contract pays you…',o:['€0.45','€4.50','€45'],a:2,w:'Premium is per share: 0.45 × 100 = €45 (minus fees).'}]},
+{m:'1. Option basics',id:'money',t:'In, at and out of the money',b:`
+<p>For a <b>put</b>:</p>
+<ul><li><b>Out of the money (OTM)</b>: the stock is <i>above</i> the strike. If it stays there, the put expires worthless and you keep all the premium. This is what we want.</li>
+<li><b>At the money (ATM)</b>: stock ≈ strike.</li>
+<li><b>In the money (ITM)</b>: the stock is <i>below</i> the strike. You will probably have to buy the shares.</li></ul>
+<p>The premium has two parts: <b>intrinsic value</b> (how much it is in the money) and <b>time value</b> (everything else). An OTM option is 100% time value, and time value melts to zero at expiry. That melting is your income.</p>`,
+q:[{q:'Stock at €50, you sold a €45 put. The put is…',o:['In the money','Out of the money','At the money'],a:1,w:'For a put, OTM means the stock is above the strike.'},
+{q:'What part of an OTM option\'s premium is time value?',o:['None','About half','All of it'],a:2,w:'An OTM option has no intrinsic value, so all of it is time value, which disappears by expiry.'}]},
+{m:'1. Option basics',id:'assign',t:'Exercise and assignment',b:`
+<ul><li><b>Exercise</b>: the buyer uses the right.</li>
+<li><b>Assignment</b>: you, the seller, are picked to fulfil the contract. With a put, the shares are bought for you; with a covered call, your shares are sold.</li>
+<li><b>American style</b> (most single-stock options on Euronext and Eurex): the buyer can exercise on any trading day. So you can be assigned early, especially just before an ex-dividend date.</li>
+<li><b>European style</b> (index options such as AEX and Euro Stoxx 50): exercise only at expiry. Index options are <b>cash-settled</b>: no shares change hands, you just pay or receive the difference.</li></ul>
+<div class="warnbox">With a cash-settled index put, being "assigned" means paying cash, not getting shares. There is no "wheel" with index options: you take the loss.</div>`,
+q:[{q:'You sold a put on the AEX index and it ends in the money. What happens?',o:['You receive AEX shares','The difference is settled in cash','Nothing'],a:1,w:'AEX and Euro Stoxx 50 options are cash-settled.'},
+{q:'When is early assignment on a covered call most likely?',o:['Right before an ex-dividend date','On Mondays','Never'],a:0,w:'The call buyer exercises early to get the dividend, if the call is in the money.'}]},
+{m:'2. How option prices move',id:'theta',t:'Time decay (theta): your friend',b:`
+<p>Every day, an option loses a bit of its time value. This is called <b>theta</b>. For a seller, theta is income.</p>
+<ul><li>Decay is slow far from expiry and fast in the last weeks.</li>
+<li>Many premium sellers open trades <b>30 to 45 days</b> before expiry. That is a good balance between a decent premium and fast enough decay.</li>
+<li>In the last 1–2 weeks, decay is fastest, but price swings (gamma) are biggest too. So we usually close or roll around <b>21 days</b> left.</li></ul>`,
+q:[{q:'When does time decay go fastest?',o:['Right after you open','In the last weeks before expiry','It is always the same'],a:1,w:'Decay accelerates near expiry.'},
+{q:'Why not always sell 1-week options for fast decay?',o:['They are illegal','Small price moves can quickly push them in the money','They have no premium'],a:1,w:'Short-dated options react very strongly to price moves (high gamma). That is risk, not safety.'}]},
+{m:'2. How option prices move',id:'delta',t:'Delta: a rough chance',b:`
+<p><b>Delta</b> tells how much the option price moves when the stock moves €1. For sellers there is a handy rule of thumb:</p>
+<div class="tip">Delta ≈ the chance that the option ends <b>in the money</b>.<br>A put with delta 0.20 has very roughly a 20% chance of ending in the money, and an 80% chance of expiring worthless.</div>
+<ul><li>Lower delta = further from the price = safer, but less premium.</li>
+<li>This plan uses <b>0.15 – 0.25</b> in a good market and lower when the market is weaker.</li>
+<li>DEGIRO's option chain does not always show Greeks. You can use the distance instead: for a normal stock with 30–45 days, a delta 0.20 put is often about 5–10% below the price. Volatile stocks need more distance.</li></ul>`,
+q:[{q:'A put with delta 0.15 has about what chance of ending in the money?',o:['85%','15%','50%'],a:1,w:'Rule of thumb: delta ≈ probability of ending ITM.'},
+{q:'Moving your strike further from the price does what?',o:['More premium, more risk','Less premium, less risk','Nothing'],a:1,w:'Further OTM = lower delta = smaller premium and smaller chance of trouble.'}]},
+{m:'2. How option prices move',id:'iv',t:'Implied volatility, VSTOXX and VIX',b:`
+<p><b>Implied volatility (IV)</b> is the market's guess of how much a stock will move. High IV = expensive options = bigger premiums for sellers.</p>
+<ul><li><b>VSTOXX</b> is the "fear index" for Euro Stoxx 50. <b>VIX</b> is the same for the S&amp;P 500. Around 12–20 is calm, above 30 is panic.</li>
+<li>IV jumps when markets fall. That is exactly when premiums look most tempting.</li></ul>
+<div class="stopbox"><b>The big trap.</b> High premium is not free money. It is high because the market expects big moves, often down. O'Neil's rule says: in a correction, do not buy. Selling a put is agreeing to buy. So in a correction we do not sell puts, however juicy they look.</div>
+<p>The sweet spot for this plan: a <b>pullback inside a confirmed uptrend</b>, or the first weeks after a follow-through day. IV is a bit higher, but the trend is still up.</p>`,
+q:[{q:'VSTOXX jumps to 35 during a sell-off. According to this plan you…',o:['Sell as many puts as possible','Open no new short puts and wait','Buy calls'],a:1,w:'Panic-level volatility = no new short puts. Wait for calm and a confirmed uptrend.'},
+{q:'What is the best moment to sell puts in this plan?',o:['In a market correction, when premiums are highest','During a pullback in a confirmed uptrend','The day before earnings'],a:1,w:'Premium is slightly higher and the trend is still on your side.'}]},
+{m:'3. Premium strategies',id:'csp',t:'Cash-secured put',b:`
+<p><b>What:</b> you sell a put below the current price and keep enough cash to buy the shares.</p>
+<p><b>You win if:</b> the stock stays above the strike. You keep the premium.</p>
+<p><b>If it falls below the strike:</b> you buy the shares at the strike. Your real price is <b>strike − premium</b> (the break-even).</p>
+<p><b>Biggest risk:</b> a large fall. If the stock drops 40%, you lose almost the same as someone who bought the stock, minus the small premium.</p>
+<div class="tip"><b>Golden rule:</b> only sell a put on a stock you would be happy to buy at that strike, in a market where O'Neil would be buying.</div>
+<p>Open the <b>Calculator</b> to see the payoff picture and the numbers.</p>`,
+q:[{q:'Strike €40, premium €1.20. Your break-even is…',o:['€41.20','€38.80','€40.00'],a:1,w:'Break-even = strike − premium = 40 − 1.20 = €38.80.'},
+{q:'What makes a put "cash-secured"?',o:['You keep cash equal to strike × contract size','You use margin','You buy a call too'],a:0,w:'You can always pay for the shares without borrowing.'}]},
+{m:'3. Premium strategies',id:'cc',t:'Covered call',b:`
+<p><b>What:</b> you own at least 100 shares (per contract) and sell a call above the price.</p>
+<ul><li>You get premium now.</li>
+<li>If the stock rises above the strike, your shares are sold at the strike. You miss the gains above it.</li>
+<li>The premium gives a small cushion if the stock falls, but it is <b>not</b> real protection.</li></ul>
+<p><b>O'Neil view:</b> in a strong uptrend, your best stocks can rise 20–100%. Capping them with calls is often a mistake. Covered calls fit better in a choppy or weak market, on stocks you hold for the long term.</p>
+<div class="warnbox">Never sell a call with a strike below what you paid for the shares (your cost basis), unless you are happy to lock in a loss.</div>`,
+q:[{q:'You own 100 Unilever at €50 and sell a €55 call for €0.80. Unilever goes to €62. Result?',o:['Shares sold at €55, you keep €80 premium','You keep the shares and the gain to €62','You lose money'],a:0,w:'Your shares are called away at €55. Profit = (55−50)×100 + 80 = €580. You miss the move to €62.'},
+{q:'In which market are covered calls most useful?',o:['A powerful new uptrend','A sideways or weak market','Never'],a:1,w:'In a strong uptrend they cap your winners. In a flat market they add income.'}]},
+{m:'3. Premium strategies',id:'wheel',t:'The wheel, with O\'Neil brakes',b:`
+<p>The wheel is a cycle:</p>
+<ol><li>Sell a cash-secured put.</li><li>If assigned, you own the shares.</li><li>Sell covered calls above your cost until the shares are called away.</li><li>Start again with a put.</li></ol>
+<p>The danger of the normal wheel: a stock that keeps falling. People hold it for months "selling calls" while it loses 30–50%.</p>
+<div class="stopbox"><b>O'Neil brake.</b> O'Neil cut every loss at 7–8% below the purchase price, no exceptions. In this plan: if you are assigned and the stock closes about 8% below your break-even, or breaks its 50-day line on heavy volume and cannot recover, <b>sell the shares</b>. Do not keep wheeling a broken stock.</div>`,
+q:[{q:'You were assigned at break-even €38.80. The stock is now €35.50. What does the O\'Neil brake say?',o:['Sell covered calls and wait','Sell the shares: it is more than 8% below break-even','Buy more'],a:1,w:'35.50 is 8.5% below 38.80. Cut the loss.'},
+{q:'Why add a stop to the wheel?',o:['To pay more fees','A falling stock can cost far more than the premiums earn','DEGIRO requires it'],a:1,w:'Small premiums cannot repair a large loss.'}]},
+{m:'3. Premium strategies',id:'spread',t:'Put credit spread: a fixed maximum loss',b:`
+<p>A put credit spread is two orders at the same expiry:</p>
+<ul><li><b>Sell</b> a put (e.g. strike 95).</li><li><b>Buy</b> a cheaper put lower (e.g. strike 90) as insurance.</li></ul>
+<p>You receive less premium, but your maximum loss is limited to: <b>(difference between strikes × contract size) − premium received</b>.</p>
+<p>This is the most defensive way to collect premium when the market is not perfect, and it needs much less cash than a cash-secured put. It also works well with index options (Mini AEX, Euro Stoxx 50).</p>
+<div class="warnbox">At DEGIRO you may have to enter the two legs as two separate orders. Always buy the protective put first or at the same moment, so you are never left with only the short put.</div>`,
+q:[{q:'Spread 95/90 on Euro Stoxx 50 options (€10 per point), credit 1.5 points. Maximum loss?',o:['€15','€35','€50'],a:1,w:'Width 5 points × €10 = €50, minus credit 1.5 × €10 = €15 → max loss €35.'},
+{q:'Why use a spread instead of a single short put?',o:['More premium','A known, limited maximum loss','No fees'],a:1,w:'The bought put caps the loss.'}]},
+{m:'3. Premium strategies',id:'risks',t:'What can go wrong',b:`
+<ul><li><b>Gap down:</b> bad news overnight. The stock opens 20% lower. Your stop cannot help. Defence: small positions, no trades across earnings.</li>
+<li><b>Too many puts at once:</b> in a crash, all stocks fall together. Defence: cap the total obligation (see the Plan).</li>
+<li><b>Chasing premium:</b> picking volatile stocks because they pay more. Defence: annual return above ~30% on a put is a red flag.</li>
+<li><b>Margin:</b> at DEGIRO, short options use your "free space". If markets fall, required margin can rise sharply. Defence: never use the margin; keep cash.</li>
+<li><b>Currency:</b> options on non-euro stocks add currency risk. Defence: stay with euro underlyings.</li>
+<li><b>Fees and spread:</b> on cheap options, a €1–2 fee plus a wide bid/ask can eat much of the premium.</li></ul>
+<div class="stopbox">Selling options gives many small wins and a few large losses. The plan exists to keep those losses small.</div>`,
+q:[{q:'A put that pays 45% a year in premium usually means…',o:['A great deal','Very high risk','No risk'],a:1,w:'High premium = high expected movement.'},
+{q:'Best defence against a gap down after earnings?',o:['Tight stop-loss','Not holding short puts across the earnings date','Selling more puts'],a:1,w:'A stop cannot fill at your price when the stock opens far lower.'}]},
+{m:'4. O\'Neil & IBD',id:'canslim',t:'CAN SLIM in plain words',b:`
+<p>William O'Neil studied the biggest winning stocks over many decades and found seven common traits. He called them CAN SLIM:</p>
+<div class="tablewrap"><table><thead><tr><th>Letter</th><th>Means</th><th>What to look for</th></tr></thead><tbody>
+<tr><td><b>C</b></td><td>Current earnings</td><td>Latest quarter earnings per share up 25% or more</td></tr>
+<tr><td><b>A</b></td><td>Annual earnings</td><td>Strong growth over the last 3 years</td></tr>
+<tr><td><b>N</b></td><td>New</td><td>New product, new management, new highs in price</td></tr>
+<tr><td><b>S</b></td><td>Supply and demand</td><td>Price rises on high volume</td></tr>
+<tr><td><b>L</b></td><td>Leader or laggard</td><td>Be in the leader. Relative Strength rating 80+</td></tr>
+<tr><td><b>I</b></td><td>Institutional sponsorship</td><td>Good funds are buying</td></tr>
+<tr><td><b>M</b></td><td>Market direction</td><td>Only buy in a confirmed uptrend</td></tr>
+</tbody></table></div>
+<p>For premium selling, the most useful letters are <b>M</b> (when) and <b>L</b> (which stock). A put on a leader in an uptrend has the wind behind it.</p>`,
+q:[{q:'Which CAN SLIM letter tells you WHEN to sell puts?',o:['C','L','M'],a:2,w:'M = market direction.'},
+{q:'O\'Neil prefers stocks that are…',o:['Near their lows, cheap','Near new highs, leading','Flat for years'],a:1,w:'He bought strength, not bargains.'}]},
+{m:'4. O\'Neil & IBD',id:'market',t:'Reading the market like IBD',b:`
+<p>IBD labels the market in one of three states (its "Market Pulse"):</p>
+<ul><li><b>Confirmed uptrend</b>: buy.</li><li><b>Uptrend under pressure</b>: be careful.</li><li><b>Market in correction</b>: no new buys.</li></ul>
+<p>Two tools decide the state:</p>
+<h3>Distribution days</h3>
+<p>A day when a major index (S&amp;P 500, Nasdaq) falls about 0.2% or more on <b>higher volume</b> than the day before. That is big funds selling. A distribution day drops out of the count after 25 trading days, or when the index rises 5% above that day's close. Around 5–6 of them in a few weeks often means trouble.</p>
+<h3>Follow-through day</h3>
+<p>After a correction, the market tries to bounce (a "rally attempt"). On day 4 or later, a strong gain on higher volume is a follow-through day. It signals a new uptrend may be starting. IBD has used different minimum gains over the years (from roughly 1.2% to 1.7% or more).</p>
+<div class="tip">O'Neil found that about <b>3 out of 4 stocks follow the general market</b>. So even a great stock is hard to own in a bad market. Use the helper on the Today page to check the state.</div>`,
+q:[{q:'The index falls 0.6% on lower volume than yesterday. Distribution day?',o:['Yes','No'],a:1,w:'Volume must be higher than the day before.'},
+{q:'A follow-through day can happen on…',o:['Day 1 of the rally attempt','Day 4 or later','Only on Fridays'],a:1,w:'Day 4 or later, on a strong gain with higher volume.'}]},
+{m:'4. O\'Neil & IBD',id:'leaders',t:'Leaders, bases and the 50-day line',b:`
+<ul><li><b>Base</b>: a sideways period (often a "cup with handle") where a stock rests before a new move. The breakout point is the <b>pivot</b>.</li>
+<li><b>50-day moving average</b>: leaders often bounce off this line during an uptrend. A pullback to it on <b>low volume</b> is a classic spot to sell a put, with the strike below the line.</li>
+<li><b>Sell signal</b>: breaking the 50-day line on <b>heavy volume</b> and staying below it. Then close puts on that stock.</li>
+<li><b>7–8% rule</b>: O'Neil cut any stock that fell 7–8% below his purchase price. We use the same idea for assigned shares.</li></ul>`,
+q:[{q:'A leader pulls back to its 50-day line on light volume in a confirmed uptrend. For this plan this is…',o:['A good spot to sell a put below the line','A sell signal','Irrelevant'],a:0,w:'Quiet pullbacks to support in an uptrend are the ideal moment.'},
+{q:'The stock breaks the 50-day line on very heavy volume. You have a short put on it. You…',o:['Sell another put','Consider closing the put','Wait for expiry'],a:1,w:'Heavy-volume breaks of support are warnings. Defend first.'}]},
+{m:'4. O\'Neil & IBD',id:'combine',t:'Combining O\'Neil with premium selling',b:`
+<p>O'Neil bought breakouts. A put seller does something slightly different: <b>gets paid to wait</b> for a lower buy price on a leader.</p>
+<div class="tablewrap"><table><thead><tr><th>O'Neil rule</th><th>Premium-seller version</th></tr></thead><tbody>
+<tr><td>Only buy in a confirmed uptrend (M)</td><td>Only sell new puts in a confirmed (or new) uptrend</td></tr>
+<tr><td>Buy leaders (L, RS 80+)</td><td>Sell puts only on leaders or on the index</td></tr>
+<tr><td>Buy near support / from a base</td><td>Strike below the 50-day line or the bottom of the base</td></tr>
+<tr><td>Cut losses at 7–8%</td><td>Close the put at 2× premium, or sell assigned shares 8% below break-even</td></tr>
+<tr><td>Raise cash in a correction</td><td>No new puts; let open trades expire or close them</td></tr>
+<tr><td>Avoid earnings surprises (pyramid carefully)</td><td>No short options across earnings dates</td></tr>
+</tbody></table></div>`,
+q:[{q:'In this plan, where should the strike usually be?',o:['Above the current price','Below support such as the 50-day line','Exactly at the price'],a:1,w:'Below support gives extra safety.'}]},
+{m:'5. Risk & DEGIRO',id:'sizing',t:'Position sizing: the defensive rulebook',b:`
+<ul><li><b>Cash-secured only:</b> total obligation of all short puts ≤ your cash. Never rely on margin.</li>
+<li><b>Market cap on total obligation:</b> max 60% of the account in a confirmed uptrend, 30% under pressure or just after a follow-through, 0% in a correction.</li>
+<li><b>Per position:</b> max 20% of the account (10% in weaker markets).</li>
+<li><b>Sectors:</b> max 2 positions per sector.</li>
+<li><b>Number:</b> max 5 open positions while you are learning.</li></ul>
+<p>Example: €50,000 account, confirmed uptrend → max €30,000 total obligation, max €10,000 per put. A €95 strike × 100 = €9,500 is just inside the limit. A €700 ASML strike × 100 = €70,000 is far too big.</p>`,
+q:[{q:'€30,000 account, uptrend under pressure. Max obligation per position?',o:['€3,000','€6,000','€18,000'],a:0,w:'10% of €30,000 = €3,000 in a market under pressure.'}]},
+{m:'5. Risk & DEGIRO',id:'manage',t:'Managing a trade',b:`
+<ol><li><b>Take profit at 50%.</b> Sold for €1.00? Place a buy order at €0.50 right after opening. You free the cash and lower risk.</li>
+<li><b>21 days left:</b> close or roll. Little premium is left compared with the risk.</li>
+<li><b>Defensive exit (stop):</b> buy back if the option price reaches <b>2× what you received</b> (loss ≈ 1× premium), or if the stock breaks its 50-day line on heavy volume.</li>
+<li><b>Rolling:</b> buying back and selling a later expiry (and if possible a lower strike) for a <i>net credit</i>. Only roll if the stock still passes your checklist and the market is still in an uptrend. Never roll just to avoid admitting a loss.</li>
+<li><b>Market turns to correction:</b> no new trades; close the weakest positions.</li></ol>`,
+q:[{q:'You sold a put for €1.20. Where is your profit target and your stop?',o:['Buy back at €0.60 / €2.40','Buy back at €0.10 / €5.00','No target, hold to expiry'],a:0,w:'50% profit = €0.60. Stop at 2× = €2.40.'}]},
+{m:'5. Risk & DEGIRO',id:'degiro',t:'Trading options at DEGIRO',b:`
+<p>See the <b>DEGIRO</b> section for the step-by-step guide. Key points:</p>
+<ul><li>You need an account profile that allows options (reviews mention "Active" or "Trader"), and DEGIRO will likely ask you to pass a knowledge test for derivatives.</li>
+<li>Reviews say DEGIRO offers European options (Euronext, Eurex) and US <i>index</i> options, but <b>not options on single US stocks</b>. That is why this app uses European stocks.</li>
+<li>Selling an option you do not own opens a short position, which uses margin ("free space"). DEGIRO does not check that it is cash-secured: <b>you</b> must keep the cash aside.</li>
+<li>Always use <b>limit orders</b>, never market orders on options.</li></ul>`,
+q:[{q:'Who makes sure your puts at DEGIRO are cash-secured?',o:['DEGIRO automatically','You yourself','The exchange'],a:1,w:'DEGIRO only checks margin. Keeping full cash aside is your own rule.'},
+{q:'Which order type should you use for options?',o:['Market order','Limit order'],a:1,w:'Option spreads can be wide; a market order can fill at a bad price.'}]}
+];
+
+/* ---------- nav ---------- */
+const VIEWS=[['today','Today'],['learn','Learn'],['stocks','Stocks'],['plan','Trading plan'],['calc','Calculator'],['degiro','DEGIRO guide'],['journal','Journal'],['sources','Sources']];
+function nav(){const done=store.get('lessons',{});const n=LESSONS.filter(l=>done[l.id]).length;const j=store.get('journal',[]).length;
+ $('#nav').innerHTML=VIEWS.map(([id,l])=>`<button data-v="${id}" ${cur===id?'aria-current="page"':''}>${l}${id==='learn'?`<span class="count">${n}/${LESSONS.length}</span>`:id==='journal'?`<span class="count">${j}</span>`:''}</button>`).join('');
+ $('#nav').querySelectorAll('button').forEach(b=>b.onclick=()=>go(b.dataset.v));}
+let cur='today';
+function go(v){if(!VIEWS.some(x=>x[0]===v))v='today';cur=v;if(location.hash!=='#'+v)history.replaceState(null,'','#'+v);nav();R[v]();$('#main').scrollTop=0;window.scrollTo(0,0)}
+window.addEventListener('hashchange',()=>go(location.hash.slice(1)));
+
+const R={};
+const disclaimer=`<p class="disclaimer">Premium Coach is a learning tool, not financial advice. Options can lose more than the premium you receive. Check every number, contract size and fee in DEGIRO before you trade, and consider paper-trading this plan for a few months first.</p>`;
+
+/* ---------- TODAY ---------- */
+R.today=()=>{
+ const r=REGIMES[S.regime],v=VOL[S.vol];
+ const mult=r.maxObl?v.mult:0;
+ const tone=mult===0&&r.maxObl>0?'stop':(v.mult<1&&r.tone==='go'?'warn':r.tone);
+ const big=mult===0&&r.maxObl>0?'Red light: volatility is at panic level. Wait.':r.big;
+ $('#main').innerHTML=`<div class="view">
+ <div class="stack"><span class="eyebrow">Today's decision</span><h1>Should I sell premium right now?</h1>
+ <p class="lede">Set the market state (from IBD's Market Pulse, or with the helper below) and today's volatility. The plan updates itself.</p></div>
+ <div class="card stack">
+  <h3>1. Market state</h3>
+  <div class="seg" id="segR">${Object.entries(REGIMES).map(([k,x])=>`<button aria-pressed="${k===S.regime}" data-k="${k}">${x.name}</button>`).join('')}</div>
+  <h3 style="margin-top:8px">2. Volatility (VSTOXX for Europe, or VIX)</h3>
+  <div class="seg" id="segV">${Object.entries(VOL).map(([k,x])=>`<button aria-pressed="${k===S.vol}" data-k="${k}">${x.name}</button>`).join('')}</div>
+  <div class="row" style="margin-top:8px"><label>3. Account size (€)<input id="acct" type="number" min="0" step="1000" value="${S.account}"></label></div>
+ </div>
+ <div class="verdict ${tone}"><span class="eyebrow">${r.name} · ${v.name.split(' (')[0]} volatility</span><span class="big">${big}</span><p>${r.oneil}</p><p class="small">${v.note}</p></div>
+ <div class="kv">
+  <div><span>Max total put obligation</span><b>${eur(S.account*r.maxObl*mult)}</b></div>
+  <div><span>Max per position</span><b>${eur(S.account*r.maxPos*(mult||0))}</b></div>
+  <div><span>Target delta</span><b>${mult?r.delta:'–'}</b></div>
+  <div><span>Days to expiry</span><b>${mult?r.dte:'–'}</b></div>
+ </div>
+ <div class="card stack"><h3>What to do now</h3><ul class="prose" style="padding-left:1.2em;margin:0">${r.actions.map(a=>`<li>${a}</li>`).join('')}</ul></div>
+ <div class="stack"><h2>When is each strategy allowed?</h2>
+ <p class="lede">This answers the key question: selling puts belongs in a bull market, best during a pullback. In a correction you stop, even though premiums look biggest then.</p>
+ <div class="tablewrap"><table class="matrix"><thead><tr><th>Market state</th><th>Short put on a stock</th><th>Short put on index</th><th>Put credit spread</th><th>Covered call</th><th>Sit in cash</th></tr></thead><tbody>
+ ${Object.entries(REGIMES).map(([k,x])=>`<tr ${k===S.regime?'style="background:var(--accent-soft)"':''}><td><b>${x.name}</b></td>${['putsStock','putsIndex','spread','cc','cash'].map(f=>`<td><span class="chip ${x[f]}">${CHIP[x[f]]}</span></td>`).join('')}</tr>`).join('')}
+ </tbody></table></div></div>
+ <div class="card stack"><h3>Helper: which market state are we in?</h3>
+ <p class="small muted">Use this if you do not have IBD. Look at the S&amp;P 500 or Nasdaq (they lead world markets) and the Euro Stoxx 50 or AEX. IBD's own label is better when you have it.</p>
+ <div class="form">
+  <label>Distribution days in the last 25 sessions<input id="hDD" type="number" min="0" max="15" value="${store.get('hDD',3)}"></label>
+  <label>Index vs. its 50-day line<select id="h50"><option value="above">Above</option><option value="below">Below</option></select></label>
+  <label>Index fell 8%+ from its high recently?<select id="hFall"><option value="no">No</option><option value="yes">Yes</option></select></label>
+  <label>Since the low: follow-through day?<select id="hFTD"><option value="na">Not relevant (no recent low)</option><option value="no">No, still a rally attempt</option><option value="yes">Yes, in the last 3 weeks</option></select></label>
+ </div>
+ <div class="row"><button class="btn primary" id="hGo">Suggest state</button><span id="hOut" class="small"></span></div></div>
+ <div class="card stack"><h3>Weekly routine (about 30 minutes, at the weekend)</h3>
+ <ol class="steps">
+  <li><div><b>Read the market.</b> IBD's Market Pulse / The Big Picture, or the helper above. Count distribution days.</div></li>
+  <li><div><b>Check open positions.</b> Any at 50% profit? Any at the stop (2× premium)? Any with 21 days left? Earnings coming?</div></li>
+  <li><div><b>Update the watchlist.</b> Run the Stocks checklist on 3–5 candidates.</div></li>
+  <li><div><b>Plan new trades</b> only if today's light is green or yellow-green. Write the strike, premium and exits in the Journal before you place the order.</div></li>
+ </ol></div>
+ ${disclaimer}</div>`;
+ $('#segR').onclick=e=>{const k=e.target.dataset.k;if(k){S.regime=k;saveS();R.today()}};
+ $('#segV').onclick=e=>{const k=e.target.dataset.k;if(k){S.vol=k;saveS();R.today()}};
+ $('#acct').onchange=e=>{S.account=Math.max(0,+e.target.value||0);saveS();R.today()};
+ $('#hGo').onclick=()=>{const dd=+$('#hDD').value||0;store.set('hDD',dd);const b50=$('#h50').value,fall=$('#hFall').value,ftd=$('#hFTD').value;let k,why;
+  if(fall==='yes'&&ftd==='no'){k='rally';why='The index fell hard and has not had a follow-through day yet.'}
+  else if(fall==='yes'&&ftd==='yes'){k='newup';why='A follow-through day after a drop: a new uptrend, start small.'}
+  else if(dd>=6||(b50==='below'&&dd>=4)){k='correction';why='Many distribution days and/or the index below its 50-day line.'}
+  else if(dd>=4||b50==='below'){k='pressure';why='Distribution is building or the index lost its 50-day line.'}
+  else{k='uptrend';why='Few distribution days and the index holds above its 50-day line.'}
+  $('#hOut').innerHTML=`Suggestion: <b>${REGIMES[k].name}</b>. ${why} <button class="btn small" id="hUse">Use this</button>`;
+  $('#hUse').onclick=()=>{S.regime=k;saveS();R.today();toast('Market state updated')}};
+};
+
+/* ---------- LEARN ---------- */
+let curLesson=store.get('curLesson','what');
+R.learn=()=>{
+ const done=store.get('lessons',{});const L=LESSONS.find(l=>l.id===curLesson)||LESSONS[0];const idx=LESSONS.indexOf(L);
+ const mods=[...new Set(LESSONS.map(l=>l.m))];const n=LESSONS.filter(l=>done[l.id]).length;
+ $('#main').innerHTML=`<div class="view">
+ <div class="stack"><span class="eyebrow">Learn · ${n} of ${LESSONS.length} lessons done</span><h1>Option school</h1>
+ <div class="progress"><i style="width:${n/LESSONS.length*100}%"></i></div>
+ <p class="lede">Five modules, in order. Answer every quiz question correctly to tick a lesson off. Start at the top if options are new to you.</p></div>
+ <div class="lessons">
+  <nav class="lesson-list card" aria-label="Lessons">${mods.map(m=>`<div><h4>${m}</h4>${LESSONS.filter(l=>l.m===m).map(l=>`<button data-l="${l.id}" aria-current="${l.id===L.id}"><span class="dot ${done[l.id]?'done':''}">${done[l.id]?'✓':''}</span><span>${l.t}</span></button>`).join('')}</div>`).join('')}</nav>
+  <article class="card prose" style="max-width:none">
+   <span class="eyebrow">${L.m} · lesson ${idx+1}</span><h2>${L.t}</h2>${L.b}
+   <div class="quiz"><h3>Quick check</h3>${L.q.map((q,i)=>`<div class="q" data-i="${i}"><b>${q.q}</b><div class="opts">${q.o.map((o,j)=>`<button data-j="${j}">${o}</button>`).join('')}</div><p class="why" hidden></p></div>`).join('')}</div>
+   <div class="row" style="justify-content:space-between">${idx>0?`<button class="btn" id="prevL">← ${LESSONS[idx-1].t}</button>`:'<span></span>'}${idx<LESSONS.length-1?`<button class="btn primary" id="nextL">Next: ${LESSONS[idx+1].t} →</button>`:''}</div>
+  </article></div>
+ <div class="card stack"><h3>Glossary</h3><div class="tablewrap"><table><tbody>
+ ${[['Premium','Price of an option, per share. As a seller, you receive it.'],['Strike','The fixed price in the option contract.'],['Expiry','Last day of the option.'],['Obligation (notional)','Strike × contract size. The money you may need to pay.'],['Assignment','You must fulfil the contract (buy shares for a put).'],['Break-even','For a short put: strike − premium.'],['Delta','Rough chance the option ends in the money.'],['Theta','Daily time decay. Income for the seller.'],['Implied volatility','Expected size of moves. Higher = bigger premiums.'],['VSTOXX / VIX','Fear indexes for Europe / the US.'],['Roll','Close an option and open a later one in one go.'],['Distribution day','Index down ~0.2%+ on higher volume: big funds selling.'],['Follow-through day','Strong gain on higher volume on day 4+ of a rally attempt.'],['RS rating','IBD Relative Strength, 1–99. 80+ means it beat 80% of stocks over 12 months.'],['Pivot','The buy point when a stock breaks out of a base.']].map(([a,b])=>`<tr><td><b>${a}</b></td><td>${b}</td></tr>`).join('')}
+ </tbody></table></div></div>${disclaimer}</div>`;
+ $('.lesson-list').onclick=e=>{const b=e.target.closest('button');if(b){curLesson=b.dataset.l;store.set('curLesson',curLesson);R.learn()}};
+ const pv=$('#prevL'),nx=$('#nextL');if(pv)pv.onclick=()=>{curLesson=LESSONS[idx-1].id;store.set('curLesson',curLesson);R.learn()};if(nx)nx.onclick=()=>{curLesson=LESSONS[idx+1].id;store.set('curLesson',curLesson);R.learn()};
+ const ok=new Set();
+ document.querySelectorAll('.q').forEach(qe=>{const q=L.q[+qe.dataset.i];qe.querySelector('.opts').onclick=e=>{const b=e.target.closest('button');if(!b)return;const j=+b.dataset.j;
+  qe.querySelectorAll('.opts button').forEach(x=>x.classList.remove('right','wrong'));b.classList.add(j===q.a?'right':'wrong');
+  const w=qe.querySelector('.why');w.hidden=false;w.textContent=(j===q.a?'Correct. ':'Not quite. ')+q.w;
+  if(j===q.a)ok.add(qe.dataset.i);
+  if(ok.size===L.q.length&&!done[L.id]){done[L.id]=true;store.set('lessons',done);nav();toast('Lesson complete');document.querySelector(`.lesson-list button[data-l="${L.id}"] .dot`).classList.add('done')}}});
+};
+
+/* ---------- STOCKS ---------- */
+let stockSel=null,stockFilter=store.get('stockFilter','all');
+R.stocks=()=>{
+ const checks=store.get('checks',{});const custom=store.get('custom',[]);const all=[...UNIVERSE,...custom];
+ const list=all.filter(s=>stockFilter==='all'||(stockFilter==='low'&&s.v==='Low')||(stockFilter==='index'&&s.k==='Index')||(stockFilter==='lead'&&s.v==='High'));
+ const score=t=>{const c=checks[t]||{};return CHECKS.filter(x=>c[x.id]).length};
+ const status=t=>{const c=checks[t]||{};if(!Object.keys(c).length)return '<span class="chip info">Not checked</span>';const s=score(t);if(!c.m||!c.own||!c.fit||!c.earn)return '<span class="chip stop">Not now</span>';return s>=9?'<span class="chip go">Eligible</span>':'<span class="chip warn">Weak</span>'};
+ $('#main').innerHTML=`<div class="view">
+ <div class="stack"><span class="eyebrow">Stock selection</span><h1>Which underlyings to sell premium on</h1>
+ <p class="lede">These have options on Euronext Amsterdam or Eurex, which reviews say DEGIRO offers. It is a starting universe, not a buy list. A stock only becomes a candidate when it passes the checklist <b>this week</b>: leadership changes all the time.</p></div>
+ <div class="tip"><b>Defensive order of preference.</b> 1) Index options (Mini AEX, Euro Stoxx 50): no single-company surprises; best with put spreads. 2) Low-volatility quality stocks that are in an uptrend. 3) Only in a strong, confirmed uptrend and with small size: high-volatility leaders such as chip stocks.</div>
+ <div class="row"><div class="seg" id="segF">${[['all','All'],['index','Index'],['low','Low volatility'],['lead','High-volatility leaders']].map(([k,l])=>`<button aria-pressed="${k===stockFilter}" data-k="${k}">${l}</button>`).join('')}</div></div>
+ <div class="tablewrap"><table><thead><tr><th>Underlying</th><th>Exchange</th><th>Type</th><th>Volatility</th><th>Size</th><th>Your check</th><th></th></tr></thead><tbody>
+ ${list.map(s=>`<tr><td><b>${esc(s.n)}</b> <span class="muted mono small">${esc(s.t)}</span><br><span class="small muted">${esc(s.note||'')}</span></td><td>${esc(s.x)}</td><td>${esc(s.k)}</td><td><span class="chip ${s.v==='Low'?'go':s.v==='Medium'?'warn':'stop'}">${esc(s.v)}</span></td><td class="mono small">${s.m?(s.k==='Index'?'€'+s.m+'/pt':s.m+' sh'):'check'}</td><td>${status(s.t)} ${Object.keys(checks[s.t]||{}).length?`<span class="mono small muted">${score(s.t)}/${CHECKS.length}</span>`:''}</td><td><button class="btn small" data-t="${esc(s.t)}">Check</button></td></tr>`).join('')}
+ </tbody></table></div>
+ <div id="checkPanel"></div>
+ <div class="card stack"><h3>Add your own underlying</h3><p class="small muted">Found another stock with options in DEGIRO? Add it here so you can run the checklist.</p>
+ <div class="form"><label>Ticker<input id="cT"></label><label>Name<input id="cN"></label><label>Exchange<input id="cX" placeholder="Euronext Amsterdam"></label><label>Volatility<select id="cV"><option>Low</option><option>Medium</option><option>High</option></select></label></div>
+ <div class="row"><button class="btn" id="cAdd">Add</button></div></div>
+ <div class="card prose" style="max-width:none"><h3>Where to find the data for the checklist</h3>
+ <ul><li><b>Market state, RS rating, EPS rating, Accumulation/Distribution:</b> IBD Digital, MarketSmith, or IBD's "Stock Checkup". (Paid. IBD covers mainly US stocks; for European stocks use the chart checks below.)</li>
+ <li><b>50- and 200-day lines, 52-week high, volume:</b> any free chart, e.g. TradingView or the chart in the DEGIRO app.</li>
+ <li><b>Earnings dates:</b> the company's investor relations page.</li>
+ <li><b>Option prices, bid/ask, contract size:</b> DEGIRO's option chain and product information.</li></ul></div>
+ ${disclaimer}</div>`;
+ $('#segF').onclick=e=>{const k=e.target.dataset.k;if(k){stockFilter=k;store.set('stockFilter',k);R.stocks()}};
+ document.querySelectorAll('button[data-t]').forEach(b=>b.onclick=()=>{stockSel=b.dataset.t;drawCheck();$('#checkPanel').scrollIntoView({behavior:'smooth',block:'start'})});
+ $('#cAdd').onclick=()=>{const t=$('#cT').value.trim().toUpperCase();if(!t){toast('Enter a ticker first');return}const c=store.get('custom',[]);c.push({t,n:$('#cN').value.trim()||t,x:$('#cX').value.trim()||'?',k:'Custom',v:$('#cV').value,m:100,note:'Added by you. Check the contract size in DEGIRO.'});store.set('custom',c);R.stocks();toast(t+' added')};
+ function drawCheck(){if(!stockSel){$('#checkPanel').innerHTML='';return}const s=all.find(x=>x.t===stockSel);const c=checks[stockSel]||{};const groups=[...new Set(CHECKS.map(x=>x.g))];
+  $('#checkPanel').innerHTML=`<div class="card stack"><div class="row" style="justify-content:space-between"><h2>Checklist: ${esc(s.n)}</h2><button class="btn small" id="closeC">Close</button></div>
+  ${s.k==='Index'?'<p class="small muted">For an index, the stock-specific items (L, C, A, I, earnings) can be ticked if the index itself is in an uptrend.</p>':''}
+  <div class="grid2">${groups.map(g=>`<div class="stack"><span class="eyebrow">${g}</span><div class="checklist">${CHECKS.filter(x=>x.g===g).map(x=>`<label><input type="checkbox" data-c="${x.id}" ${c[x.id]?'checked':''}><span>${x.t}<small>${x.s}</small></span></label>`).join('')}</div></div>`).join('')}</div>
+  <div id="cVerdict"></div></div>`;
+  const draw=()=>{const cc=checks[stockSel]||{};const sc=CHECKS.filter(x=>cc[x.id]).length;const must=['m','own','fit','earn'].filter(k=>!cc[k]);
+   $('#cVerdict').innerHTML=must.length?`<div class="verdict stop"><span class="big">Not now</span><p>Must-have items missing: ${must.map(k=>CHECKS.find(x=>x.id===k).t.split(' –')[0].split(' (')[0]).join('; ')}.</p></div>`:sc>=9?`<div class="verdict go"><span class="big">Eligible for a put (${sc}/${CHECKS.length})</span><p>Go to the Calculator to pick a strike that fits today's limits.</p></div>`:`<div class="verdict warn"><span class="big">Weak candidate (${sc}/${CHECKS.length})</span><p>It passes the must-haves but not enough of the rest. Look for a stronger name, use a put spread, or use smaller size.</p></div>`};
+  draw();
+  $('#checkPanel').onchange=e=>{const id=e.target.dataset.c;if(!id)return;checks[stockSel]=checks[stockSel]||{};checks[stockSel][id]=e.target.checked;store.set('checks',checks);draw();
+   const row=document.querySelector(`button[data-t="${CSS.escape(stockSel)}"]`);if(row){const td=row.closest('tr').children[5];td.innerHTML=status(stockSel)+` <span class="mono small muted">${score(stockSel)}/${CHECKS.length}</span>`}};
+  $('#closeC').onclick=()=>{stockSel=null;drawCheck()}}
+ drawCheck();
+};
+
+/* ---------- PLAN ---------- */
+R.plan=()=>{
+ const a=S.account;
+ $('#main').innerHTML=`<div class="view">
+ <div class="stack"><span class="eyebrow">Your written plan · account ${eur(a)}</span><h1>The defensive premium plan</h1>
+ <p class="lede">O'Neil said you need written rules, so emotions do not decide. Read these before every trade. Amounts use the account size from the Today page.</p></div>
+ <div class="grid2">
+ <div class="card prose"><h3>Goal</h3><p>Earn a steady extra income from option premiums, aiming for roughly <b>0.5–1.5% of the money at work per month</b>, while avoiding large losses. We accept fewer trades and smaller premiums in exchange for safety.</p>
+ <h3>What we trade</h3><ul><li>Cash-secured puts on leaders and on the index.</li><li>Put credit spreads (fixed maximum loss), mainly on Mini AEX / Euro Stoxx 50.</li><li>Covered calls on shares we own.</li><li><b>Never:</b> naked calls, buying options as a bet, trades in currencies we do not hold, trades across earnings.</li></ul></div>
+ <div class="card prose"><h3>Limits</h3>
+ <div class="tablewrap"><table><thead><tr><th>Market state</th><th class="n">Max total obligation</th><th class="n">Max per position</th></tr></thead><tbody>
+ ${Object.values(REGIMES).map(r=>`<tr><td>${r.name}</td><td class="n">${pct(r.maxObl,0)} · ${eur(a*r.maxObl)}</td><td class="n">${pct(r.maxPos,0)} · ${eur(a*r.maxPos)}</td></tr>`).join('')}
+ </tbody></table></div>
+ <ul><li>High volatility: halve these. Panic volatility: zero.</li><li>Max 5 open positions while learning, max 2 per sector.</li><li>All obligations covered by cash. Margin is never used.</li></ul></div>
+ </div>
+ <div class="card stack"><h2>Rules for every trade, in order</h2><ol class="steps">
+  <li><div><b>Market:</b> the Today page shows green or yellow-green. Otherwise no new put.</div></li>
+  <li><div><b>Stock:</b> passes the Stocks checklist, including "happy to own it at the strike".</div></li>
+  <li><div><b>Timing:</b> ideally a quiet pullback (lower volume) towards the 50-day line, or a few days after a follow-through day. Not after a big jump up, not on a heavy-volume drop.</div></li>
+  <li><div><b>Strike:</b> below support (50-day line or bottom of the last base). Delta in today's range, or about 5–10% below the price (more for volatile stocks).</div></li>
+  <li><div><b>Expiry:</b> 30–45 days, before the next earnings date.</div></li>
+  <li><div><b>Premium check:</b> annualised return between about 8% and 30% of the obligation. Below that it is not worth the risk; above it the risk is probably too high.</div></li>
+  <li><div><b>Size:</b> obligation within today's per-position and total limits.</div></li>
+  <li><div><b>Order:</b> limit order at or near the middle between bid and ask. Log it in the Journal with the exits below.</div></li>
+ </ol></div>
+ <div class="grid3">
+  <div class="card prose"><h3 style="color:var(--go)">Take profit</h3><p>Place a buy-back order at <b>50% of the premium</b> as soon as the trade is filled. Close at 21 days left if it is not hit.</p></div>
+  <div class="card prose"><h3 style="color:var(--stop)">Cut the loss</h3><p>Buy back if the option reaches <b>2× the premium</b>, or the stock closes below its 50-day line on heavy volume, or the market turns to "correction" and the put is close to the money.</p></div>
+  <div class="card prose"><h3 style="color:var(--warn)">If assigned</h3><p>Own the shares. Sell a covered call above your break-even. <b>Sell the shares</b> if they close ~8% below break-even (O'Neil's 7–8% rule).</p></div>
+ </div>
+ <div class="card prose" style="max-width:none"><h3>Monthly review</h3><ul><li>How many trades? Win rate? Average win vs. average loss?</li><li>Did I follow every rule? Write down every rule break, even if it made money.</li><li>Was my total obligation ever above the limit?</li><li>Is the result better than simply holding an index fund? If not after 6–12 months, change the plan or stop.</li></ul></div>
+ ${disclaimer}</div>`;
+};
+
+/* ---------- CALCULATOR ---------- */
+const C=Object.assign({mode:'put',price:32,strike:30,prem:.6,size:100,n:1,dte:35,fee:2.0,basis:30},store.get('calc',{}));
+R.calc=()=>{
+ const r=REGIMES[S.regime],v=VOL[S.vol];
+ $('#main').innerHTML=`<div class="view">
+ <div class="stack"><span class="eyebrow">Calculator</span><h1>${C.mode==='put'?'Cash-secured put':'Covered call'}</h1>
+ <p class="lede">Fill in the numbers from DEGIRO's option chain. The example (a €30 put on a €32 stock) is just a sample: replace it with your own.</p></div>
+ <div class="seg" id="segM"><button aria-pressed="${C.mode==='put'}" data-k="put">Sell a put</button><button aria-pressed="${C.mode==='call'}" data-k="call">Sell a covered call</button></div>
+ <div class="card"><div class="form">
+  <label>Stock / index price<input id="i_price" type="number" step="0.01" value="${C.price}"></label>
+  <label>Strike<input id="i_strike" type="number" step="0.5" value="${C.strike}"></label>
+  <label>Premium (per share)<input id="i_prem" type="number" step="0.01" value="${C.prem}"></label>
+  <label>Contract size<input id="i_size" type="number" step="1" value="${C.size}"></label>
+  <label>Contracts<input id="i_n" type="number" step="1" min="1" value="${C.n}"></label>
+  <label>Days to expiry<input id="i_dte" type="number" step="1" min="1" value="${C.dte}"></label>
+  <label>Fees per contract (€)<input id="i_fee" type="number" step="0.1" value="${C.fee}"></label>
+  ${C.mode==='call'?`<label>Your cost per share<input id="i_basis" type="number" step="0.01" value="${C.basis}"></label>`:''}
+ </div></div>
+ <div id="cOut"></div>${disclaimer}</div>`;
+ $('#segM').onclick=e=>{const k=e.target.dataset.k;if(k){C.mode=k;store.set('calc',C);R.calc()}};
+ document.querySelectorAll('.form input').forEach(i=>i.oninput=()=>{C[i.id.slice(2)]=parseFloat(i.value);store.set('calc',C);out()});
+ function out(){
+  const{price,strike,prem,size,n,dte,fee,basis}=C;const gross=prem*size*n,fees=fee*n,net=gross-fees;
+  let html='';
+  if(C.mode==='put'){
+   const obl=strike*size*n,ret=net/obl,ann=ret*365/dte,be=strike-prem,cush=(price-be)/price,otm=(price-strike)/price,stop=prem*2,stopLoss=prem*size*n+fees*2,tp=prem/2;
+   const maxPos=S.account*r.maxPos*(r.maxObl?v.mult:0);
+   const chk=[
+    [r.maxObl>0&&v.mult>0,'Market allows new puts today',`${r.name}, ${v.name.split(' (')[0].toLowerCase()} volatility`],
+    [obl<=maxPos,'Fits the per-position limit',`Obligation ${eur(obl)} vs. limit ${eur(maxPos)}`],
+    [otm>=.04,'Strike is at least ~4% below the price',`Now ${pct(otm)} below`],
+    [ann>=.08,'Premium is worth it (≥ 8% a year)',`Now ${pct(ann)} a year`],
+    [ann<=.30,'Premium is not suspiciously high (≤ 30% a year)',`High premium usually means high risk`],
+    [dte>=21&&dte<=60,'Expiry between 21 and 60 days',`Now ${dte} days`],
+    [fees<gross*.15,'Fees are less than 15% of the premium',`Fees ${eur2(fees)} of ${eur2(gross)}`]];
+   html=`<div class="kv">
+    <div><span>Premium you receive</span><b>${eur2(net)}</b></div><div><span>Cash to keep aside</span><b>${eur(obl)}</b></div>
+    <div><span>Return on that cash</span><b>${pct(ret,2)}</b></div><div><span>Per year (annualised)</span><b>${pct(ann)}</b></div>
+    <div><span>Break-even price</span><b>${eur2(be)}</b></div><div><span>Stock can fall before loss</span><b>${pct(cush)}</b></div>
+    <div><span>Take profit: buy back at</span><b>${eur2(tp)}</b></div><div><span>Stop: buy back at</span><b>${eur2(stop)}</b></div></div>
+    <p class="small muted">If the stop is hit you lose about ${eur2(stopLoss)} (premium plus fees). If you are assigned and later sell 8% below break-even (O'Neil brake), the loss is about ${eur(be*.08*size*n)}.</p>
+    ${payoff('put',price,strike,prem,size*n)}${checks(chk)}`;
+  }else{
+   const val=price*size*n,ret=net/val,ann=ret*365/dte,called=(strike-basis)*size*n+net,prot=prem/price;
+   const chk=[[strike>=basis,'Strike is above your cost','Otherwise you lock in a loss if called'],[(strike-price)/price>=.03,'Strike at least ~3% above the price',`Now ${pct((strike-price)/price)} above`],[S.regime!=='uptrend'&&S.regime!=='newup','Market is not in a strong uptrend','In a strong uptrend you may cap a winner'],[dte>=14&&dte<=60,'Expiry between 14 and 60 days',`Now ${dte} days`],[fees<gross*.15,'Fees are less than 15% of the premium',`Fees ${eur2(fees)} of ${eur2(gross)}`]];
+   html=`<div class="kv"><div><span>Premium you receive</span><b>${eur2(net)}</b></div><div><span>Value of your shares</span><b>${eur(val)}</b></div>
+    <div><span>Return on shares</span><b>${pct(ret,2)}</b></div><div><span>Per year (annualised)</span><b>${pct(ann)}</b></div>
+    <div><span>Total profit if called away</span><b>${eur2(called)}</b></div><div><span>Cushion from premium</span><b>${pct(prot)}</b></div></div>
+    <div class="warnbox small">Check the ex-dividend date: if the call is in the money just before it, you may be assigned early and miss the dividend.</div>
+    ${payoff('call',price,strike,prem,size*n,basis)}${checks(chk)}`;
+  }
+  $('#cOut').innerHTML=html;
+ }
+ function checks(list){return `<div class="card stack"><h3>Plan check</h3><div class="stack">${list.map(([ok,t,s])=>`<div class="row" style="flex-wrap:nowrap;align-items:flex-start"><span class="chip ${ok?'go':'stop'}">${ok?'Pass':'Fail'}</span><div><b>${t}</b><br><span class="small muted">${s}</span></div></div>`).join('')}</div></div>`}
+ out();
+};
+function payoff(kind,price,strike,prem,q,basis){
+ const W=640,H=220,P={l:58,r:16,t:16,b:30};const lo=Math.min(price,strike)*.8,hi=Math.max(price,strike)*1.15;
+ const pl=s=>kind==='put'?(prem-Math.max(strike-s,0))*q:((s-basis)+prem-Math.max(s-strike,0))*q;
+ const pts=[];for(let i=0;i<=80;i++){const s=lo+(hi-lo)*i/80;pts.push([s,pl(s)])}
+ const ys=pts.map(p=>p[1]);let ymin=Math.min(...ys,0),ymax=Math.max(...ys,0);const pad=(ymax-ymin)*.1||1;ymin-=pad;ymax+=pad;
+ const X=s=>P.l+(s-lo)/(hi-lo)*(W-P.l-P.r),Y=v=>P.t+(ymax-v)/(ymax-ymin)*(H-P.t-P.b);
+ const d=pts.map((p,i)=>(i?'L':'M')+X(p[0]).toFixed(1)+' '+Y(p[1]).toFixed(1)).join(' ');
+ const area=(sign)=>'M'+X(lo)+' '+Y(0)+' '+pts.map(p=>'L'+X(p[0]).toFixed(1)+' '+Y(sign>0?Math.max(p[1],0):Math.min(p[1],0)).toFixed(1)).join(' ')+' L'+X(hi)+' '+Y(0)+'Z';
+ const ticks=[lo,strike,price,hi].filter((v,i,a)=>a.findIndex(x=>Math.abs(x-v)<(hi-lo)*.06)===i);
+ return `<div class="card payoff stack"><h3>Profit or loss at expiry</h3><p class="small muted">Horizontal axis: ${kind==='put'?'stock price at expiry':'stock price at expiry'}. Green area = profit, red = loss.</p>
+ <svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Payoff diagram">
+ <path class="gain" d="${area(1)}"/><path class="loss" d="${area(-1)}"/>
+ <line class="axis" x1="${P.l}" y1="${H-P.b}" x2="${W-P.r}" y2="${H-P.b}"/><line class="zero" x1="${P.l}" y1="${Y(0)}" x2="${W-P.r}" y2="${Y(0)}"/>
+ <path class="line" d="${d}"/>
+ ${ticks.map(t=>`<text x="${X(t)}" y="${H-10}" text-anchor="middle">${t.toFixed(t<100?2:0)}</text>`).join('')}
+ <text x="${P.l-6}" y="${Y(ymax-pad)+4}" text-anchor="end">${eur(ymax-pad)}</text><text x="${P.l-6}" y="${Y(0)+4}" text-anchor="end">€0</text><text x="${P.l-6}" y="${Y(ymin+pad)+4}" text-anchor="end">${eur(ymin+pad)}</text>
+ <line x1="${X(price)}" y1="${P.t}" x2="${X(price)}" y2="${H-P.b}" stroke="var(--fg)" stroke-width="1" stroke-dasharray="2 3"/><text x="${X(price)+4}" y="${P.t+10}">now</text>
+ </svg></div>`;
+}
+
+/* ---------- DEGIRO ---------- */
+R.degiro=()=>{
+ $('#main').innerHTML=`<div class="view">
+ <div class="stack"><span class="eyebrow">Practical</span><h1>Doing it at DEGIRO</h1>
+ <p class="lede">I could not open DEGIRO's own website while building this app, so the facts below come from broker reviews and DEGIRO's help pages as quoted by others. Items marked <span class="chip warn">check</span> need confirming in your own account or with DEGIRO support.</p></div>
+ <div class="card stack"><h2>What DEGIRO offers for this plan</h2><div class="tablewrap"><table><thead><tr><th>Item</th><th>What sources say</th><th></th></tr></thead><tbody>
+ <tr><td>European stock options (Euronext Amsterdam, Eurex)</td><td>Available</td><td><span class="chip go">likely</span></td></tr>
+ <tr><td>Index options: AEX, Mini AEX, Euro Stoxx 50</td><td>Available</td><td><span class="chip go">likely</span></td></tr>
+ <tr><td>Options on single US stocks (Apple, Nvidia…)</td><td>Several reviews say <b>not available</b>; only US index options</td><td><span class="chip warn">check</span></td></tr>
+ <tr><td>Writing (selling) options</td><td>Needs a profile that allows derivatives and short positions (reviews mention Active or Trader)</td><td><span class="chip warn">check</span></td></tr>
+ <tr><td>Fees</td><td>Reviews quote roughly €0.75–€2 per contract plus a possible handling fee; a fee for exercise/assignment; a monthly fee for US derivatives exchanges</td><td><span class="chip warn">check fee schedule</span></td></tr>
+ <tr><td>Cash-secured check</td><td>DEGIRO uses margin ("free space"), not a cash-secured check. You set aside the cash yourself</td><td><span class="chip info">your rule</span></td></tr>
+ </tbody></table></div></div>
+ <div class="card stack"><h2>One-time setup</h2><ol class="steps">
+  <li><div><b>Check your profile.</b> In the DEGIRO web trader or app, open your account / profile settings and see whether options and short positions are allowed. If not, request a profile change.</div></li>
+  <li><div><b>Pass the knowledge (appropriateness) test.</b> EU rules require brokers to check that you understand derivatives. Finish the lessons in this app first.</div></li>
+  <li><div><b>Activate the exchanges</b> you need (Euronext Amsterdam, Eurex) under market data / exchange settings if DEGIRO asks for it.</div></li>
+  <li><div><b>Read the fee schedule</b> ("Tarievenoverzicht" / Fee Schedule) for options and for assignment.</div></li>
+ </ol></div>
+ <div class="card stack"><h2>Selling a put, step by step</h2><ol class="steps">
+  <li><div>Search the underlying (for example <i>ING</i>) and open its <b>options</b> (via product search, filter on Options, or the derivatives tab on the product page).</div></li>
+  <li><div>Pick the <b>expiry</b> (30–45 days, before earnings), then <b>Put</b>, then the <b>strike</b> from your plan. Check the contract size in the product info.</div></li>
+  <li><div>Click <b>Sell</b>. Because you do not own this option, selling opens a short position. That is correct for this plan.</div></li>
+  <li><div>Order type <b>Limit</b>. Price: the middle of bid and ask, rounded. If it does not fill, lower it one tick at a time. Never use a market order.</div></li>
+  <li><div>Read the order confirmation: number of contracts, price, fee, and the effect on your free space. Then confirm.</div></li>
+  <li><div>Right after the fill, place the <b>take-profit</b>: a Buy limit order at 50% of the premium (Good-till-cancelled if available). Write the trade in the Journal.</div></li>
+ </ol></div>
+ <div class="grid2">
+  <div class="card prose"><h3>Closing early</h3><p>Open the position in your portfolio and choose <b>Buy</b> with the same number of contracts. This closes the short put.</p></div>
+  <div class="card prose"><h3>Assignment</h3><p>If the put ends in the money (or is exercised early), the shares appear in your account and the cash leaves it. DEGIRO informs you; there may be a fee. For index options, cash is settled instead.</p></div>
+  <div class="card prose"><h3>Covered call</h3><p>You need the shares in your DEGIRO account (usually 100 per contract). Open the options of that stock, pick a call, and <b>Sell</b> with a limit order.</p></div>
+  <div class="card prose"><h3>Put credit spread</h3><p>Enter two orders with the same expiry: first <b>Buy</b> the lower-strike put, then <b>Sell</b> the higher-strike put. Check whether DEGIRO offers a combination order in your platform.</p></div>
+ </div>
+ <div class="stopbox"><b>Margin warning.</b> Even if you keep cash aside, DEGIRO measures risk with its own margin model. In a sharp fall, margin needs can rise quickly. If your free space goes negative, DEGIRO can close positions for you, at bad prices. Keeping full cash and small positions prevents this.</div>
+ ${disclaimer}</div>`;
+};
+
+/* ---------- JOURNAL ---------- */
+const EX=[{id:1,ex:true,date:'2026-10-06',und:'Shell (example)',type:'Short put',strike:30,expiry:'2026-11-20',n:1,size:100,prem:.6,close:.3,status:'Closed',fees:4,note:'Pullback to 50-day line, confirmed uptrend. Closed at 50% target.'}];
+R.journal=()=>{
+ let J=store.get('journal',null);const showEx=J===null;if(J===null)J=[];
+ const rows=showEx?EX:J;
+ const pl=t=>{if(t.status==='Open')return NaN;const c=t.status==='Expired'||t.status==='Assigned'?0:+t.close;return (t.prem-c)*t.size*t.n-(+t.fees||0)};
+ const closed=J.filter(t=>t.status!=='Open');const tot=closed.reduce((s,t)=>s+pl(t),0);const wins=closed.filter(t=>pl(t)>0).length;
+ const openObl=J.filter(t=>t.status==='Open'&&t.type==='Short put').reduce((s,t)=>s+t.strike*t.size*t.n,0);
+ const lim=S.account*REGIMES[S.regime].maxObl*(REGIMES[S.regime].maxObl?VOL[S.vol].mult:0);
+ $('#main').innerHTML=`<div class="view">
+ <div class="stack"><span class="eyebrow">Journal</span><h1>Trade log</h1><p class="lede">Write each trade down before you place it. Saved in this browser only, so copy a backup now and then.</p></div>
+ <div class="kv"><div><span>Closed trades</span><b>${closed.length}</b></div><div><span>Win rate</span><b>${closed.length?pct(wins/closed.length,0):'–'}</b></div><div><span>Total result</span><b>${eur2(tot)}</b></div><div><span>Open put obligation</span><b style="color:${openObl>lim?'var(--stop)':'inherit'}">${eur(openObl)}</b></div><div><span>Today's limit</span><b>${eur(lim)}</b></div></div>
+ ${openObl>lim?'<div class="stopbox">Your open put obligation is above today\'s limit. Do not open new puts; consider closing the weakest.</div>':''}
+ <div class="card stack"><h3>New trade</h3><div class="form" id="jf">
+  <label>Date<input id="j_date" type="date" value="${new Date().toISOString().slice(0,10)}"></label>
+  <label>Underlying<input id="j_und" placeholder="e.g. ING"></label>
+  <label>Type<select id="j_type"><option>Short put</option><option>Covered call</option><option>Put spread</option></select></label>
+  <label>Strike<input id="j_strike" type="number" step="0.5"></label>
+  <label>Expiry<input id="j_expiry" type="date"></label>
+  <label>Contracts<input id="j_n" type="number" value="1" min="1"></label>
+  <label>Contract size<input id="j_size" type="number" value="100"></label>
+  <label>Premium received (per share)<input id="j_prem" type="number" step="0.01"></label>
+  <label>Fees total (€)<input id="j_fees" type="number" step="0.1" value="2"></label>
+ </div><label>Why this trade? (market state, setup, exits)<input id="j_note"></label>
+ <div class="row"><button class="btn primary" id="jAdd">Add trade</button></div></div>
+ ${showEx?'<p class="small muted">Below is one example trade so you can see how the log works. It disappears when you add your first trade.</p>':''}
+ <div class="tablewrap"><table><thead><tr><th>Date</th><th>Underlying</th><th>Type</th><th class="n">Strike</th><th>Expiry</th><th class="n">Qty</th><th class="n">Premium</th><th>Status</th><th class="n">Close price</th><th class="n">Result</th><th></th></tr></thead><tbody>
+ ${rows.length?rows.map((t,i)=>`<tr><td class="mono small">${esc(t.date)}</td><td><b>${esc(t.und)}</b>${t.note?`<br><span class="small muted">${esc(t.note)}</span>`:''}</td><td>${esc(t.type)}</td><td class="n">${t.strike}</td><td class="mono small">${esc(t.expiry)}</td><td class="n">${t.n}×${t.size}</td><td class="n">${(+t.prem).toFixed(2)}</td>
+ <td>${t.ex?esc(t.status):`<select data-i="${i}" class="jst">${['Open','Closed','Expired','Assigned'].map(s=>`<option ${s===t.status?'selected':''}>${s}</option>`).join('')}</select>`}</td>
+ <td class="n">${t.ex?t.close:`<input data-i="${i}" class="jcl" type="number" step="0.01" style="width:80px" value="${t.close??''}" ${t.status!=='Closed'?'disabled':''}>`}</td>
+ <td class="n mono" style="color:${pl(t)>0?'var(--go)':pl(t)<0?'var(--stop)':'inherit'}">${isNaN(pl(t))?'open':eur2(pl(t))}</td><td>${t.ex?'':`<button class="btn small jdel" data-i="${i}" aria-label="Delete trade">Delete</button>`}</td></tr>`).join(''):'<tr><td colspan="11" class="muted">No trades yet. Add your first one above.</td></tr>'}
+ </tbody></table></div>
+ <div class="card stack"><h3>Backup</h3><p class="small muted">Copy the backup text and keep it in a note. To restore, paste it in the box and press Restore.</p>
+ <div class="row"><button class="btn" id="jCopy">Copy backup</button><button class="btn" id="jRestore">Restore from box</button></div><textarea id="jBox" aria-label="Backup text"></textarea></div>
+ ${disclaimer}</div>`;
+ const save=x=>{store.set('journal',x);nav();R.journal()};
+ $('#jAdd').onclick=()=>{const g=k=>$('#j_'+k).value;if(!g('und')||!g('strike')||!g('prem')){toast('Fill in underlying, strike and premium');return}
+  const all=store.get('journal',[])||[];all.unshift({id:Date.now(),date:g('date'),und:g('und'),type:g('type'),strike:+g('strike'),expiry:g('expiry'),n:+g('n')||1,size:+g('size')||100,prem:+g('prem'),fees:+g('fees')||0,status:'Open',close:'',note:g('note')});save(all);toast('Trade added')};
+ document.querySelectorAll('.jst').forEach(s=>s.onchange=()=>{J[+s.dataset.i].status=s.value;save(J)});
+ document.querySelectorAll('.jcl').forEach(s=>s.onchange=()=>{J[+s.dataset.i].close=+s.value;save(J)});
+ document.querySelectorAll('.jdel').forEach(b=>b.onclick=()=>{if(b.dataset.armed){J.splice(+b.dataset.i,1);save(J);toast('Trade deleted')}else{b.dataset.armed=1;b.textContent='Sure?'}});
+ $('#jCopy').onclick=()=>{const txt=JSON.stringify({journal:J,checks:store.get('checks',{}),custom:store.get('custom',[]),settings:S});$('#jBox').value=txt;
+  try{navigator.clipboard.writeText(txt).then(()=>toast('Backup copied'),()=>{$('#jBox').select();toast('Select-all and copy the text in the box')})}catch(e){$('#jBox').select();toast('Select-all and copy the text in the box')}};
+ $('#jRestore').onclick=()=>{try{const d=JSON.parse($('#jBox').value);if(d.journal)store.set('journal',d.journal);if(d.checks)store.set('checks',d.checks);if(d.custom)store.set('custom',d.custom);if(d.settings){Object.assign(S,d.settings);saveS()}nav();R.journal();toast('Backup restored')}catch(e){toast('That text is not a valid backup')}};
+};
+
+/* ---------- SOURCES ---------- */
+R.sources=()=>{
+ const src=[
+ ['William J. O\'Neil – How to Make Money in Stocks (4th edition, McGraw-Hill, 2009)','https://www.mhprofessional.com/how-to-make-money-in-stocks-a-winning-system-in-good-times-and-bad-fourth-edition-9780071614139-usa','The original CAN SLIM rules, the 7–8% loss rule, follow-through days.'],
+ ['CAN SLIM – Wikipedia','https://en.wikipedia.org/wiki/CAN_SLIM','Short overview of the seven letters.'],
+ ['AAII – The Big Picture: How to Determine the Stock Market\'s Direction','https://www.aaii.com/journal/article/the-big-picture-how-to-determine-the-stock-market-s-direction','Market direction, distribution days, "3 out of 4 stocks follow the market".'],
+ ['LuxAlgo – Follow-through Day','https://www.luxalgo.com/library/concept/follow-through-day/','History of the follow-through thresholds (1%, 1.7%, ~1.25%).'],
+ ['LuxAlgo – Distribution Days','https://www.luxalgo.com/library/concept/distribution-days/','0.2% decline on higher volume; expiry after 25 sessions or a 5% rally.'],
+ ['Investor\'s Business Daily – Market Pulse / The Big Picture','https://www.investors.com/market-trend/the-big-picture/','IBD\'s daily market state (subscription).'],
+ ['tastytrade – Short put','https://tastytrade.com/learn/trading-products/options/short-put/','Short put basics; sellers prefer higher implied volatility.'],
+ ['QuantWheel – When to sell cash-secured puts','https://quantwheel.com/learn/when-sell-cash-secured-puts/','IV rank, 30–45 days to expiry, delta choices.'],
+ ['Euronext – AEX index options contract specification','https://live.euronext.com/en/resources/contracts-specifications/index-options-aex-index','€100 per index point, European style, cash-settled.'],
+ ['Euronext – Mini AEX index options contract specification','https://live.euronext.com/en/resources/contracts-specifications/index-options-aex-index-mini','€10 per index point.'],
+ ['Eurex – Euro Stoxx 50 index options (OESX)','https://www.eurex.com/ex-en/markets/idx/stx/euro-stoxx-50-derivatives/products/EURO-STOXX-50-Index-Options-46548','€10 per index point, cash settlement.'],
+ ['BrokerChooser – Stock options trading at DEGIRO','https://brokerchooser.com/broker-reviews/degiro-review/trade-stock-options-at-degiro','Says DEGIRO offers index options, not US single-stock options.'],
+ ['All About Berlin – DEGIRO review','https://allaboutberlin.com/guides/an-honest-review-of-degiro','"You can\'t buy US stock options."'],
+ ['DEGIRO – What are options? (knowledge page)','https://www.degiro.com/uk/knowledge/investing-in-options','DEGIRO\'s own explanation of options and the put seller\'s obligation.'],
+ ['DEGIRO helpdesk – Can I short sell with DEGIRO?','https://www.degiro.com/uk/helpdesk/trading-possibilities/can-i-short-sell-degiro','Short positions allowed for Active, Trader and Day Trader profiles.'],
+ ['TradingBrokers – How to trade options on DEGIRO','https://tradingbrokers.com/how-to-trade-options-on-degiro/','Margin is calculated automatically when writing options.']];
+ $('#main').innerHTML=`<div class="view"><div class="stack"><span class="eyebrow">Sources</span><h1>Where the rules come from</h1>
+ <p class="lede">Checked in November 2026. Broker conditions and exchange rules change; always re-check DEGIRO's own pages and fee schedule.</p></div>
+ <div class="tablewrap"><table><tbody>${src.map(([t,u,w])=>`<tr><td><a href="${u}" target="_blank" rel="noopener">${t}</a><br><span class="small muted">${w}</span></td></tr>`).join('')}</tbody></table></div>
+ <div class="card prose"><h3>What in this app is my own judgement</h3><ul><li>The limits per market state (60% / 30% / 0%), the 2× premium stop, the 8–30% annualised range and the volatility bands are a cautious synthesis, not rules published by O'Neil or IBD.</li><li>O'Neil wrote about buying stocks, not about selling options. Applying his market rules to put selling is an adaptation.</li><li>The stock list is a universe to check, not a recommendation, and I did not have live prices when building it.</li></ul></div>
+ ${disclaimer}</div>`;
+};
+
+/* ---------- start ---------- */
+go(location.hash.slice(1)||'today');
+</script>
+</body></html>
