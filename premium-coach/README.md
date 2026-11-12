@@ -16,12 +16,14 @@ A learning app and trading plan for collecting option premiums in a defensive wa
 ## What is inside
 
 - **Today**: pick the market state (IBD's Market Pulse, or use the built-in helper) and the volatility level. The app then tells you whether you may sell puts, how much, at what delta and with how many days to expiry.
-- **Learn**: 20 lessons in 5 modules, from the basics up to O'Neil and DEGIRO, each with a quiz.
+- **Learn**: 21 lessons in 5 modules, from the basics up to O'Neil and DEGIRO, each with a quiz.
 - **Stocks**: European stocks and indexes with options on Euronext Amsterdam or Eurex, plus an 11-point checklist (CAN SLIM and option safety).
+- **Option finder**: search an underlying, see the upcoming expiry dates and estimated call and put premiums for every strike, and turn a real DEGIRO bid/ask into implied volatility and delta. Links to Euronext, Eurex, TradingView and earnings calendars.
 - **Trading plan**: the written rules, scaled to your account size.
 - **Calculator**: the numbers and a profit/loss chart for a cash-secured put or a covered call, checked against the plan.
 - **DEGIRO guide**: step by step, with the items you still need to confirm in your own account.
 - **Journal**: a trade log with backup and restore.
+- **Websites**: where to look up option prices, expiry dates, market direction, volatility and earnings dates.
 
 Your data (journal, checklists, settings) is saved only in the browser you use.
 

@@ -274,6 +274,22 @@ q:[{q:'You sell a put on ING with strike €20. ING falls to €17 at expiry. Wh
 <p>The obligation (strike × contract size) is the most important number for a defensive trader. In this app we always keep enough cash to pay it. That is called a <b>cash-secured put</b>.</p>`,
 q:[{q:'Put on a €80 stock, strike €75, premium €1.50, size 100. How much cash should you keep aside?',o:['€150','€7,500','€8,000'],a:1,w:'Strike × size = 75 × 100 = €7,500. You receive €150 premium.'},
 {q:'A premium of €0.45 on a 100-share contract pays you…',o:['€0.45','€4.50','€45'],a:2,w:'Premium is per share: 0.45 × 100 = €45 (minus fees).'}]},
+{m:'1. Option basics',id:'chain',t:'Reading an option chain',b:`
+<p>An <b>option chain</b> is the list of all options on one underlying. In DEGIRO, on Euronext and on Eurex it looks roughly like this:</p>
+<div class="tablewrap"><table><thead><tr><th class="n">Call bid</th><th class="n">Call ask</th><th class="n">Strike</th><th class="n">Put bid</th><th class="n">Put ask</th></tr></thead><tbody>
+<tr><td class="n">2.05</td><td class="n">2.15</td><td class="n"><b>30</b></td><td class="n">0.55</td><td class="n">0.62</td></tr>
+<tr><td class="n">1.30</td><td class="n">1.38</td><td class="n"><b>31</b></td><td class="n">0.80</td><td class="n">0.88</td></tr>
+<tr><td class="n">0.78</td><td class="n">0.84</td><td class="n"><b>32</b></td><td class="n">1.25</td><td class="n">1.34</td></tr></tbody></table></div>
+<p class="small muted">Example numbers for a stock at about €31.50, one expiry.</p>
+<ul><li>You choose the <b>expiry</b> first (a tab or drop-down). Each expiry has its own chain.</li>
+<li><b>Calls on the left, puts on the right</b>, strikes in the middle.</li>
+<li><b>Bid</b> = what buyers pay now. When you <i>sell</i>, you get about the bid. <b>Ask</b> = what sellers want. The <b>middle</b> is a fair starting price for your limit order.</li>
+<li>Higher strike → calls get cheaper, puts get more expensive.</li>
+<li>A small gap between bid and ask means a liquid option. A big gap costs you money.</li>
+<li>Also look at <b>volume</b> (traded today) and <b>open interest</b> (contracts open). More is better.</li></ul>
+<p>Practise with the <b>Option finder</b>: it shows estimated premiums for every strike and expiry, and turns a real DEGIRO bid/ask into implied volatility and delta.</p>`,
+q:[{q:'You want to sell the 30 put above. Your limit order should start around…',o:['0.55','0.58–0.59','0.62'],a:1,w:'The middle between bid 0.55 and ask 0.62 is about 0.585. Start there; lower slowly if it does not fill.'},
+{q:'As the strike goes up, a put becomes…',o:['Cheaper','More expensive'],a:1,w:'A higher put strike is closer to (or above) the price, so it is worth more.'}]},
 {m:'1. Option basics',id:'money',t:'In, at and out of the money',b:`
 <p>For a <b>put</b>:</p>
 <ul><li><b>Out of the money (OTM)</b>: the stock is <i>above</i> the strike. If it stays there, the put expires worthless and you keep all the premium. This is what we want.</li>
@@ -425,7 +441,7 @@ q:[{q:'Who makes sure your puts at DEGIRO are cash-secured?',o:['DEGIRO automati
 ];
 
 /* ---------- nav ---------- */
-const VIEWS=[['today','Today'],['learn','Learn'],['stocks','Stocks'],['plan','Trading plan'],['calc','Calculator'],['degiro','DEGIRO guide'],['journal','Journal'],['sources','Sources']];
+const VIEWS=[['today','Today'],['learn','Learn'],['stocks','Stocks'],['options','Option finder'],['plan','Trading plan'],['calc','Calculator'],['degiro','DEGIRO guide'],['journal','Journal'],['websites','Websites'],['sources','Sources']];
 function nav(){const done=store.get('lessons',{});const n=LESSONS.filter(l=>done[l.id]).length;const j=store.get('journal',[]).length;
  $('#nav').innerHTML=VIEWS.map(([id,l])=>`<button data-v="${id}" ${cur===id?'aria-current="page"':''}>${l}${id==='learn'?`<span class="count">${n}/${LESSONS.length}</span>`:id==='journal'?`<span class="count">${j}</span>`:''}</button>`).join('');
  $('#nav').querySelectorAll('button').forEach(b=>b.onclick=()=>go(b.dataset.v));}
@@ -675,6 +691,151 @@ function payoff(kind,price,strike,prem,q,basis){
  <line x1="${X(price)}" y1="${P.t}" x2="${X(price)}" y2="${H-P.b}" stroke="var(--fg)" stroke-width="1" stroke-dasharray="2 3"/><text x="${X(price)+4}" y="${P.t+10}">now</text>
  </svg></div>`;
 }
+
+/* ---------- OPTION MATH (Black-Scholes, European style) ---------- */
+function ncdf(x){const t=1/(1+.2316419*Math.abs(x)),d=.3989423*Math.exp(-x*x/2);const p=d*t*(.3193815+t*(-.3565638+t*(1.781478+t*(-1.821256+t*1.330274))));return x>0?1-p:p}
+function bs(S,K,T,sig,r,q){if(!(S>0&&K>0&&T>0&&sig>0))return{call:NaN,put:NaN,dc:NaN,dp:NaN};const sq=sig*Math.sqrt(T),d1=(Math.log(S/K)+(r-q+sig*sig/2)*T)/sq,d2=d1-sq,eq=Math.exp(-q*T),er=Math.exp(-r*T);
+ return{call:S*eq*ncdf(d1)-K*er*ncdf(d2),put:K*er*ncdf(-d2)-S*eq*ncdf(-d1),dc:eq*ncdf(d1),dp:-eq*ncdf(-d1)}}
+function impliedVol(kind,price,S,K,T,r,q){let lo=.005,hi=4;const f=s=>bs(S,K,T,s,r,q)[kind]-price;if(!(f(lo)<0&&f(hi)>0))return NaN;for(let i=0;i<80;i++){const m=(lo+hi)/2;f(m)>0?hi=m:lo=m}return (lo+hi)/2}
+
+/* ---------- EXPIRY DATES ---------- */
+function easter(y){const a=y%19,b=Math.floor(y/100),c=y%100,d=Math.floor(b/4),e=b%4,f=Math.floor((b+8)/25),g=Math.floor((b-f+1)/3),h=(19*a+b-d-g+15)%30,i=Math.floor(c/4),k=c%4,l=(32+2*e+2*i-h-k)%7,m=Math.floor((a+11*h+22*l)/451),mo=Math.floor((h+l-7*m+114)/31),da=((h+l-7*m+114)%31)+1;return new Date(y,mo-1,da)}
+function isHoliday(d){const y=d.getFullYear(),md=(d.getMonth()+1)+'-'+d.getDate();if(['1-1','5-1','12-24','12-25','12-26','12-31'].includes(md))return true;const e=easter(y),gf=new Date(e),em=new Date(e);gf.setDate(e.getDate()-2);em.setDate(e.getDate()+1);return d.toDateString()===gf.toDateString()||d.toDateString()===em.toDateString()}
+function thirdFriday(y,m){const d=new Date(y,m,1);const add=(5-d.getDay()+7)%7;d.setDate(1+add+14);let moved=false;while(isHoliday(d)||d.getDay()===0||d.getDay()===6){d.setDate(d.getDate()-1);moved=true}return{d,moved}}
+function upcomingExpiries(n=9){const now=new Date();now.setHours(0,0,0,0);const out=[];let y=now.getFullYear(),m=now.getMonth();while(out.length<n){const e=thirdFriday(y,m);if(e.d>=now)out.push({...e,dte:Math.round((e.d-now)/864e5)});m++;if(m>11){m=0;y++}}return out}
+const fmtDate=d=>d.toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short',year:'numeric'});
+const isoDate=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+
+/* ---------- LINKS per underlying ---------- */
+const g=q=>'https://www.google.com/search?q='+encodeURIComponent(q);
+function tvSym(s){if(s.t==='AEX'||s.t==='AEX-L')return 'EURONEXT-AEX';if(s.t==='OESX')return 'TVC-SX5E';if(/Euronext/.test(s.x))return 'EURONEXT-'+s.t;if(s.x==='Eurex')return 'XETR-'+s.t;return null}
+function linksFor(s){const L=[];const nm=s.n.replace(/ –.*/,'');
+ if(s.t==='AEX')L.push(['Option chain: Mini AEX (Euronext)','https://live.euronext.com/en/product/index-options/MOA-DAMS','Official prices, strikes and expiry months (delayed)']);
+ if(s.t==='AEX-L')L.push(['Option chain: AEX (Euronext)','https://live.euronext.com/en/product/index-options/AEX-DAMS','Official prices, strikes and expiry months (delayed)']);
+ if(s.t==='OESX')L.push(['Euro Stoxx 50 options (Eurex)','https://www.eurex.com/ex-en/markets/idx/stx/euro-stoxx-50-derivatives/products/EURO-STOXX-50-Index-Options-46548','Contract specs and the Prices/Quotes tab']);
+ if(/Euronext/.test(s.x)&&s.k!=='Index'){L.push(['Find it on Euronext (stock options list)','https://live.euronext.com/en/products/stock-options/list','Search the name, open it for strikes, expiries and prices (delayed)']);L.push(['Option prices on Beursgenoten (Dutch)',g('site:beursgenoten.nl '+nm+' opties'),'Free option tables with bid and ask'])}
+ if(s.x==='Eurex'&&s.k!=='Index')L.push(['Find it on Eurex',g('site:eurex.com '+nm+' equity options contract specifications'),'Contract size, expiries and the Prices/Quotes tab']);
+ const tv=tvSym(s);if(tv)L.push(['Chart on TradingView','https://www.tradingview.com/symbols/'+tv+'/','Check the 50-day and 200-day lines and the 52-week high']);
+ if(s.k!=='Index')L.push(['Next earnings date',g(nm+' investor relations financial calendar'),'Avoid expiries after this date']);
+ L.push(['Search in DEGIRO','https://trader.degiro.nl/','Log in, search "'+nm+'", open Options. Real prices to trade on']);
+ return L}
+
+/* ---------- OPTION FINDER ---------- */
+const DEF_IV={Low:.20,Medium:.28,High:.45};
+const OF=Object.assign({t:'INGA',exp:null,q:''},store.get('of',{}));
+const OFP=store.get('ofp',{});/* per ticker: {price, iv, div} */
+function stepFor(p){return p<5?.25:p<25?.5:p<50?1:p<100?2:p<200?5:p<500?10:p<2000?20:50}
+R.options=()=>{
+ const all=[...UNIVERSE,...store.get('custom',[])];const s=all.find(x=>x.t===OF.t)||all[0];OF.t=s.t;
+ const p=OFP[s.t]||{};const ivDef=s.k==='Index'?.16:(DEF_IV[s.v]||.28);
+ const exps=upcomingExpiries(9);if(OF.exp==null||OF.exp>=exps.length||exps[OF.exp].dte<7){const i=exps.findIndex(e=>e.dte>=28);OF.exp=i<0?0:i}
+ const r=REGIMES[S.regime];
+ $('#main').innerHTML=`<div class="view">
+ <div class="stack"><span class="eyebrow">Option finder</span><h1>Search options, expiries and premiums</h1>
+ <p class="lede">Pick an underlying, type today's price, and see the expiry dates and the estimated premiums of calls and puts at each strike. Then check the real price in DEGIRO, and paste it below to see what it really tells you.</p></div>
+ <div class="card stack">
+  <div class="row"><label style="flex:1;min-width:220px">Search underlying<input id="ofQ" list="ofList" placeholder="Type a name or ticker, e.g. ING, ASML, AEX" value="${esc(OF.q)}"></label>
+  <datalist id="ofList">${all.map(x=>`<option value="${esc(x.n)} (${esc(x.t)})"></option>`).join('')}</datalist></div>
+  <div class="seg" id="ofPick">${all.filter(x=>!OF.q||(x.n+' '+x.t).toLowerCase().includes(OF.q.toLowerCase().replace(/\s*\(.*\)$/,''))).map(x=>`<button aria-pressed="${x.t===s.t}" data-t="${esc(x.t)}">${esc(x.n.replace(/ –.*/,''))}${x.k==='Index'&&/–/.test(x.n)?' '+esc(x.n.split('– ')[1]):''}</button>`).join('')||'<span class="small muted">No match. Add it on the Stocks page.</span>'}</div>
+ </div>
+ <div class="grid2">
+  <div class="card stack"><div class="row" style="justify-content:space-between"><h2>${esc(s.n)}</h2><span class="chip ${s.v==='Low'?'go':s.v==='Medium'?'warn':'stop'}">${esc(s.v)} volatility</span></div>
+   <p class="small muted">${esc(s.x)} · ${s.m?(s.k==='Index'?'€'+s.m+' per index point':s.m+' shares per contract'):'contract size: check in DEGIRO'} · ${s.k==='Index'?'European style, cash-settled':'usually American style, delivered in shares'}</p>
+   <div class="form">
+    <label>Today's price<input id="ofS" type="number" step="0.01" value="${p.price??''}" placeholder="e.g. 20.00"></label>
+    <label>Volatility (IV) %<input id="ofV" type="number" step="1" value="${Math.round((p.iv??ivDef)*100)}"></label>
+    <label>Dividend yield %<input id="ofD" type="number" step="0.1" value="${p.div??0}"></label>
+   </div>
+   <p class="small muted">No IV figure? Keep the default for this volatility class (${Math.round(ivDef*100)}%), then use "Check a real price" below: it works out the real IV from DEGIRO's price.</p></div>
+  <div class="card stack"><h3>Where to look this up</h3><div class="stack">${linksFor(s).map(([t,u,w])=>`<div><a href="${u}" target="_blank" rel="noopener">${t} ↗</a><br><span class="small muted">${w}</span></div>`).join('')}</div></div>
+ </div>
+ <div class="card stack"><h3>Expiry dates (monthly, third Friday)</h3>
+  <p class="small muted">Monthly stock and index options on Euronext and Eurex stop trading on the third Friday of the month, or the trading day before if that Friday is a holiday. Many underlyings also have weekly (and the AEX even daily) expiries: you will see them in DEGIRO's list. The 30–45 day window of this plan is marked.</p>
+  <div class="tablewrap"><table><thead><tr><th>Expiry</th><th class="n">Days left</th><th>For this plan</th><th></th></tr></thead><tbody>
+  ${exps.map((e,i)=>`<tr ${i===OF.exp?'style="background:var(--accent-soft)"':''}><td><b>${fmtDate(e.d)}</b>${e.moved?' <span class="small muted">(moved for a holiday)</span>':''}</td><td class="n mono">${e.dte}</td><td>${e.dte>=30&&e.dte<=45?'<span class="chip go">Ideal: 30–45 days</span>':e.dte>=21&&e.dte<=60?'<span class="chip warn">Acceptable</span>':e.dte<21?'<span class="chip stop">Too short</span>':'<span class="chip info">Far away</span>'}</td><td><button class="btn small" data-e="${i}">${i===OF.exp?'Selected':'Show premiums'}</button></td></tr>`).join('')}
+  </tbody></table></div></div>
+ <div id="ofChain"></div>
+ <div class="card stack" id="ofReal"><h3>Check a real price from DEGIRO</h3>
+  <p class="small muted">Type the real bid and ask you see in DEGIRO for one strike. The app works out the middle price, the real implied volatility and delta, and what you would earn.</p>
+  <div class="form">
+   <label>Type<select id="rK"><option value="put">Put</option><option value="call">Call</option></select></label>
+   <label>Strike<input id="rStrike" type="number" step="0.5"></label>
+   <label>Bid<input id="rBid" type="number" step="0.01"></label>
+   <label>Ask<input id="rAsk" type="number" step="0.01"></label>
+  </div><div id="rOut"><span class="small muted">Fill in strike, bid and ask.</span></div></div>
+ <div class="tip small"><b>About the estimates.</b> Premiums in the table come from the Black-Scholes formula, using your price, volatility, the days left, a 2% interest rate and your dividend yield. They show the shape of the chain and roughly what a strike pays. They are not quotes. Real prices are set by the market, can be higher when fear rises, and American-style options are worth a little more. Always trade on DEGIRO's live bid and ask.</div>
+ ${disclaimer}</div>`;
+ const save=()=>{store.set('of',OF);store.set('ofp',OFP)};
+ $('#ofQ').oninput=e=>{OF.q=e.target.value;const m=e.target.value.match(/\(([^)]+)\)$/);if(m&&all.some(x=>x.t===m[1])){OF.t=m[1];OF.q=''}save();R.options();const q=$('#ofQ');q.focus();q.setSelectionRange(q.value.length,q.value.length)};
+ $('#ofPick').onclick=e=>{const b=e.target.closest('button');if(b){OF.t=b.dataset.t;OF.q='';save();R.options()}};
+ document.querySelectorAll('button[data-e]').forEach(b=>b.onclick=()=>{OF.exp=+b.dataset.e;save();R.options()});
+ const upd=()=>{OFP[s.t]={price:parseFloat($('#ofS').value)||undefined,iv:(parseFloat($('#ofV').value)||ivDef*100)/100,div:parseFloat($('#ofD').value)||0};save();chain();real()};
+ ['#ofS','#ofV','#ofD'].forEach(id=>$(id).oninput=upd);
+ ['#rK','#rStrike','#rBid','#rAsk'].forEach(id=>$(id).oninput=real);
+ function chain(){const P=OFP[s.t]||{};const S0=P.price;const e=exps[OF.exp];const T=e.dte/365;const iv=P.iv??ivDef,q=(P.div||0)/100,rr=.02;const mult=s.m||100;
+  if(!S0){$('#ofChain').innerHTML=`<div class="card stack"><h3>Premiums for ${fmtDate(e.d)}</h3><p class="muted">Type today's price of ${esc(s.n)} above (you find it in DEGIRO or on the chart link) to see the estimated call and put premiums at every strike.</p></div>`;return}
+  const st=stepFor(S0);const lo=Math.floor(S0*.8/st)*st,hi=Math.ceil(S0*1.12/st)*st;const rows=[];for(let K=hi;K>=lo-1e-9;K=+(K-st).toFixed(4))rows.push(K);
+  const [dLo,dHi]=S.regime==='uptrend'?[.15,.25]:(S.regime==='pressure'?[.10,.15]:S.regime==='newup'?[.15,.20]:[0,0]);
+  $('#ofChain').innerHTML=`<div class="card stack"><div class="row" style="justify-content:space-between"><h3>Estimated premiums · ${fmtDate(e.d)} · ${e.dte} days</h3><span class="small muted">Price ${eur2(S0)} · IV ${Math.round(iv*100)}% · ${s.k==='Index'?'€'+mult+'/point':mult+' per contract'}</span></div>
+  <p class="small muted">Rows marked <span class="chip go">Plan</span> have a put delta in today's range (${r.name}${dLo?': '+dLo+'–'+dHi:': no new puts'}). "Per year" is the put premium as a yearly % of the cash you must keep aside.</p>
+  <div class="tablewrap"><table><thead><tr><th class="n">Call premium</th><th class="n">Call delta</th><th class="n" style="background:var(--accent-soft)">Strike</th><th class="n">Put premium</th><th class="n">Put delta</th><th class="n">Below price</th><th class="n">Put € / contract</th><th class="n">Per year</th><th></th></tr></thead><tbody>
+  ${rows.map(K=>{const o=bs(S0,K,T,iv,rr,q);const ad=Math.abs(o.dp);const inPlan=dLo&&ad>=dLo&&ad<=dHi;const otm=(S0-K)/S0;const ann=o.put/K*365/e.dte;const atm=Math.abs(K-S0)<st/2;
+   return `<tr ${inPlan?'style="background:var(--go-soft)"':atm?'style="background:var(--sunk)"':''}><td class="n">${o.call.toFixed(2)}</td><td class="n">${o.dc.toFixed(2)}</td><td class="n"><b>${K.toFixed(st<1?2:0)}</b>${atm?' <span class="small muted">≈ price</span>':''}</td><td class="n">${o.put.toFixed(2)}</td><td class="n">${o.dp.toFixed(2)}</td><td class="n">${K<S0?pct(otm):'–'}</td><td class="n">${eur(o.put*mult)}</td><td class="n">${K<S0?pct(ann):'–'}</td><td style="white-space:nowrap">${inPlan?'<span class="chip go">Plan</span>':''} <button class="btn small" data-k="${K}">Use</button></td></tr>`}).join('')}
+  </tbody></table></div></div>`;
+  $('#ofChain').querySelectorAll('button[data-k]').forEach(b=>b.onclick=()=>{$('#rK').value='put';$('#rStrike').value=b.dataset.k;real();$('#ofReal').scrollIntoView({behavior:'smooth',block:'start'});$('#rBid').focus()});
+ }
+ function real(){const P=OFP[s.t]||{};const S0=P.price,e=exps[OF.exp],T=e.dte/365,q=(P.div||0)/100;const k=$('#rK').value,K=+$('#rStrike').value,bid=+$('#rBid').value,ask=+$('#rAsk').value;const mult=s.m||100;
+  if(!S0||!K||!(bid>=0)||!ask){$('#rOut').innerHTML='<span class="small muted">Fill in today\'s price (above), the strike, bid and ask. Expiry used: '+fmtDate(e.d)+'.</span>';return}
+  const mid=(bid+ask)/2,spread=(ask-bid)/mid;const iv=impliedVol(k,mid,S0,K,T,.02,q);const o=isFinite(iv)?bs(S0,K,T,iv,.02,q):null;const d=o?(k==='put'?o.dp:o.dc):NaN;
+  const ann=k==='put'?mid/K*365/e.dte:mid/S0*365/e.dte;
+  $('#rOut').innerHTML=`<div class="kv"><div><span>Middle price</span><b>${mid.toFixed(2)}</b></div><div><span>Gap bid/ask</span><b style="color:${spread>.15?'var(--stop)':'inherit'}">${pct(spread,0)}</b></div><div><span>Real implied vol.</span><b>${isFinite(iv)?pct(iv,0):'–'}</b></div><div><span>Real delta</span><b>${isFinite(d)?d.toFixed(2):'–'}</b></div><div><span>Premium per contract</span><b>${eur2(mid*mult)}</b></div><div><span>Per year</span><b>${pct(ann)}</b></div></div>
+   <p class="small" style="margin-top:8px">${spread>.15?'The gap between bid and ask is wide: this option is not very liquid. Start your limit order near the middle and be patient, or choose another strike. ':''}${!isFinite(iv)?'This price is below the option\'s minimum value or above the share price: check the numbers. ':''}${k==='put'&&isFinite(d)?(Math.abs(d)>.30?'Delta above 0.30: too close to the price for this plan.':Math.abs(d)<.08?'Very low delta: safe, but the premium may not cover fees.':'Delta fits a premium-selling plan; check it against today\'s range on the Today page.'):''}</p>
+   <div class="row"><button class="btn primary" id="rUse">Open in calculator</button></div>`;
+  $('#rUse').onclick=()=>{Object.assign(C,{mode:k==='put'?'put':'call',price:S0,strike:K,prem:+mid.toFixed(2),size:mult,dte:e.dte});store.set('calc',C);go('calc')};
+ }
+ chain();real();
+};
+
+/* ---------- WEBSITES ---------- */
+R.websites=()=>{
+ const G=[
+ ['Option chains and premiums',[
+  ['DEGIRO web trader','https://trader.degiro.nl/','The prices you actually trade on. Search the stock, open Options, choose expiry and strike.'],
+  ['Euronext – stock options list','https://live.euronext.com/en/products/stock-options/list','All stock options on Euronext (Amsterdam, Brussels, Paris…). Open one for strikes, expiries and delayed prices.'],
+  ['Euronext – AEX index options','https://live.euronext.com/en/product/index-options/AEX-DAMS','AEX option chain (€100 per point).'],
+  ['Euronext – Mini AEX index options','https://live.euronext.com/en/product/index-options/MOA-DAMS','Mini AEX option chain (€10 per point).'],
+  ['Eurex – Euro Stoxx 50 options','https://www.eurex.com/ex-en/markets/idx/stx/euro-stoxx-50-derivatives/products/EURO-STOXX-50-Index-Options-46548','Contract specs and Prices/Quotes tab.'],
+  ['Eurex – example stock option page (SAP)','https://www.eurex.com/ex-en/markets/equ/equ-opt/options/SAP-944408','Every Eurex stock option has a page like this with specs and prices.'],
+  ['Beursgenoten – ING options (Dutch)','https://www.beursgenoten.nl/koersen/euronext-aandelen-amsterdam/ing-groep/opties','Free option tables with bid/ask; change the company in the menu.']]],
+ ['Expiry dates and contract rules',[
+  ['Eurex trading calendar 2026 (PDF)','https://www.eurex.com/resource/blob/4873184/d03af1201fbd640ba30e29ae5359c371/data/tradingcalendar_2026_en.pdf','Holidays and last trading days.'],
+  ['Euronext – Mini AEX contract specification','https://live.euronext.com/en/resources/contracts-specifications/index-options-aex-index-mini','Size, style, settlement, last trading day.'],
+  ['Euronext – AEX contract specification','https://live.euronext.com/en/resources/contracts-specifications/index-options-aex-index','Same for the standard AEX option.']]],
+ ['Market direction (the M in CAN SLIM)',[
+  ['IBD – The Big Picture / Market Pulse','https://www.investors.com/market-trend/the-big-picture/','IBD\'s daily market state (subscription).'],
+  ['TradingView – S&P 500 chart','https://www.tradingview.com/symbols/SPX/','Count distribution days; check the 50-day line.'],
+  ['TradingView – Euro Stoxx 50 chart','https://www.tradingview.com/symbols/TVC-SX5E/','European market trend.'],
+  ['TradingView – AEX chart','https://www.tradingview.com/symbols/EURONEXT-AEX/','Dutch market trend.']]],
+ ['Volatility (how expensive options are)',[
+  ['VSTOXX (Euro Stoxx 50 volatility)','https://www.stoxx.com/index/v2tx/','Europe\'s fear index.'],
+  ['Cboe – VIX','https://www.cboe.com/tradable_products/vix/','The US fear index.'],
+  ['TradingView – VIX chart','https://www.tradingview.com/symbols/TVC-VIX/','Quick VIX chart.']]],
+ ['Stock quality and leadership (C, A, L, I)',[
+  ['IBD Stock Checkup','https://research.investors.com/stock-checkup/','RS rating, EPS rating, Accumulation/Distribution (mainly US stocks).'],
+  ['MarketSmith','https://marketsmith.investors.com/','O\'Neil\'s own charting and screening tool (paid).'],
+  ['MarketScreener','https://www.marketscreener.com/','European company news, earnings and analyst estimates.']]],
+ ['Earnings dates (avoid expiries after them)',[
+  ['Investing.com earnings calendar','https://www.investing.com/earnings-calendar/','Upcoming results by date.'],
+  ['Company investor relations pages','https://www.google.com/search?q=investor+relations+financial+calendar','Most reliable: the company\'s own financial calendar.']]],
+ ['Learning and payoff tools',[
+  ['OptionStrat','https://optionstrat.com/','Visual payoff builder (US symbols, but good for learning shapes).'],
+  ['tastytrade – learn options','https://tastytrade.com/learn/trading-products/options/short-put/','Clear lessons on short puts and more.'],
+  ['DEGIRO – what are options?','https://www.degiro.com/uk/knowledge/investing-in-options','DEGIRO\'s own options explainer.']]]];
+ $('#main').innerHTML=`<div class="view"><div class="stack"><span class="eyebrow">Websites</span><h1>Where to find the information</h1>
+ <p class="lede">The places to look up option prices, expiry dates, market direction, volatility and earnings dates. Links were collected in November 2026; websites sometimes move pages, so search the site if a link no longer works.</p></div>
+ ${G.map(([h,l])=>`<div class="stack"><h2>${h}</h2><div class="tablewrap"><table><tbody>${l.map(([t,u,w])=>`<tr><td style="width:40%"><a href="${u}" target="_blank" rel="noopener">${t} ↗</a></td><td class="small muted">${w}</td></tr>`).join('')}</tbody></table></div></div>`).join('')}
+ ${disclaimer}</div>`;
+};
 
 /* ---------- DEGIRO ---------- */
 R.degiro=()=>{
