@@ -134,7 +134,7 @@ export const PORTFOLIO_Q = /\b(portfolio|portefeuille|positions|posities|holding
  * odd, phase, cur, close, cost}], failed, rank: {list, over, sellNow, suggest}, max, S, z, total, equity}
  */
 export function portfolioAnswer(rv) {
-  if (!rv || !rv.items.length) return 'I don\'t see any holdings yet. Add them in the Portfolio tab (or tell me "I bought 30 NVDA at 182"), then I can go through them one by one.';
+  if (!rv || !rv.items.length) return 'I don\'t see any holdings yet. Add them in the Portfolio tab (or tell me "I bought 30 XYZ at 50"), then I can go through them one by one.';
   const S = rv.S, z = rv.z, ccy = S.ccy, it = rv.items, L = [];
   const by = s => it.find(x => x.sym === s), p = x => x == null ? '—' : pct(x, 0);
   const odd = it.filter(x => x.odd);
@@ -174,4 +174,73 @@ export function portfolioAnswer(rv) {
   if (rv.failed.length) L.push('', `No prices for: ${rv.failed.join(', ')} (check the ticker).`);
   L.push('', 'Details per stock: the Sell ideas tab. In DEGIRO: a Limit sell at about the last price (day order); lower your Stop Loss by the shares you sell first.');
   return L.join('\n');
+}
+
+/* ---------- which of your stocks the question is about ---------- */
+const STOP = new Set(['THE', 'AND', 'FOR', 'BUT', 'NOT', 'ALL', 'ANY', 'CAN', 'NOW', 'WHY', 'HOW', 'BUY', 'SELL', 'HOLD', 'IBD', 'RS', 'EPS', 'DE', 'EN', 'IN', 'IS', 'IT', 'OF', 'OR', 'TO', 'ON', 'AT', 'AN', 'AS', 'BE', 'DO', 'IF', 'MY', 'SO', 'UP', 'WE', 'ME', 'NO', 'OK', 'HET', 'VAN', 'DAT', 'MET', 'OOK', 'NOG', 'WAT']);
+/**
+ * The holding the question names, by ticker ("msft", "UCB") or by the first word of the company name ("microsoft").
+ * holdings: [{sym}], names: {sym: name}. Returns the symbol or null. Two-letter tickers only count when typed in capitals.
+ */
+export function mentionedHolding(q, holdings = [], names = {}) {
+  const words = String(q).split(/[^A-Za-z0-9.&-]+/).filter(Boolean);
+  for (const h of holdings) {
+    const sym = h.sym || h, base = sym.split('.')[0], B = base.toUpperCase();
+    if (words.some(w => w.toUpperCase() === sym.toUpperCase() && (sym.length >= 3 || w === sym))) return sym;
+    if (STOP.has(B) && !words.includes(B)) continue;
+    if (words.some(w => w.toUpperCase() === B && (B.length >= 3 || w === B))) return sym;
+  }
+  for (const h of holdings) {
+    const sym = h.sym || h, first = String(names[sym] || h.name || '').split(/[\s,.]+/)[0];
+    if (first.length >= 4 && new RegExp('\\b' + first.replace(/[^A-Za-z0-9]/g, '') + '\\b', 'i').test(q)) return sym;
+  }
+  return null;
+}
+
+/**
+ * The answer for one of your holdings ("why sell MSFT if IBD says hold?"): what the app sees, why it would sell, trim or
+ * keep it, and what would change that. x = one item of reviewHoldings(), rv = the whole review.
+ */
+export function holdingAnswer(q, x, rv) {
+  const p = v => v == null ? '—' : pct(v, 1), m = x.m, L = [], S = rv.S, z = rv.z;
+  const why = /\b(why|waarom|how come|hoezo)\b/i.test(q), ibd = /\b(ibd|marketsurge|marketsmith|rating|composite)\b/i.test(q);
+  const corr = z && z.market === 'corr', press = z && z.market === 'press';
+  const hard = x.reasons.filter(r => r[0] === 'bad' && x.verdict === 'sell').map(r => r[1]);
+  const soft = x.verdict === 'sell' && m.gain != null && m.gain >= 0.1 && hard.every(t => /Failed breakout/.test(t));
+  const over = rv.items.length > rv.max;
+  const lower = rv.rank.list.filter(y => y.sym !== x.sym && y.score < x.score).length;
+  const chart = `${m.above50 ? 'above' : 'below'} its 50-day line${x.s50 ? ` (${r2(x.s50)})` : ''}${m.above200 != null ? `, ${m.above200 ? 'above' : 'below'} the 200-day` : ''}, ${p(m.w8)} in 8 weeks${m.rs != null ? `, strength rank ${m.rs}` : ''}`;
+  let call, tag;
+  if (x.verdict === 'sell' && !soft) { call = `**Yes — for ${x.sym} a sell rule is broken, whatever the rating says.**`; tag = 'SELL'; }
+  else if (soft) { call = `**${x.sym}: trim, don't dump — the newest breakout failed, but you have a good profit.**`; tag = 'TRIM ⅓–½'; }
+  else if (x.verdict === 'weak' || x.verdict === 'dead') { call = `**${x.sym} is not broken — it is lagging. That makes it a trim candidate, not a must-sell.**`; tag = 'HOLD or TRIM (your choice)'; }
+  else if ((corr || press) && over) { call = `**You're right: ${x.sym}'s chart itself is fine. The reason was the market, not the stock.**`; tag = lower >= rv.items.length - rv.max ? 'KEEP' : 'HOLD (reduce only if you follow the market limit strictly)'; }
+  else { call = `**No — I don't see a reason to sell ${x.sym}.** It is ${x.verdict === 'leader' ? 'one of your leaders' : 'acting normally'}.`; tag = 'HOLD'; }
+  L.push(call, '', `**What I see:** ${x.sym}${x.name ? ' (' + x.name + ')' : ''} is ${chart}${m.gain != null ? `; you are ${p(m.gain)} on your average ${r2(+x.cost)}` : ''}. Keep score ${x.score}/100.`);
+  L.push('', '**Why:**');
+  if (x.verdict === 'sell' && !soft) hard.forEach(t => L.push('• ' + t));
+  else if (soft) L.push('• The latest base broke out and fell back under the buy point: the shares you bought at that breakout should go. Your older shares still have a cushion — sell ⅓–½ and keep the rest while it holds the 50-day line.');
+  else if (x.verdict === 'weak' || x.verdict === 'dead') x.reasons.filter(r => r[0] !== 'ok').forEach(r => L.push('• ' + r[1]));
+  if ((corr || press) && over && x.verdict !== 'sell') L.push(`• The market is ${corr ? 'in a correction' : 'under pressure'}. The book then holds only ${corr ? '0–20%' : '40–60%'} in stocks (your plan: max ${rv.max} position${rv.max === 1 ? '' : 's'}), so it cuts the weakest holdings first — even good ones. ${x.sym} has ${lower} holding${lower === 1 ? '' : 's'} with a lower keep score, so it is ${lower >= rv.items.length - rv.max ? 'not' : 'only later'} on the list.`);
+  if (x.verdict === 'leader' || x.verdict === 'hold') x.reasons.filter(r => r[0] === 'ok').slice(0, 3).forEach(r => L.push('• ✓ ' + r[1]));
+  if (ibd || why) L.push('', `**About IBD's "hold/buy":** IBD's ratings judge the *company* (earnings, sales, strength). O'Neil's sell rules judge *your position and the market* — the 7–8% stop, a failed breakout, a heavy-volume break of the 50-day line, and how much to own in a correction. Both can be true: a good company you still trim because the market says "less in stocks". ${x.verdict === 'sell' && !soft ? 'A broken sell rule wins.' : 'If the market and your limit don\'t bother you, holding it is consistent with the book as long as it stays above the 50-day line.'}`);
+  L.push('', '**What would change it:** ' + (x.verdict === 'sell' && !soft ? `a close back above the buy point / 50-day line on volume — then it can be bought back.` : `sell if it closes under the 50-day line${x.s50 ? ` (${r2(x.s50)})` : ''} on heavy volume or falls ${Math.round((S.stop || 0.07) * 100)}% under your average; ${corr ? 'keep it if the market gets a follow-through day.' : 'add only in a confirmed uptrend from a new base.'}`));
+  L.push('', `**${x.sym} ${tag}**${x.s50 ? ` — line in the sand: the 50-day line ${r2(x.s50)}` : ''}.`);
+  return L.join('\n');
+}
+
+/* ---------- the coach learns from you ---------- */
+/** A rule worth remembering in what you wrote ("I don't have NVDA", "always…", "never…", "remember…"), or null. */
+export function learnFromText(q) {
+  const t = String(q).trim().replace(/\s+/g, ' ');
+  let m = /\bi\s+(?:don'?t|do not|no longer|never)\s+(?:have|own|hold)\s+(?:any\s+)?([A-Za-z][A-Za-z0-9.]{0,9})\b/i.exec(t) || /\bik\s+heb\s+(?:geen|nooit)\s+([A-Za-z][A-Za-z0-9.]{0,9})\b/i.exec(t);
+  if (m) return `The owner does not own ${m[1].toUpperCase()}. Never assume they hold it; don't bring it up unless they ask about it.`;
+  if (/\b(always|never|from now on|remember|stop (doing|saying|starting)|don'?t (start|say|mention|talk)|onthoud|altijd|nooit|vanaf nu)\b/i.test(t) && t.length >= 12 && t.length <= 400) return 'The owner said: "' + t + '"';
+  return null;
+}
+/** Claude marks things worth remembering with <<learn: …>>; take them out of the answer. */
+export function takeLearnTags(text) {
+  const notes = [];
+  const clean = String(text || '').replace(/<<\s*learn\s*:\s*([\s\S]*?)>>/gi, (_, n) => { if (n.trim()) notes.push(n.trim()); return ''; }).replace(/\n{3,}/g, '\n\n').trim();
+  return { text: clean, notes };
 }

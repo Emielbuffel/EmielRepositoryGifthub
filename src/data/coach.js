@@ -142,9 +142,28 @@ export async function askClaude(history, ctx) {
 export const TRAINING_KEY = 'coachTraining';
 export async function getTraining() { const t = await store.get(TRAINING_KEY, ''); return typeof t === 'string' ? t : ''; }
 export async function setTraining(text) { await store.set(TRAINING_KEY, String(text || '').slice(0, 120000)); }
+/* What the coach learned in your chats: rules you stated or corrections (👎), and answers you liked (👍). Private too:
+   on the device and in the private sync only. */
+export const LEARN_KEY = 'coachLearned';
+export async function getLearned() { const l = await store.get(LEARN_KEY, []); return Array.isArray(l) ? l : []; }
+export async function addLearned(kind, text, q = '') {
+  text = String(text || '').trim(); if (!text) return false;
+  const l = await getLearned();
+  if (l.some(x => x.kind === kind && x.text === text)) return false;
+  l.push({ t: Date.now(), kind, text: text.slice(0, kind === 'example' ? 2500 : 600), q: String(q).slice(0, 400) });
+  const rules = l.filter(x => x.kind !== 'example').slice(-80), ex = l.filter(x => x.kind === 'example').slice(-20);
+  await store.set(LEARN_KEY, [...rules, ...ex].sort((a, b) => a.t - b.t));
+  return true;
+}
+export async function clearLearned() { await store.set(LEARN_KEY, []); }
 async function privateTraining() {
-  const t = (await getTraining()).trim(); if (!t) return '';
-  return '\n\nTHE OWNER\'S PRIVATE COACHING NOTES (from the owner\'s own earlier chats). Follow their rules, structure and tone; where they are more specific than the playbook above, they win. The examples show how to answer — never copy their numbers into a new answer; use the context JSON and the chart for this stock:\n' + t;
+  const t = (await getTraining()).trim(), l = await getLearned();
+  let out = '';
+  if (t) out += '\n\nTHE OWNER\'S PRIVATE COACHING NOTES (from the owner\'s own earlier chats). Follow their rules, structure and tone; where they are more specific than the playbook above, they win. The examples show how to answer — never copy their numbers into a new answer; use the context JSON and the chart for this stock:\n' + t;
+  const rules = l.filter(x => x.kind !== 'example'), ex = l.filter(x => x.kind === 'example');
+  if (rules.length) out += '\n\nWHAT YOU LEARNED FROM THE OWNER IN EARLIER CHATS (newest last; these override older habits):\n' + rules.map(x => '- ' + x.text).join('\n');
+  if (ex.length) out += '\n\nANSWERS THE OWNER MARKED AS GOOD (copy the style, not the numbers):\n' + ex.slice(-8).map(x => 'Q: ' + x.q + '\nA: ' + x.text).join('\n---\n');
+  return out;
 }
 
 /* ---------- the coach as a conversation partner that also sees the chart ---------- */
@@ -158,7 +177,15 @@ under the pivot"). When the question is about the chart or a trade, write the re
 price, pivot, zoneTop, s50, the user's shares and average cost, target size, earnings date, market). If the picture and the numbers disagree,
 say so and trust the numbers. If something you said earlier was wrong, correct it openly. Follow-up questions build on the earlier answers.
 Keep it focused (usually 5–12 lines), give the concrete action (shares, DEGIRO order type, stop) when it is about buying, adding or selling,
-and end with "Not investment advice."`;
+and end with "Not investment advice."
+WHICH STOCK: answer about the stock the user names. If they name one of their holdings (context: focus / portfolio.review), answer about
+that one, even if another stock is on the screen. The stock on screen (context: stock, and the chart picture) is only the subject when the
+user doesn't name another one. Never assume the user owns a stock that is not in their holdings, and don't bring up the stock on screen
+when the question is about something else. When the user asks "why" about something you said earlier, explain THAT answer and admit it
+if it was too strict or wrong.
+LEARNING: when the user corrects you, tells you a fact about themselves ("I don't own X", "my positions are 15%") or a preference ("always
+show…", "don't start with…"), put ONE line at the very end: <<learn: the rule in one short sentence>>. The app saves it privately and
+gives it back to you next time. Only for lasting rules, not for one-off questions.`;
 
 const blobB64 = b => new Promise((ok, no) => { const r = new FileReader(); r.onload = () => ok(String(r.result).split(',')[1]); r.onerror = no; r.readAsDataURL(b); });
 

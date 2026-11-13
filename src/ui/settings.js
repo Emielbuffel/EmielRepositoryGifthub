@@ -8,7 +8,7 @@ import { NEWS_SOURCES, newsSettings } from '../data/news.js';
 import { $, $$, html, raw, render, toast } from './dom.js';
 import { strategy, rawStrategy, saveStrategy } from '../data/plans.js';
 import { DEFAULT_PLAN, pyramid } from '../core/strategy.js';
-import { COACH_MODELS, getTraining, setTraining } from '../data/coach.js';
+import { COACH_MODELS, getTraining, setTraining, getLearned, clearLearned } from '../data/coach.js';
 import { syncNow, onSyncStatus, syncTargets } from '../data/sync.js';
 import * as storeS from '../data/store.js';
 
@@ -84,6 +84,9 @@ export async function initSettings(el) {
       <h3 style="margin:8px 0 0">Your private coach training</h3>
       <p class="small" style="margin:0">A text file with your own rules and example answers (for example taken from your chats). The Coach follows it when it answers with Claude. It is kept on this device and in your private sync only — never in the app's code or on GitHub — and it is sent to Claude together with your questions.</p>
       <div class="toolbar"><label class="btn" style="cursor:pointer">Import a file (.md or .txt)<input type="file" id="stTrainFile" accept=".md,.txt,text/plain,text/markdown" hidden></label><button class="btn danger" id="stTrainDel">Remove</button><span class="small" id="stTrainMsg"></span></div>
+      <p class="small" style="margin:0">The coach also learns by itself while you chat: rules you state ("I don't own …", "always …"), corrections after 👎, and answers you mark 👍. Private as well.</p>
+      <div class="toolbar"><button class="btn" id="stLearnShow">Show what it learned</button><button class="btn danger" id="stLearnDel">Forget it</button><span class="small" id="stLearnMsg"></span></div>
+      <pre class="small" id="stLearnList" hidden style="white-space:pre-wrap;max-height:260px;overflow:auto;margin:0"></pre>
     </section>
     <section class="card">
       <h2>News sources</h2>
@@ -133,6 +136,10 @@ export async function initSettings(el) {
   $('#stSyncNow', el).onclick = () => syncNow({ reason: 'manual' }).then(st => { if (!st) toast('Sync is off on this device: add a GitHub token first.'); });
   const trainMsg = async () => { const t = await getTraining(); $('#stTrainMsg', el).textContent = t ? `Loaded: ${Math.round(t.length / 1000)}k characters.` : 'None loaded.'; };
   trainMsg();
+  const learnMsg = async () => { const l = await getLearned(); $('#stLearnMsg', el).textContent = `${l.filter(x => x.kind !== 'example').length} rules, ${l.filter(x => x.kind === 'example').length} good examples.`; };
+  learnMsg();
+  $('#stLearnShow', el).onclick = async () => { const p = $('#stLearnList', el), l = await getLearned(); p.hidden = !p.hidden; p.textContent = l.length ? l.map(x => (x.kind === 'example' ? '👍 ' + x.q + '\n   ' + x.text.slice(0, 300) : '• ' + x.text)).join('\n') : 'Nothing yet.'; };
+  $('#stLearnDel', el).onclick = async () => { if (!confirm('Forget everything the coach learned in your chats?')) return; await clearLearned(); toast('Forgotten.'); learnMsg(); $('#stLearnList', el).hidden = true; };
   $('#stTrainFile', el).onchange = async e => { const f = e.target.files[0]; if (!f) return; const t = await f.text(); await setTraining(t); e.target.value = ''; toast('Coach training imported. It stays private.'); trainMsg(); };
   $('#stTrainDel', el).onclick = async () => { await setTraining(''); toast('Coach training removed from this device (and from your sync at the next sync).'); trainMsg(); };
   $('#stAnthSave', el).onclick = async () => {
