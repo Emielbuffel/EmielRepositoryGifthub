@@ -4,6 +4,7 @@
 //  - with your Anthropic API key (Settings → Coach): full conversations with Claude, which gets the same playbook
 //    and the live context. The key stays on this device and is sent only to api.anthropic.com.
 import { settings } from './service.js';
+import * as store from './store.js';
 
 /* The user's playbook, distilled from the earlier discussions: O'Neil / IBD rules, the webinar notes, the Base
    Pattern Desk back-test and the Buffett moat test. This is the coach's knowledge. */
@@ -134,6 +135,18 @@ export async function askClaude(history, ctx) {
   }
 }
 
+/* ---------- the owner's private coach training ----------
+   Rules, style and example answers taken from the owner's own earlier chats. The text is personal (it mentions the
+   portfolio), so it is never part of the code or the repository: it lives on the device (store key 'coachTraining')
+   and travels only with the owner's private sync (private Gist / private storage on claude.ai). */
+export const TRAINING_KEY = 'coachTraining';
+export async function getTraining() { const t = await store.get(TRAINING_KEY, ''); return typeof t === 'string' ? t : ''; }
+export async function setTraining(text) { await store.set(TRAINING_KEY, String(text || '').slice(0, 120000)); }
+async function privateTraining() {
+  const t = (await getTraining()).trim(); if (!t) return '';
+  return '\n\nTHE OWNER\'S PRIVATE COACHING NOTES (from the owner\'s own earlier chats). Follow their rules, structure and tone; where they are more specific than the playbook above, they win. The examples show how to answer — never copy their numbers into a new answer; use the context JSON and the chart for this stock:\n' + t;
+}
+
 /* ---------- the coach as a conversation partner that also sees the chart ---------- */
 // How to talk: like a personal coach in a chat, not a fixed template. Used by both ways of reaching Claude below.
 export const COACH_STYLE = `HOW TO TALK: you are the user's personal trading coach in a chat. Answer exactly what was asked, in the user's language, like a conversation —
@@ -171,7 +184,8 @@ export async function aiMode() {
  */
 export async function askCoachAI(history, ctx, images = [], onText) {
   const mode = await aiMode(); if (!mode) throw new Error('No Claude connection here.');
-  const intro = PLAYBOOK + '\n\n' + COACH_STYLE + '\n\nContext from the app right now (JSON):\n' + JSON.stringify(ctx);
+  const training = await privateTraining();
+  const intro = PLAYBOOK + '\n\n' + COACH_STYLE + training + '\n\nContext from the app right now (JSON):\n' + JSON.stringify(ctx);
   if (mode === 'page') {
     const sample = await pageClaude();
     let imgs = [];
@@ -195,7 +209,7 @@ export async function askCoachAI(history, ctx, images = [], onText) {
     const r = await client.beta.messages.create({
       model: settings.coachModel || 'claude-opus-5-5', max_tokens: 2048,
       betas: ['server-side-fallback-2026-07-01'], fallbacks: 'default',
-      system: [{ type: 'text', text: PLAYBOOK + '\n\n' + COACH_STYLE, cache_control: { type: 'ephemeral' } }],
+      system: [{ type: 'text', text: PLAYBOOK + '\n\n' + COACH_STYLE + training, cache_control: { type: 'ephemeral' } }],
       messages: [{ role: 'user', content: 'Context from the app right now (JSON):\n' + JSON.stringify(ctx) }, { role: 'assistant', content: 'Understood. I will use these numbers, the chart and the playbook.' }, ...msgs],
     });
     if (r.stop_reason === 'refusal') return 'I can’t answer that one. ' + ((r.stop_details && r.stop_details.explanation) || '');

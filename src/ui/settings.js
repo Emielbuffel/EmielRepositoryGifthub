@@ -8,7 +8,7 @@ import { NEWS_SOURCES, newsSettings } from '../data/news.js';
 import { $, $$, html, raw, render, toast } from './dom.js';
 import { strategy, rawStrategy, saveStrategy } from '../data/plans.js';
 import { DEFAULT_PLAN, pyramid } from '../core/strategy.js';
-import { COACH_MODELS } from '../data/coach.js';
+import { COACH_MODELS, getTraining, setTraining } from '../data/coach.js';
 import { syncNow, onSyncStatus, syncTargets } from '../data/sync.js';
 import * as storeS from '../data/store.js';
 
@@ -81,6 +81,9 @@ export async function initSettings(el) {
       <div class="grid2"><label class="field"><span>Anthropic API key</span><input class="input" id="stAnth" type="password" placeholder="sk-ant-…" value="${settings.keys.anthropic || ''}" autocapitalize="off" spellcheck="false"></label>
       <label class="field"><span>Model</span><select class="input" id="stAnthModel">${COACH_MODELS.map(([k, l]) => html`<option value="${k}" ${(settings.coachModel || 'claude-opus-5-5') === k ? raw('selected') : ''}>${l}</option>`)}</select></label></div>
       <div class="toolbar"><button class="btn primary" id="stAnthSave">Save</button><span class="small" id="stAnthMsg"></span></div>
+      <h3 style="margin:8px 0 0">Your private coach training</h3>
+      <p class="small" style="margin:0">A text file with your own rules and example answers (for example taken from your chats). The Coach follows it when it answers with Claude. It is kept on this device and in your private sync only — never in the app's code or on GitHub — and it is sent to Claude together with your questions.</p>
+      <div class="toolbar"><label class="btn" style="cursor:pointer">Import a file (.md or .txt)<input type="file" id="stTrainFile" accept=".md,.txt,text/plain,text/markdown" hidden></label><button class="btn danger" id="stTrainDel">Remove</button><span class="small" id="stTrainMsg"></span></div>
     </section>
     <section class="card">
       <h2>News sources</h2>
@@ -128,6 +131,10 @@ export async function initSettings(el) {
   syncMsg(); onSyncStatus(syncMsg);
   $('#stGistSave', el).onclick = async () => { settings.keys.gist = $('#stGist', el).value.trim(); await saveSettings(); toast(settings.keys.gist ? 'Token saved: syncing now.' : 'Token removed: GitHub sync is off.'); if (settings.keys.gist) syncNow({ reason: 'manual' }); syncMsg(); };
   $('#stSyncNow', el).onclick = () => syncNow({ reason: 'manual' }).then(st => { if (!st) toast('Sync is off on this device: add a GitHub token first.'); });
+  const trainMsg = async () => { const t = await getTraining(); $('#stTrainMsg', el).textContent = t ? `Loaded: ${Math.round(t.length / 1000)}k characters.` : 'None loaded.'; };
+  trainMsg();
+  $('#stTrainFile', el).onchange = async e => { const f = e.target.files[0]; if (!f) return; const t = await f.text(); await setTraining(t); e.target.value = ''; toast('Coach training imported. It stays private.'); trainMsg(); };
+  $('#stTrainDel', el).onclick = async () => { await setTraining(''); toast('Coach training removed from this device (and from your sync at the next sync).'); trainMsg(); };
   $('#stAnthSave', el).onclick = async () => {
     settings.keys.anthropic = $('#stAnth', el).value.trim(); settings.coachModel = $('#stAnthModel', el).value; await saveSettings();
     const m = $('#stAnthMsg', el); m.className = 'small t-ok'; m.textContent = settings.keys.anthropic ? 'Saved. The Coach now answers with Claude.' : 'Key removed: the Coach gives offline answers.';

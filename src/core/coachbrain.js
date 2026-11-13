@@ -84,6 +84,9 @@ function addAnswer(q, c) {
       L.push(`DEGIRO: Buy · Limit ${lim} ${c.cur} · ${restSh} shares · day order. When it fills: change your Stop Loss to ${c.held ? c.held + restSh : 'all'} shares.`);
     } else if (restSh > 0) L.push(`The rest to buy later: about ${restSh} shares (≈ ${money(restVal, c.ccy)}).`);
   } else L.push('', `Tip: enter your shares and average price in the Portfolio tab (or tell me "I bought 30 ${sym} at …"), then I can work out exactly how many shares the add is.`);
+  L.push('', checksLine(c));
+  const tag = /^Yes/.test(verdict) ? `ADD${restSh ? ' about ' + restSh + ' shares' : ''}` : /^Wait/.test(verdict) ? 'WAIT (no add before earnings)' : 'HOLD (no add)';
+  L.push(`**${sym} ${tag}**${c.pivot ? ` — buy point ${r2(c.pivot)}, zone to ${r2(c.zoneTop)}` : ''}${c.cost ? `, stop about ${r2(c.cost * (1 - c.stopPct))}` : ''}.`);
   return L.join('\n');
 }
 
@@ -95,7 +98,15 @@ function buyAnswer(c) {
   else if (zone) L.push(`**Yes — it is in the buy zone (${pct(up)} above the buy point ${r2(c.pivot)}).**`, `• Your first step is 50% of the position: about ${sh} shares (≈ ${money(c.target * 0.5, c.ccy)}).`, c.volRatio != null ? `• Volume today ${c.volRatio >= 1.4 ? 'confirms it' : 'is light'} (${(c.volRatio).toFixed(1)}× the 50-day average; the breakout should be ≥ 1.4×).` : '', `• DEGIRO: Buy · Limit ${r2(Math.min(c.price * 1.005, c.zoneTop))} · ${sh} shares · day order; then a Stop Loss at ${r2(c.price * (1 - c.stopPct))}.`);
   else if (extended) L.push(`**Not here — extended ${pct(up)} above the buy point ${r2(c.pivot)} (zone ended at ${r2(c.zoneTop)}).**`, `• Wait for a pullback to the 50-day line${c.s50 ? ` (${r2(c.s50)}${ext50 != null ? ', ' + pct(ext50) + ' away' : ''})` : ''} or a new base.`);
   else L.push(`**Not yet — ${pct(up)} under the buy point ${r2(c.pivot)}.**`, `• Buy when it trades above ${r2(c.pivot)} (up to ${r2(c.zoneTop)}) on volume ≥ 1.4× average. DEGIRO: a Stop Limit buy, stop ${r2(c.pivot)}, limit ${r2(c.pivot * 1.02)}, ${sh} shares (50% of the position), until cancelled.`);
+  L.push('', checksLine(c));
+  const t = /^\*\*Yes/.test(L[0]) ? 'BUY 25–50% starter' : 'WAIT / WATCH';
+  L.push(`**${c.sym} ${t}**${c.pivot ? ` — buy point ${r2(c.pivot)}, never above ${r2(c.zoneTop)}` : ''}.`);
   return L.filter(Boolean).join('\n');
+}
+
+/** The checks the owner always wants at the end. */
+function checksLine(c) {
+  return `Checks: your maximum number of stocks, the ${Math.round((c.posPct || 0.2) * 100)}% size per stock, overlap with stocks that move together (same theme), ${c.earnDate ? 'earnings on ' + c.earnDate : 'the next earnings date'}, and the market direction.`;
 }
 
 function sellAnswer(c) {
@@ -111,6 +122,7 @@ function sellAnswer(c) {
   if (sell.length) L.push(`**${must ? 'Sell.' : profit ? 'Take profits by your plan.' : 'Hold — but watch closely.'}**`, `• You are ${pct(gain)} on your average price ${r2(c.cost)}${c.held ? ` (${c.held} shares)` : ''}.`, ...sell.map(x => '• ' + x[0].toUpperCase() + x.slice(1) + '.'));
   else L.push(`**Hold.** No sell rule is triggered for ${c.sym}.`, `• You are ${pct(gain)} on your average price ${r2(c.cost)}.`, `• Sell line: ${gain >= 0.15 && c.pivot ? r2(Math.max(stop, c.pivot * 0.97)) + ' (raised to just under the buy point after +15%)' : stop + ` (${Math.round(c.stopPct * 100)}% under your average)`}.`, `• Profit steps: ⅓ at ${r2(c.cost * 1.2)} (+20%), ⅓ at ${r2(c.cost * 1.25)} (+25%); the rest while it holds the 50-day line${c.s50 ? ` (now ${r2(c.s50)})` : ''}.`);
   if (c.earnDays != null && c.earnDays >= 0 && c.earnDays <= 14) L.push(`• Earnings on ${c.earnDate}: with a small cushion (under ~+15%), many O'Neil traders lighten up before the report.`);
+  L.push('', `**${c.sym} ${c.price <= stop || c.failed ? 'SELL' : sell.length ? (gain >= 0.2 ? 'TAKE PARTIAL PROFIT' : 'HOLD, watch closely') : 'HOLD'}** — stop ${gain >= 0.15 && c.pivot ? r2(Math.max(stop, c.pivot * 0.97)) : stop}.`);
   return L.join('\n');
 }
 

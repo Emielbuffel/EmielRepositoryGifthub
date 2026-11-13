@@ -7,3 +7,8 @@ ios/App/App.xcodeproj/xcuserdata/
 ios/App/App.xcodeproj/project.xcworkspace/xcuserdata/
 ios/DerivedData/
 release/
+
+# private, personal data (coach training, exports) must never be committed
+private/
+*coach-training*
+*.private.*
