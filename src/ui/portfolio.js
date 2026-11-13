@@ -5,10 +5,10 @@ import { baseState, pc, fD, fDs, patternPhase } from '../core/analysis.js';
 import { phaseTag } from './phase.js';
 import { sma } from '../core/indicators.js';
 import { analysePortfolio } from '../core/portfolio.js';
-import { daily, fxWeekly, isDemo, provider, DataError } from '../data/service.js';
+import { daily, fxWeekly, isDemo, provider, DataError, settings } from '../data/service.js';
 import { currencyOf } from '../data/providers.js';
 import * as store from '../data/store.js';
-import { App, on, openStock } from '../app.js';
+import { App, on, openStock, rememberName } from '../app.js';
 import { $, $$, html, raw, render, money, big, ICON, toast, sheet } from './dom.js';
 import { importSheet } from './importui.js';
 import { checkNewResults } from '../data/fundamentals.js';
@@ -70,27 +70,74 @@ export async function initPortfolio(el) {
 async function loadHoldings() { App.holdings = await store.get(hkey(), isDemo() ? DEMO_HOLD : []); P.done = false; }
 async function saveHoldings() { await store.set(hkey(), App.holdings); P.done = false; analyse(); }
 
+const CCYS = ['EUR', 'USD', 'GBP', 'GBp', 'CHF', 'DKK', 'SEK', 'NOK', 'JPY', 'HKD', 'KRW', 'CAD'];
+/** Add or edit a holding: find the company by name or ticker (with its exchange and currency), shares, and your average
+ * purchase price in the currency you choose (converted to the listing's currency at today's rate). */
 function editHolding(h) {
   const sh = sheet(h ? 'Edit ' + h.sym : 'Add a holding', html`
     <form class="card" id="hf" style="gap:12px">
-      <label class="field"><span>Ticker</span><input class="input" name="sym" required autocapitalize="characters" autocomplete="off" spellcheck="false" placeholder="AAPL, ASML.AS, 7203.T" value="${h ? h.sym : ''}" ${h ? raw('readonly') : ''}></label>
+      <label class="field"><span>Company or ticker — search by name to get the right exchange (e.g. "UCB", "Siemens Energy", "ASML")</span>
+        <input class="input" name="q" autocomplete="off" spellcheck="false" placeholder="Company name or ticker" value="${h ? h.sym : ''}"></label>
+      <div id="hRes" class="h-res"></div>
+      <div class="small" id="hPick"></div>
       <div class="grid2"><label class="field"><span>Shares</span><input class="input" name="shares" type="number" inputmode="decimal" step="any" min="0" required value="${h ? h.shares : ''}"></label>
-      <label class="field"><span>Average cost per share (listing currency, optional)</span><input class="input" name="cost" type="number" inputmode="decimal" step="any" min="0" value="${h && h.cost ? h.cost : ''}"></label></div>
+      <label class="field"><span>Average purchase price per share (optional)</span><div class="row" style="gap:6px"><input class="input" name="cost" type="number" inputmode="decimal" step="any" min="0" style="flex:1" value="${h && (h.costIn || h.cost) ? (h.costIn || h.cost) : ''}"><select class="input" name="ccy" style="width:96px"></select></div></label></div>
       <div class="toolbar"><button class="btn primary" type="submit">Save</button>${h ? html`<button class="btn danger" type="button" id="hDel">Remove</button>` : ''}</div>
-      <p class="muted tiny" style="margin:0">London prices are in pence (GBp). The cost is used for the 7–8% loss-cutting rule.</p>
+      <p class="muted tiny" style="margin:0" id="hNote">London prices are in pence (GBp). The purchase price is used for the 7–8% loss-cutting rule; a price in another currency than the listing's is converted at today's rate (DEGIRO shows the average price per share in the stock's own currency).</p>
     </form>`);
-  const f = sh.querySelector('#hf');
-  f.onsubmit = e => {
+  const f = sh.querySelector('#hf'), res = sh.querySelector('#hRes'), pick = sh.querySelector('#hPick');
+  let chosen = h ? { symbol: h.sym, name: App.names[h.sym] || '' } : null, listCur = h ? currencyOf(h.sym) : '', timer = null, seq = 0;
+  const fillCcy = () => {
+    const cur = (h && h.costCcy) || listCur || 'EUR', opts = [...new Set([listCur, ...CCYS].filter(Boolean))];
+    render(f.ccy, html`${opts.map(c => html`<option value="${c}" ${c === cur ? raw('selected') : ''}>${c}${c === listCur ? ' (listing)' : ''}</option>`)}`);
+  };
+  const showPick = async () => {
+    if (!chosen) { pick.textContent = ''; return; }
+    render(pick, html`<b>${chosen.symbol}</b> ${chosen.name || ''} <span class="muted">· checking price…</span>`);
+    try {
+      const d = await daily(chosen.symbol); listCur = d.currency || currencyOf(chosen.symbol); fillCcy();
+      const c = d.bars[d.bars.length - 1].close;
+      render(pick, html`✅ <b>${chosen.symbol}</b> ${d.name || chosen.name || ''} · ${d.exchange || ''} · last price <b>${c.toLocaleString('en-US', { maximumFractionDigits: 2 })} ${listCur}</b>`);
+    } catch (e) { listCur = currencyOf(chosen.symbol); fillCcy(); render(pick, html`<b>${chosen.symbol}</b> ${chosen.name || ''} <span class="muted">· ${e.message || 'no prices here'}</span>`); }
+  };
+  const search = async q => {
+    const my = ++seq; if (q.trim().length < 2) { res.innerHTML = ''; return; }
+    let list = [];
+    try { list = await provider().search(q.trim(), settings.keys[settings.provider]); } catch (e) { /* none */ }
+    if (my !== seq) return;
+    const base = q.trim().toUpperCase();
+    // the same ticker on other exchanges (UCB → UCB.BR) first when the query is a ticker
+    list.sort((a, b) => (b.symbol.split('.')[0] === base) - (a.symbol.split('.')[0] === base));
+    render(res, list.length ? html`${list.slice(0, 8).map((x, i) => html`<button type="button" class="h-opt${chosen && chosen.symbol === x.symbol ? ' on' : ''}" data-i="${i}"><b>${x.symbol}</b> <span>${x.name || ''}</span> <span class="muted small">${[x.exchange, x.currency || currencyOf(x.symbol)].filter(Boolean).join(' · ')}</span></button>`)}` : html`<p class="muted small" style="margin:0">No match. You can still save the ticker as typed (e.g. UCB.BR for Brussels, ENR.DE for Xetra).</p>`);
+    $$('.h-opt', res).forEach(b => { b.onclick = () => { const x = list[+b.dataset.i]; chosen = { symbol: x.symbol, name: x.name || '' }; f.q.value = x.symbol; $$('.h-opt', res).forEach(o => o.classList.toggle('on', o === b)); showPick(); }; });
+  };
+  f.q.oninput = () => { chosen = null; pick.textContent = ''; clearTimeout(timer); timer = setTimeout(() => search(f.q.value), 300); };
+  fillCcy();
+  if (h) { showPick(); search(h.sym.split('.')[0]); }
+  f.onsubmit = async e => {
     e.preventDefault();
-    const sym = f.sym.value.toUpperCase().trim().replace(/[^A-Z0-9.\-]/g, ''), shares = +f.shares.value, cost = +f.cost.value || null;
-    if (!sym || !(shares > 0)) return;
-    const list = App.holdings.filter(x => x.sym !== sym); const i = App.holdings.findIndex(x => x.sym === sym);
-    list.splice(i >= 0 ? i : list.length, 0, { sym, shares, cost });
+    const typed = f.q.value.toUpperCase().trim().replace(/[^A-Z0-9.\-^]/g, '');
+    const sym = chosen ? chosen.symbol : typed, shares = +f.shares.value, costIn = +f.cost.value || null, ccy = f.ccy.value;
+    if (!sym || !(shares > 0)) { toast('Choose the company and enter the number of shares.'); return; }
+    let cost = costIn;
+    const lc = listCur || currencyOf(sym);
+    if (costIn && ccy && lc && ccy !== lc) {
+      const fx = await factor(ccy, lc).catch(() => null);
+      if (!fx) { toast(`No ${ccy}→${lc} rate here: enter the price in ${lc}.`); return; }
+      cost = +(costIn * fx.v).toFixed(4);
+      toast(`${costIn} ${ccy} = ${cost.toFixed(2)} ${lc} at today's rate${fx.live ? '' : ' (reference rate ' + fx.date + ')'}.`, 5000);
+    }
+    if (chosen && chosen.name) await rememberName(sym, chosen.name);
+    const item = { sym, shares, cost, ...(costIn && ccy !== lc ? { costIn, costCcy: ccy } : {}) };
+    const list = App.holdings.filter(x => x.sym !== sym && (!h || x.sym !== h.sym));
+    const i = App.holdings.findIndex(x => x.sym === (h ? h.sym : sym));
+    list.splice(i >= 0 ? Math.min(i, list.length) : list.length, 0, item);
     App.holdings = list; sh.close(); saveHoldings();
+    if (h && h.sym !== sym) toast(`${h.sym} replaced by ${sym}.`);
   };
   const del = sh.querySelector('#hDel');
   if (del) del.onclick = () => { App.holdings = App.holdings.filter(x => x.sym !== h.sym); sh.close(); saveHoldings(); };
-  setTimeout(() => (h ? f.shares : f.sym).focus(), 50);
+  setTimeout(() => (h ? f.shares : f.q).focus(), 50);
 }
 
 async function analyse() {
@@ -107,7 +154,7 @@ async function analyse() {
     return;
   }
   render(top, html`<div class="empty"><span class="spinner"></span><span>Analysing ${App.holdings.length} holdings…</span></div>`);
-  const rows = [], errs = []; let refRate = null;
+  const rows = [], errs = []; let refRate = null; P.failed = [];
   for (const h of App.holdings) {
     try {
       const d = await daily(h.sym);
@@ -120,7 +167,9 @@ async function analyse() {
       const b = d.bars, n = b.length - 1, c = b[n].close;
       const R = PAT.scan(b), B = baseState(R, b), s50 = sma(b.map(x => x.close), 50)[n], s200 = sma(b.map(x => x.close), 200)[n];
       const sig = [];
-      if (h.cost && c <= h.cost * 0.92) sig.push(['bad', `${pc(c / h.cost - 1, 0)} vs your cost: the rule is to cut losses at 7–8%`]);
+      const odd = h.cost && (c / h.cost < 0.4 || c / h.cost > 2.5);
+      if (odd) sig.push(['bad', `Is this the right company? The price ${c.toFixed(2)} ${cur} is far from your purchase price ${(+h.cost).toFixed(2)}: maybe the same ticker on another exchange (e.g. UCB → UCB.BR, ENR → ENR.DE). Tap Edit and search by name.`]);
+      else if (h.cost && c <= h.cost * 0.92) sig.push(['bad', `${pc(c / h.cost - 1, 0)} vs your cost: the rule is to cut losses at 7–8%`]);
       if (s200 && c < s200) sig.push(['bad', 'Below the 200-day line']);
       else if (s50 && c < s50) sig.push(['warn', 'Below the 50-day line']);
       if (B.st === 'STOP HIT') sig.push(['bad', '8% under the breakout buy point']);
@@ -129,7 +178,7 @@ async function analyse() {
       if (h.cost && c >= h.cost * 1.2) sig.push(['good', `Up ${pc(c / h.cost - 1, 0)}: the rule of thumb takes most profits at +20–25%`]);
       if (['NEAR BUY POINT', 'IN BUY ZONE'].includes(B.st)) sig.push(['good', (B.p ? B.p.name + ': ' : '') + B.st.toLowerCase()]);
       rows.push({ ...h, d, cur, ph: patternPhase(R, b), fx: fx || null, fxNow: fxNow || 1, c, ch: c / b[n - 1].close - 1, value: h.shares * c * (fxNow || 1), costV: h.cost ? h.shares * h.cost * (fxNow || 1) : null, B, sig, s200: s200 ? c / s200 - 1 : null });
-    } catch (e) { errs.push(`${h.sym}: ${e.message}`); if (e instanceof DataError && e.kind === 'auth') break; }
+    } catch (e) { errs.push(`${h.sym}: ${e.message}`); P.failed.push(h.sym); if (e instanceof DataError && e.kind === 'auth') break; }
     if (seq !== P.seq) return;
   }
   let bench = null;
@@ -163,6 +212,7 @@ function draw(rows, A, bench, errs) {
       ${bad ? kp('Effective positions', A.effN.toFixed(1), 'how diversified the weights are') : ''}
     </div>
     ${errs.length ? html`<p class="small t-warn" style="margin:0">${errs.join(' · ')}</p>` : ''}
+    ${P.failed.length ? html`<div class="toolbar">${P.failed.map(x => html`<button class="btn sm" data-fix="${x}">Fix ${x}: find the right company</button>`)}</div>` : ''}
     ${A && A.error ? html`<p class="small t-warn" style="margin:0">${A.error}</p>` : ''}`);
   const per = new Map((bad ? A.per : []).map(x => [x.sym, x]));
   render($('#pHold'), html`<div class="tbl-wrap"><table class="tbl"><thead><tr><th class="sticky">Position</th><th class="n">Shares</th><th class="n">Price</th><th class="n">Day</th><th class="n">Value ${P.base}</th><th class="n">Weight</th><th class="n">vs cost</th><th class="n">vs 200-day</th><th class="n">Down β</th><th>Phase</th><th>Signals</th><th></th></tr></thead><tbody>
@@ -176,6 +226,7 @@ function draw(rows, A, bench, errs) {
   </tbody></table></div><p class="muted tiny" style="margin:0">Tap a row for its chart and base patterns. Down β = how much the position moved per 1% fall of the benchmark, measured only in weeks the benchmark fell.</p>`);
   $$('#pHold tr.click').forEach(tr => { tr.onclick = e => { if (e.target.closest('[data-edit]')) return; openStock(tr.dataset.s); }; });
   $$('#pHold [data-edit]').forEach(b => { b.onclick = () => editHolding(App.holdings.find(h => h.sym === b.dataset.edit)); });
+  $$('[data-fix]').forEach(b => { b.onclick = () => editHolding(App.holdings.find(h => h.sym === b.dataset.fix)); });
   if (!bad) { ['#pFlags', '#pRisk', '#pCorr', '#pStress'].forEach(id => { $(id).innerHTML = ''; }); return; }
   // position sizes are measured against the plan capital (e.g. 20% of 100,000 EUR), or the holdings if larger
   const capBase = P.strategy && P.capFx ? P.strategy.capital * P.capFx : 0;

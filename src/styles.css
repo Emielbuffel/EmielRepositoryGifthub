@@ -604,3 +604,7 @@ tr.auto td { background: color-mix(in srgb, var(--blue) 6%, transparent); }
 .co-tr-row .input.sm.co-sym { width: 92px; }
 .co-tr-row input[type=date].input.sm { width: 132px; }
 .co-tr-row select.input.sm { width: 66px; }
+
+.h-res { display: grid; gap: 4px; max-height: 240px; overflow-y: auto; }
+.h-opt { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; text-align: left; padding: 8px 10px; border-radius: 10px; border: 1px solid var(--sep); background: var(--bg2); color: var(--ink); font: inherit; cursor: pointer; }
+.h-opt.on { border-color: var(--blue); background: color-mix(in srgb, var(--blue) 10%, var(--bg2)); }
