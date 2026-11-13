@@ -113,3 +113,53 @@ function sellAnswer(c) {
   if (c.earnDays != null && c.earnDays >= 0 && c.earnDays <= 14) L.push(`• Earnings on ${c.earnDate}: with a small cushion (under ~+15%), many O'Neil traders lighten up before the report.`);
   return L.join('\n');
 }
+
+/* ---------- the whole portfolio: what to sell, trim or keep ---------- */
+export const PORTFOLIO_Q = /\b(portfolio|portefeuille|positions|posities|holdings|my stocks|mijn aandelen|trim|trimm|afbouw|afslank|which (ones|stocks|positions)|welke (aandelen|posities)|weed|too many|te veel|rebalanc)\b/i;
+
+/**
+ * rv = reviewHoldings(): {items: [{sym, name, verdict, title, score, reasons, m: {gain, m3, w8, rs...}, value, weight, ext50,
+ * odd, phase, cur, close, cost}], failed, rank: {list, over, sellNow, suggest}, max, S, z, total, equity}
+ */
+export function portfolioAnswer(rv) {
+  if (!rv || !rv.items.length) return 'I don\'t see any holdings yet. Add them in the Portfolio tab (or tell me "I bought 30 NVDA at 182"), then I can go through them one by one.';
+  const S = rv.S, z = rv.z, ccy = S.ccy, it = rv.items, L = [];
+  const by = s => it.find(x => x.sym === s), p = x => x == null ? '—' : pct(x, 0);
+  const odd = it.filter(x => x.odd);
+  // a failed breakout of the latest base on a stock you are well up on = take profits / sell part, not "dump everything"
+  const softFail = x => x.m.gain != null && x.m.gain >= 0.1 && x.reasons.filter(r => r[0] === 'bad').every(r => /Failed breakout/.test(r[1]));
+  const sell = rv.rank.sellNow.map(by).filter(x => x && !softFail(x));
+  const failTrim = rv.rank.sellNow.map(by).filter(x => x && softFail(x));
+  const weak = rv.rank.list.filter(x => x.verdict === 'weak' || x.verdict === 'dead');
+  const profit = it.filter(x => !x.odd && x.m.gain != null && x.m.gain >= 0.2 && !rv.rank.sellNow.includes(x.sym));
+  const climax = it.filter(x => !x.odd && x.ext50 != null && x.ext50 > 0.25 && !rv.rank.sellNow.includes(x.sym));
+  const big = it.filter(x => !x.odd && x.weight != null && x.weight > S.posPct * 1.25);
+  const leaders = rv.rank.list.filter(x => x.verdict === 'leader');
+  const corr = z && z.market === 'corr', press = z && z.market === 'press';
+  const allowed = z ? Math.round(z.allowed * 100) : null, invested = z && z.exposure != null ? Math.round(z.exposure * 100) : null;
+
+  // the verdict first
+  const act = [...new Set([...sell.map(x => x.sym), ...failTrim.map(x => x.sym), ...weak.map(x => x.sym)])];
+  L.push(`**${act.length ? `Yes — sell or trim ${act.length} of your ${it.length} positions${corr ? ' (and raise cash: the market is in a correction)' : ''}.` : profit.length || big.length ? 'Mostly hold — but take some profit / reduce oversized positions.' : 'Hold — no position breaks a sell rule.'}**`);
+  if (z) L.push(`Market: ${corr ? 'correction' : press ? 'uptrend under pressure' : 'confirmed uptrend'} → the book allows ~${allowed}% invested, max ${rv.max} position${rv.max === 1 ? '' : 's'} of ${Math.round(S.posPct * 100)}%. You are ${invested != null ? invested + '% invested' : '—'} with ${it.length} positions${it.length > rv.max ? ` — ${it.length - rv.max} more than the limit` : ''}.`);
+  if (odd.length) L.push('', `⚠️ First check these tickers — the price is far from your purchase price, probably another company with the same ticker: ${odd.map(x => `${x.sym} (${x.name || '?'}, ${x.close.toFixed(2)} ${x.cur} vs your ${(+x.cost).toFixed(2)})`).join('; ')}. Fix them in Portfolio → Edit (search by name, e.g. UCB → UCB.BR, ENR → ENR.DE). I left them out of the advice below.`);
+  if (sell.length) { L.push('', '**Sell — a sell rule is broken:**'); sell.forEach(x => L.push(`• ${x.sym}${x.name ? ' (' + x.name + ')' : ''}: ${(x.reasons.find(r => r[0] === 'bad') || ['', x.title])[1]} ${x.m.gain != null ? `You are ${p(x.m.gain)}.` : ''}`)); }
+  if (failTrim.length) { L.push('', '**Trim — the latest breakout failed, but you have a good profit:**'); failTrim.forEach(x => L.push(`• ${x.sym}: ${p(x.m.gain)} on your price. The newest base broke out and failed: sell the shares you added at that breakout and take part of the profit (⅓–½); keep the rest only while it holds the 50-day line${x.s50 ? ` (${x.s50.toFixed(2)})` : ''}.`)); }
+  const wk = weak.filter(x => !rv.rank.sellNow.includes(x.sym));
+  if (wk.length) { L.push('', `**${corr || it.length > rv.max ? 'Trim first — the weakest' : 'Candidates to trim — lagging'}:**`); wk.forEach(x => L.push(`• ${x.sym}: ${x.verdict === 'dead' ? 'not moving' : 'weak'} (keep score ${x.score}/100) — ${x.m.w8 != null ? p(x.m.w8) + ' in 8 weeks' : ''}${x.m.rs != null ? `, RS ${x.m.rs}` : ''}${x.m.gain != null ? `, ${p(x.m.gain)} on your price` : ''}. Money that could work in a leader.`)); }
+  if (profit.length) { L.push('', '**Take partial profits (your plan: ⅓ at +20%, ⅓ at +25%):**'); profit.forEach(x => L.push(`• ${x.sym}: ${p(x.m.gain)} on your price ${(+x.cost).toFixed(2)} → sell about ${Math.round(x.shares / 3)} of ${x.shares} shares${x.m.gain >= 0.25 ? ' (both thirds are due: up to ⅔)' : ''}; keep the rest while it holds the 50-day line${x.s50 ? ` (${x.s50.toFixed(2)})` : ''}.`)); }
+  const cl = climax.filter(x => !profit.includes(x));
+  if (cl.length) { L.push('', '**Extended — watch for a climax top:**'); cl.forEach(x => L.push(`• ${x.sym}: ${p(x.ext50)} above its 50-day line. Not a sell by itself; sell into a climax run (biggest gain since the breakout, an exhaustion gap).`)); }
+  if (big.length) { L.push('', '**Too large a position:**'); big.forEach(x => L.push(`• ${x.sym}: ${Math.round(x.weight * 100)}% of your account vs your ${Math.round(S.posPct * 100)}% size → trim back to ~${Math.round(S.posPct * 100)}% (≈ ${Math.round((x.weight - S.posPct) * rv.equity).toLocaleString('en-US')} ${ccy}).`)); }
+  if (leaders.length) L.push('', `**Keep — your leaders:** ${leaders.map(x => `${x.sym} (${p(x.m.gain)}${x.m.rs != null ? ', RS ' + x.m.rs : ''})`).join(', ')}. Let winners run; their stop moves up (breakeven after +20%).`);
+  const holds = rv.rank.list.filter(x => x.verdict === 'hold');
+  if (holds.length) L.push(`**Hold — acting normally:** ${holds.map(x => x.sym).join(', ')}.`);
+  const left = it.length - act.length - odd.length;
+  if ((corr || press) && left > rv.max) {
+    const next = rv.rank.list.filter(x => !act.includes(x.sym)).sort((a, b) => a.score - b.score).slice(0, left - rv.max);
+    L.push('', `${corr ? 'In a correction the book goes to 0–20% invested' : 'Under pressure the book goes to 40–60% invested'}: after the steps above you would still hold ${left} positions for a limit of ${rv.max}. Next to reduce (lowest keep score first): ${next.map(x => `${x.sym} (${x.score})`).join(', ')}. Keep the strongest leaders${leaders.length ? ' (' + leaders.sort((a, b) => b.score - a.score).slice(0, Math.max(1, rv.max)).map(x => x.sym).join(', ') + ')' : ''}.`);
+  }
+  if (rv.failed.length) L.push('', `No prices for: ${rv.failed.join(', ')} (check the ticker).`);
+  L.push('', 'Details per stock: the Sell ideas tab. In DEGIRO: a Limit sell at about the last price (day order); lower your Stop Loss by the shares you sell first.');
+  return L.join('\n');
+}

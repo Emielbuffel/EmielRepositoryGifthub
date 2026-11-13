@@ -6,7 +6,8 @@ import { strategy } from '../data/plans.js';
 import { App, go } from '../app.js';
 import { $, $$, html, raw, render, sheet, esc, toast } from './dom.js';
 import { looksLikeTrades } from '../core/tradetalk.js';
-import { tailoredAnswer } from '../core/coachbrain.js';
+import { tailoredAnswer, portfolioAnswer, PORTFOLIO_Q } from '../core/coachbrain.js';
+import { reviewHoldings } from '../data/holdreview.js';
 import { draftTrades, saveTrades, normaliseWithClaude } from '../data/tradechat.js';
 
 const C = { msgs: [], busy: false };
@@ -75,8 +76,16 @@ export function openCoach() {
       if (drafts.length) { C.msgs.push({ role: 'assistant', trades: drafts, state: 'open' }); C.busy = false; paint(); return; }
     }
     const ctx = coachContext({ stock: stockCtx ? stockCtx() : null, mkt: App.mkt, holdings: App.holdings, strategy: await strategy() });
-    let answer;
-    const mine = ctx.stock && ctx.stock.num ? tailoredAnswer(text, ctx.stock.num) : null;
+    let answer, mine = null;
+    // a question about the whole portfolio: go through every position (same analysis as the Sell ideas tab)
+    if (PORTFOLIO_Q.test(text) && (App.holdings || []).length) {
+      try {
+        const rv = await reviewHoldings();
+        ctx.portfolio = { ...(ctx.portfolio || {}), review: rv.items.map(x => ({ sym: x.sym, name: x.name, verdict: x.verdict, keepScore: x.score, gain: x.m.gain != null ? Math.round(x.m.gain * 1000) / 10 + '%' : null, weight: x.weight != null ? Math.round(x.weight * 1000) / 10 + '%' : null, above50: x.m.above50, above200: x.m.above200, chg8w: x.m.w8 != null ? Math.round(x.m.w8 * 1000) / 10 + '%' : null, rs: x.m.rs, ext50: x.ext50 != null ? Math.round(x.ext50 * 1000) / 10 + '%' : null, phase: x.phase, wrongTickerSuspect: x.odd, reasons: x.reasons.map(r => r[1]).slice(0, 4) })), maxPositions: rv.max, sellRuleBroken: rv.rank.sellNow };
+        mine = portfolioAnswer(rv);
+      } catch (e) { /* fall back */ }
+    }
+    if (!mine) mine = ctx.stock && ctx.stock.num ? tailoredAnswer(text, ctx.stock.num) : null;
     if (online) {
       // a real conversation: the whole chat so far, the chart on screen and any pictures you added
       const pics = att.splice(0); showAtt();
