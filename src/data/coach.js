@@ -133,3 +133,78 @@ export async function askClaude(history, ctx) {
     throw new Error('Could not reach api.anthropic.com. ' + (e.message || e));
   }
 }
+
+/* ---------- the coach as a conversation partner that also sees the chart ---------- */
+// How to talk: like a personal coach in a chat, not a fixed template. Used by both ways of reaching Claude below.
+export const COACH_STYLE = `HOW TO TALK: you are the user's personal trading coach in a chat. Answer exactly what was asked, in the user's language, like a conversation —
+not a fixed template. A picture of the chart the user is looking at comes with the question (daily candles, moving averages, volume pane,
+pattern lines and the buy point the app found): look at it and refer to what you see ("the handle formed on lighter volume", "it closed back
+under the pivot"). When the question is about the chart or a trade, write the read the way the playbook says: lead with the call, then the base
+(type, weeks, depth, buy point, faults), the price versus the buy point and the 50/200-day lines, volume and the RS line, what would make it a buy
+(close above X on volume ≥ Y) and where the stop is, fundamentals in one line and the market. Use the exact numbers from the context JSON (stock.num:
+price, pivot, zoneTop, s50, the user's shares and average cost, target size, earnings date, market). If the picture and the numbers disagree,
+say so and trust the numbers. If something you said earlier was wrong, correct it openly. Follow-up questions build on the earlier answers.
+Keep it focused (usually 5–12 lines), give the concrete action (shares, DEGIRO order type, stop) when it is about buying, adding or selling,
+and end with "Not investment advice."`;
+
+const blobB64 = b => new Promise((ok, no) => { const r = new FileReader(); r.onload = () => ok(String(r.result).split(',')[1]); r.onerror = no; r.readAsDataURL(b); });
+
+let sampleP = null;
+/** Claude through the claude.ai page itself (the viewer's own Claude account, no API key): the `sample` capability, or null. */
+export function pageClaude() {
+  if (!sampleP) {
+    const c = typeof window !== 'undefined' && window.claude;
+    sampleP = c && typeof c.use === 'function' ? c.use('sample').catch(() => null) : Promise.resolve(null);
+  }
+  return sampleP;
+}
+
+/** Which way the coach can reach Claude here: 'page' (claude.ai), 'key' (your API key) or null (offline answers). */
+export async function aiMode() {
+  if ((settings.keys.anthropic || '').trim()) return 'key';
+  return (await pageClaude()) ? 'page' : null;
+}
+
+/**
+ * One coach turn with Claude. history: [{role, content}] ending with the user's question; images: Blob[] (the chart,
+ * pictures the user added) sent with the newest question only. onText(text) streams the answer on claude.ai.
+ */
+export async function askCoachAI(history, ctx, images = [], onText) {
+  const mode = await aiMode(); if (!mode) throw new Error('No Claude connection here.');
+  const intro = PLAYBOOK + '\n\n' + COACH_STYLE + '\n\nContext from the app right now (JSON):\n' + JSON.stringify(ctx);
+  if (mode === 'page') {
+    const sample = await pageClaude();
+    let imgs = [];
+    try { const lim = sample.limits ? await sample.limits() : null; if (lim && lim.images) imgs = images.slice(0, 4); } catch (e) { /* text only */ }
+    const msgs = [{ role: 'user', content: intro + '\n\n(Reply "OK" to this setup message.)' }, { role: 'assistant', content: 'OK.' }, ...history];
+    try {
+      const r = await sample(msgs, { modelTier: 'complex', cache: false, ...(imgs.length ? { images: imgs } : {}), ...(onText ? { onText: ({ text }) => onText(text) } : {}) });
+      return r.text + (images.length && !imgs.length ? '\n\n(I could not look at the chart picture here; this answer uses the numbers only.)' : '');
+    } catch (e) {
+      if (e && e.code === 'not_granted') throw new Error('The page may not ask Claude: allow it in the page\'s permissions, or add your API key in Settings → Coach.');
+      if (e && e.code === 'rate_limited') throw new Error('Claude is busy (rate limit). Try again in a minute.');
+      throw new Error((e && e.message) || 'Claude did not answer.');
+    }
+  }
+  // your own API key: Claude with vision
+  const { default: Anthropic } = await import('@anthropic-ai/sdk');
+  const client = new Anthropic({ apiKey: settings.keys.anthropic.trim(), dangerouslyAllowBrowser: true });
+  const last = history[history.length - 1], pics = await Promise.all(images.slice(0, 4).map(async b => ({ type: 'image', source: { type: 'base64', media_type: b.type || 'image/png', data: await blobB64(b) } })));
+  const msgs = [...history.slice(0, -1), { role: 'user', content: [...pics, { type: 'text', text: last.content }] }];
+  try {
+    const r = await client.beta.messages.create({
+      model: settings.coachModel || 'claude-opus-5-5', max_tokens: 2048,
+      betas: ['server-side-fallback-2026-07-01'], fallbacks: 'default',
+      system: [{ type: 'text', text: PLAYBOOK + '\n\n' + COACH_STYLE, cache_control: { type: 'ephemeral' } }],
+      messages: [{ role: 'user', content: 'Context from the app right now (JSON):\n' + JSON.stringify(ctx) }, { role: 'assistant', content: 'Understood. I will use these numbers, the chart and the playbook.' }, ...msgs],
+    });
+    if (r.stop_reason === 'refusal') return 'I can’t answer that one. ' + ((r.stop_details && r.stop_details.explanation) || '');
+    return r.content.filter(b => b.type === 'text').map(b => b.text).join('\n') || '(empty answer)';
+  } catch (e) {
+    const { default: A } = await import('@anthropic-ai/sdk');
+    if (e instanceof A.AuthenticationError) throw new Error('The API key was refused. Check it in Settings → Coach (it starts with sk-ant-).');
+    if (e instanceof A.RateLimitError) throw new Error('Rate limit reached at Anthropic. Wait a minute and try again.');
+    if (e instanceof A.APIError) throw new Error('Anthropic error ' + e.status + ': ' + e.message);
+    throw new Error('Could not reach api.anthropic.com. ' + (e.message || e));
+  }
+}

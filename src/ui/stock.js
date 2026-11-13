@@ -5,7 +5,7 @@ import { phaseTag, phaseStrip } from './phase.js';
 import { renderPanel } from './panel.js';
 import { volStats } from '../core/volume.js';
 import { fmtVol } from '../core/analysis.js';
-import { setCoachStock, openCoach } from './coachui.js';
+import { setCoachStock, setCoachChart, openCoach } from './coachui.js';
 import { drawIntraday } from './intraday.js';
 import { companyCard, fundsItem } from './companyui.js';
 import { companyInfo } from '../data/company.js';
@@ -855,6 +855,12 @@ function wireTools() {
       num: coachNumbers(d, p, nx),
       volume: V.vs ? `today ${fmtVol(V.vs.vol)}${V.vs.open ? ' so far (market open' + (V.vs.pace ? ', full-day estimate ' + fmtVol(V.vs.pace) : '') + ')' : ''}, ${pc(V.vs.pct, 0)} vs 50-day avg ${fmtVol(V.vs.avg50)}; this week ${V.vs.week ? fmtVol(V.vs.week.vol) + ' in ' + V.vs.week.days + ' days' : '—'}, avg week ${fmtVol(V.vs.avgWeek)}; up/down volume ratio ${V.vs.udRatio != null ? V.vs.udRatio.toFixed(2) : '—'}; breakout needs ≥ ${fmtVol(V.vs.breakoutNeed)}` : null,
     };
+  });
+  // a picture of the chart on screen (daily candles, lines, volume, patterns) for the coach to look at
+  setCoachChart(async () => {
+    if (!V.data || !V.chart || !V.chart.chart || IV.range) return null;
+    const cv = V.chart.chart.takeScreenshot(); if (!cv) return null;
+    return new Promise(ok => cv.toBlob(b => ok(b), 'image/png'));
   });
   $('#sWatch').onclick = () => { if (V.sym) listMenu(V.sym); };
   $('#sPlan').onclick = () => {
