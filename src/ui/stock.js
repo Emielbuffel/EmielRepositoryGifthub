@@ -18,6 +18,8 @@ import { alertSheet } from './alertsui.js';
 import { planSheet } from './plansui.js';
 import { planFor, tradesFor, strategy } from '../data/plans.js';
 import { degiroOrders } from '../core/degiro.js';
+import { holdingSignals } from '../core/addons.js';
+import { sma } from '../core/indicators.js';
 import { pyramid, sharesFor, DEFAULT_PLAN, tradePlan } from '../core/strategy.js';
 import { fundTrade } from '../core/sizing.js';
 import { factor } from '../data/fx.js';
@@ -668,6 +670,26 @@ function tradePlanBlock(B) {
   </div>`;
 }
 
+/* The numbers the coach needs to answer for this stock: your position, the buy point, the 50-day line, the market. */
+function coachNumbers(d, p, nx) {
+  try {
+    const n = d.length - 1, price = d[n].close, c = d.map(b => b.close), s50 = sma(c, 50)[n];
+    const S = V.strategy || DEFAULT_PLAN, fx = V.fx || 1, h = (App.holdings || []).find(x => x.sym === V.sym);
+    const T = tradePlan(S, p ? p.pivot : price, fx), last = V.R && V.R.last;
+    const days = nx ? Math.ceil((nx.time - Date.now() / 1000) / 86400) : null;
+    return {
+      sym: V.sym, cur: V.data.currency, price, pivot: p ? p.pivot : null, zoneTop: p ? p.pivot * (1 + (S.zone || 0.05)) : null, s50,
+      boAgo: last && !last.failed ? n - last.bo : null, failed: !!(last && last.failed && n - last.bo <= 25),
+      held: h ? h.shares : 0, cost: h && h.cost ? h.cost : null,
+      target: T.target, posPct: S.posPct, ccy: S.ccy, fx, stopPct: S.stop,
+      earnDays: days, earnDate: nx ? fD(nx.time) : null,
+      market: App.mkt ? App.mkt.us : null,
+      adds: holdingSignals(d, V.R, { cost: h && h.cost ? h.cost : null }).map(a => ({ title: a.title, level: a.level, price: a.price })),
+      volRatio: V.vs && V.vs.avg50 ? V.vs.vol / V.vs.avg50 : null,
+    };
+  } catch (e) { return null; }
+}
+
 /* ---------- growth checklist ---------- */
 function renderCanslim() {
   const el = $('#cCanslim'); if (!el || !V.sig) return;
@@ -830,6 +852,7 @@ function wireTools() {
       signals: (S.flags || []).slice(0, 5).map(f => f[1]),
       fundamentals: z ? `latest EPS ${z.eps} (${z.yoy != null ? pc(z.yoy, 0) + ' y/y' : 'y/y unknown'})${z.revYoy != null ? ', sales ' + pc(z.revYoy, 0) + ' y/y' : ''}` : null,
       nextEarnings: nx ? fD(nx.time) : null,
+      num: coachNumbers(d, p, nx),
       volume: V.vs ? `today ${fmtVol(V.vs.vol)}${V.vs.open ? ' so far (market open' + (V.vs.pace ? ', full-day estimate ' + fmtVol(V.vs.pace) : '') + ')' : ''}, ${pc(V.vs.pct, 0)} vs 50-day avg ${fmtVol(V.vs.avg50)}; this week ${V.vs.week ? fmtVol(V.vs.week.vol) + ' in ' + V.vs.week.days + ' days' : '—'}, avg week ${fmtVol(V.vs.avgWeek)}; up/down volume ratio ${V.vs.udRatio != null ? V.vs.udRatio.toFixed(2) : '—'}; breakout needs ≥ ${fmtVol(V.vs.breakoutNeed)}` : null,
     };
   });

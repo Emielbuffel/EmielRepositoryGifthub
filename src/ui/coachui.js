@@ -6,6 +6,7 @@ import { strategy } from '../data/plans.js';
 import { App, go } from '../app.js';
 import { $, $$, html, raw, render, sheet, esc, toast } from './dom.js';
 import { looksLikeTrades } from '../core/tradetalk.js';
+import { tailoredAnswer } from '../core/coachbrain.js';
 import { draftTrades, saveTrades, normaliseWithClaude } from '../data/tradechat.js';
 
 const C = { msgs: [], busy: false };
@@ -62,7 +63,8 @@ export function openCoach() {
     }
     const ctx = coachContext({ stock: stockCtx ? stockCtx() : null, mkt: App.mkt, holdings: App.holdings, strategy: await strategy() });
     let answer;
-    try { answer = online ? await askClaude(C.msgs.filter(m => !m.trades).map(m => ({ role: m.role, content: m.content })), ctx) : askOffline(text, ctx); }
+    const mine = !online && ctx.stock && ctx.stock.num ? tailoredAnswer(text, ctx.stock.num) : null;
+    try { answer = online ? await askClaude(C.msgs.filter(m => !m.trades).map(m => ({ role: m.role, content: m.content })), ctx) : mine ? mine + '\n\nEducational analysis, not investment advice.' : askOffline(text, ctx); }
     catch (e) { answer = '⚠️ ' + e.message + (online ? '\n\n' + askOffline(text, ctx) : ''); }
     C.msgs.push({ role: 'assistant', content: answer }); C.busy = false;
     if (C.msgs.length > 24) C.msgs = C.msgs.slice(-24);
