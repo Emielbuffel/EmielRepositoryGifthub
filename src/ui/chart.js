@@ -1,5 +1,6 @@
 // Stock chart: candles/bars, moving averages, RS line, volume, RSI, MACD, every detected base pattern
 // (one colour per pattern type) and the user's own drawings. Built on lightweight-charts v5.
+import { fibLevels, fibSettings } from '../core/fib.js';
 import { SELL_LABEL } from '../core/sells.js';
 import { createChart, CandlestickSeries, BarSeries, LineSeries, HistogramSeries, createSeriesMarkers, LineStyle, CrosshairMode, PriceScaleMode } from 'lightweight-charts';
 import { calc, weekly, rsNewHigh, valueAt } from '../core/indicators.js';
@@ -350,6 +351,14 @@ export class StockChart {
         this.addPL({ price: dr.p1, color: col, lineWidth: 2, title: 'Your buy point' });
         this.addPL({ price: dr.p1 * 1.05, color: col, lineStyle: LineStyle.Dotted, title: '+5% zone top' });
         markers.push({ time: this.snapT(dr.t1), position: 'aboveBar', shape: 'arrowDown', color: col, text: 'Buy point ' + (Math.round(dr.p1 * 100) / 100) });
+      } else if (dr.type === 'fib') {
+        const fs = fibSettings(S.fib), i1 = this.idxAt(Math.min(dr.t1, dr.t2)), i2 = this.idxAt(Math.max(dr.t1, dr.t2)), t0 = b[i1].time, tEnd = fs.extend ? futureT : b[i2].time;
+        if (t0 === tEnd) continue;
+        for (const L of fibLevels(dr, fs)) {
+          const key = L.v === 0 || L.v === 100, gold = L.v === 38.2 || L.v === 61.8 || L.v === 161.8;
+          this.addLine([[t0, L.price], [tEnd, L.price]], { color: key ? col : gold ? tok('--orange') : L.v === 50 ? tok('--blue') : fade(col, 0.6), lineWidth: key ? 1.5 : 1, lineStyle: key ? LineStyle.Solid : LineStyle.Dashed, lastValueVisible: fs.prices, title: fs.prices ? L.label : '' });
+        }
+        this.addLine([[b[this.idxAt(dr.t1)].time, dr.p1], [b[this.idxAt(dr.t2)].time, dr.p2]].sort((x, y) => x[0] - y[0]), { color: fade(col, 0.5), lineWidth: 1, lineStyle: LineStyle.Dotted });
       } else if (dr.type === 'note') markers.push({ time: this.snapT(dr.t1), position: 'aboveBar', shape: 'arrowDown', color: col, text: dr.label || 'Note' });
     }
     // sell signals by the book's rules for the breakouts on the chart

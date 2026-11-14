@@ -35,11 +35,12 @@ import * as store from '../data/store.js';
 import { App, on, openStock, saveWatch, rememberName, rememberQuote, go, useList, emit } from '../app.js';
 import { StockChart, patternsToShow, outcome, PAT_LABEL, patColor, CMP_COLORS } from './chart.js';
 import { tok } from './dom.js';
-import { $, $$, html, raw, render, esc, money, ICON, toast, ago } from './dom.js';
+import { $, $$, html, raw, render, esc, money, ICON, toast, ago, sheet } from './dom.js';
+import { fibSettings, fibChoices, fibLevels, parseLevel } from '../core/fib.js';
 
 const V = { chart: null, S: null, data: null, bench: null, R: null, seq: 0, tool: null, pending: null, poly: null, drawingsAll: {}, earn: null, earnErr: null, news: null, newsSeen: 0, newsTag: 'all', cmp: [], mkt: null };
 const LINE_DEFS = [['l1', '10-day', '--ma1', '2-week'], ['l2', '21-day EMA', '--ma2', '4-week EMA'], ['l3', '50-day', '--ma3', '10-week'], ['l4', '200-day', '--ma4', '40-week'], ['rs', 'RS line', '--rs'], ['bb', 'Bollinger bands', '--muted']];
-let prefs = { tf: 'D', style: 'candles', ms: false, tradePlan: true, lines: { l1: false, l2: false, l3: true, l4: true, rs: true, bb: false }, patMode: 'all', sells: true, log: true, panes: { rsi: false, macd: false }, eps: 'ttm', cmp: {}, rsBench: {} };
+let prefs = { tf: 'D', style: 'candles', ms: false, tradePlan: true, lines: { l1: false, l2: false, l3: true, l4: true, rs: true, bb: false }, patMode: 'all', sells: true, log: true, panes: { rsi: false, macd: false }, eps: 'ttm', cmp: {}, rsBench: {}, fib: null };
 // comparison choices and the RS benchmark are remembered per market (US, .DE, .T …)
 const group = sym => isDemoSym(sym) ? 'demo' : splitSym(sym).sfx || 'US';
 
@@ -427,7 +428,7 @@ function snapPrice(time, price) {
 function chartState() {
   return {
     sym: V.sym, daily: V.data.bars, bench: V.bench ? V.bench.bars : null, R: V.R, tf: prefs.tf, lines: prefs.lines, patMode: prefs.patMode, log: prefs.log !== false,
-    drawings: drawings(), cur: V.data.currency, pending: V.pending, poly: V.poly, mkt: V.mkt, compare: V.cmp, trades: V.trades || [], plan: V.planLv || null, sells: prefs.sells !== false && !V.mkt ? V.sells || [] : [],
+    drawings: drawings(), fib: prefs.fib, cur: V.data.currency, pending: V.pending, poly: V.poly, mkt: V.mkt, compare: V.cmp, trades: V.trades || [], plan: V.planLv || null, sells: prefs.sells !== false && !V.mkt ? V.sells || [] : [],
     volLive: V.vs && V.vs.open ? V.vs : null, ms: !!prefs.ms, autoPlan: prefs.tradePlan !== false && !V.mkt ? autoPlan() : null,
     eps: prefs.eps !== 'off' && V.earn ? { mode: prefs.eps, points: epsPoints(V.earn, prefs.eps) } : null,
   };
@@ -712,13 +713,14 @@ const addDrawing = d => saveDrawings([...drawings(), { ...d, id: Date.now().toSt
 function drawList() {
   const el = $('#cDraw'), list = drawings(), lt = V.data.bars[V.data.bars.length - 1].time;
   render(el, html`<div class="card-head"><h2>Your drawings</h2><button class="btn sm" id="dAdd">${raw(ICON.pen)}Draw</button></div>
-    ${list.length ? html`<div class="list">${list.map(d => html`<div class="row small"><span class="num">${d.type === 'trend' ? `Trend line ${fDs(d.t1)} → ${fDs(d.t2)} · today ${f2(lineVal(d, lt))}` : d.type === 'bp' ? `Your buy point ${f2(d.p1)} · zone to ${f2(d.p1 * 1.05)}` : d.type === 'hline' ? `Level ${f2(d.p1)}` : d.type === 'zone' ? `Zone ${f2(Math.min(d.p1, d.p2))}–${f2(Math.max(d.p1, d.p2))}` : d.type === 'cup' ? `${d.label} from ${fDs(d.pts[0][0])} · buy point ${f2(cupPivot(d))}` : `Note “${d.label}” ${fDs(d.t1)}`}</span><button class="btn sm danger" data-del="${d.id}" aria-label="Delete drawing">${raw(ICON.trash)}</button></div>`)}</div>`
+    ${list.length ? html`<div class="list">${list.map(d => html`<div class="row small"><span class="num">${d.type === 'trend' ? `Trend line ${fDs(d.t1)} → ${fDs(d.t2)} · today ${f2(lineVal(d, lt))}` : d.type === 'bp' ? `Your buy point ${f2(d.p1)} · zone to ${f2(d.p1 * 1.05)}` : d.type === 'hline' ? `Level ${f2(d.p1)}` : d.type === 'zone' ? `Zone ${f2(Math.min(d.p1, d.p2))}–${f2(Math.max(d.p1, d.p2))}` : d.type === 'cup' ? `${d.label} from ${fDs(d.pts[0][0])} · buy point ${f2(cupPivot(d))}` : d.type === 'fib' ? `Fibonacci ${f2(d.p1)} → ${f2(d.p2)}: ${fibLevels(d, prefs.fib).map(x => x.label + ' ' + f2(x.price)).join(' · ')}` : `Note “${d.label}” ${fDs(d.t1)}`}</span><button class="btn sm danger" data-del="${d.id}" aria-label="Delete drawing">${raw(ICON.trash)}</button></div>`)}</div>`
       : html`<p class="muted small" style="margin:0">None yet. Use Draw on the chart to add trend lines, levels, zones, your own cup or notes. The flags watch them for you.</p>`}`);
   $$('[data-del]', el).forEach(b => { b.onclick = () => saveDrawings(drawings().filter(x => x.id !== b.dataset.del)); });
+  if (list.some(d => d.type === 'fib')) { const fb = document.createElement('button'); fb.className = 'btn sm'; fb.textContent = 'Fibonacci settings'; fb.onclick = fibSheet; el.appendChild(fb); }
   $('#dAdd').onclick = e => { e.stopPropagation(); $('#sChartWrap').scrollIntoView({ behavior: 'smooth', block: 'center' }); openMenu('pDraw'); };
 }
 
-const HINTS = { bp: 'Buy point: tap the pivot high (taps snap to the bar high). Draws the line and the +5% zone and sets a breakout alert.', trend: 'Trend line: tap the first point, then the second. It extends to today. Taps snap to bar highs/lows.', hline: 'Level: tap the price to mark.', zone: 'Zone: tap the top, then the bottom.', note: 'Note: tap a bar, then type your note.', cup: 'Cup: tap the left-side high, the bottom, then the right-side high. Optional: handle low and handle end.' };
+const HINTS = { bp: 'Buy point: tap the pivot high (taps snap to the bar high). Draws the line and the +5% zone and sets a breakout alert.', trend: 'Trend line: tap the first point, then the second. It extends to today. Taps snap to bar highs/lows.', hline: 'Level: tap the price to mark.', zone: 'Zone: tap the top, then the bottom.', note: 'Note: tap a bar, then type your note.', fib: 'Fibonacci: tap the start of the move (e.g. the low = 0%), then the end (the high = 100%). Taps snap to bar highs/lows. Change the levels in Draw → Fibonacci settings.', cup: 'Cup: tap the left-side high, the bottom, then the right-side high. Optional: handle low and handle end.' };
 function setTool(t) {
   V.tool = V.tool === t ? null : t; V.pending = null; V.poly = V.tool === 'cup' ? [] : null;
   const h = $('#sHint'); if (!h) return;
@@ -757,7 +759,39 @@ function onChartClick({ time, price }) {
     if (a.t === time) { toast('Pick two different bars.'); return; }
     const [x, y] = a.t < time ? [a, { t: time, p: price }] : [{ t: time, p: price }, a];
     addDrawing({ type: 'trend', t1: x.t, p1: x.p, t2: y.t, p2: y.p }); done('Trend line saved.');
+  } else if (V.tool === 'fib') {
+    if (a.p === price) { toast('Pick two different prices: the start and the end of the move.'); return; }
+    addDrawing({ type: 'fib', t1: a.t, p1: a.p, t2: time, p2: price }); done('Fibonacci saved. Change its levels in Draw → Fibonacci settings.');
   } else { addDrawing({ type: 'zone', p1: a.p, p2: price }); done('Zone saved.'); }
+}
+
+/* ---------- Fibonacci settings (MarketSurge-style): tick the levels, add your own, reverse, extend ---------- */
+function fibSheet() {
+  const sh = sheet('Fibonacci settings', html`<div class="fibset"></div>`), box = $('.fibset', sh);
+  const set = async o => { prefs.fib = { ...fibSettings(prefs.fib), ...o }; await savePrefs(); if (V.data) draw(true); if (V.data) cards(); paint(); };
+  const paint = () => {
+    const o = fibSettings(prefs.fib), ch = fibChoices(prefs.fib), sample = drawings().find(d => d.type === 'fib');
+    const price = v => { const q = sample && fibLevels(sample, { ...o, on: [v] })[0]; return q ? ' · ' + f2(q.price) : ''; };
+    render(box, html`<p class="small muted" style="margin:0 0 6px">Applies to every Fibonacci drawing, on stocks and on the market indexes. 0% is the first point you tap, 100% the second.${sample ? ' Prices shown for your latest Fibonacci on this chart.' : ''}</p>
+      <div class="fib-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:2px 12px">${ch.map(c => html`<label class="small row" style="gap:6px;margin:0;justify-content:flex-start"><input type="checkbox" data-fv="${c.v}" ${c.on ? raw('checked') : ''}><span class="num">${c.v}%</span><span class="muted tiny">${price(c.v)}</span>${c.custom ? html`<button class="btn sm" data-fdel="${c.v}" title="Remove this level" style="padding:0 5px">✕</button>` : ''}</label>`)}</div>
+      <form class="row" id="fibAdd" style="gap:6px;margin-top:8px"><input class="input sm" id="fibIn" placeholder="Your own level, e.g. 70.7 or -10" inputmode="decimal" style="flex:1"><button class="btn sm" type="submit">Add</button></form>
+      <div class="toolbar" style="margin-top:6px">
+        <button class="btn sm" data-preset="std">Standard (0–23.6–38.2–50–61.8–78.6–100)</button>
+        <button class="btn sm" data-preset="ext">+ Extensions (127.2–161.8–261.8)</button>
+        <button class="btn sm" data-preset="none">Clear all</button>
+      </div>
+      <label class="small row" style="gap:6px;justify-content:flex-start;text-align:left"><input type="checkbox" id="fibRev" ${o.reverse ? raw('checked') : ''}>Reverse (100% at the first point, 0% at the second)</label>
+      <label class="small row" style="gap:6px;justify-content:flex-start;text-align:left"><input type="checkbox" id="fibExt" ${o.extend ? raw('checked') : ''}>Extend the lines to the right</label>
+      <label class="small row" style="gap:6px;justify-content:flex-start;text-align:left"><input type="checkbox" id="fibPr" ${o.prices ? raw('checked') : ''}>Show level and price on the price axis</label>`);
+    $$('[data-fv]', box).forEach(x => { x.onchange = () => { const v = +x.dataset.fv, on = fibSettings(prefs.fib).on.filter(y => y !== v); if (x.checked) on.push(v); set({ on }); }; });
+    $$('[data-fdel]', box).forEach(x => { x.onclick = e => { e.preventDefault(); const v = +x.dataset.fdel, o2 = fibSettings(prefs.fib); set({ custom: o2.custom.filter(y => y !== v), on: o2.on.filter(y => y !== v) }); }; });
+    $('#fibAdd', box).onsubmit = e => { e.preventDefault(); const v = parseLevel($('#fibIn', box).value); if (v == null) { toast('Type a number, e.g. 70.7'); return; } const o2 = fibSettings(prefs.fib); set({ custom: [...new Set([...o2.custom, v])], on: [...new Set([...o2.on, v])] }); };
+    $$('[data-preset]', box).forEach(x => { x.onclick = () => { const k = x.dataset.preset, o2 = fibSettings(prefs.fib); set({ on: k === 'std' ? [0, 23.6, 38.2, 50, 61.8, 78.6, 100] : k === 'ext' ? [...new Set([...o2.on, 127.2, 161.8, 261.8])] : [] }); }; });
+    $('#fibRev', box).onchange = e => set({ reverse: e.target.checked });
+    $('#fibExt', box).onchange = e => set({ extend: e.target.checked });
+    $('#fibPr', box).onchange = e => set({ prices: e.target.checked });
+  };
+  paint();
 }
 
 /* ---------- toolbar menus ---------- */
@@ -802,12 +836,13 @@ function openMenu(id) {
       <p class="muted tiny" style="margin:4px 10px 6px">For each breakout, bought at the buy point: the first sell signal (stop 8% under the buy price, raised stop at +15%, breakeven after +20%, climax top, 70% over the 200-day, heavy-volume 50-day break, profit at +20–25% with the 8-week rule). Open breakouts show the current sell line and targets.</p>`);
     if (id === 'pPat' && $('#pmSells', p)) $('#pmSells', p).onchange = e => { prefs.sells = e.target.checked; savePrefs(); draw(true); };
     if (id === 'pPat' && $('#pmTrade', p)) $('#pmTrade', p).onchange = e => { prefs.tradePlan = e.target.checked; savePrefs(); draw(true); };
-    if (id === 'pDraw') render(p, html`${[['bp', 'Buy point ⌖ (line + 5% zone + alert)'], ['trend', 'Trend line'], ['hline', 'Level'], ['zone', 'Zone'], ['cup', 'Cup ◡ (your own base)'], ['note', 'Note']].map(([k, l]) => html`<button data-tool="${k}">${l}</button>`)}<hr><button data-undo>Undo last drawing</button>`);
+    if (id === 'pDraw') render(p, html`${[['bp', 'Buy point ⌖ (line + 5% zone + alert)'], ['trend', 'Trend line'], ['hline', 'Level'], ['zone', 'Zone'], ['cup', 'Cup ◡ (your own base)'], ['fib', 'Fibonacci retracement'], ['note', 'Note']].map(([k, l]) => html`<button data-tool="${k}">${l}</button>`)}<button data-fibset>Fibonacci settings…</button><hr><button data-undo>Undo last drawing</button>`);
     $$('[data-line]', p).forEach(x => { x.onchange = () => { prefs.lines[x.dataset.line] = x.checked; savePrefs(); draw(true); }; });
     $$('[data-pane]', p).forEach(x => { x.onchange = () => { prefs.panes[x.dataset.pane] = x.checked; savePrefs(); V.chart.setPanes(prefs.panes); }; });
     $$('[data-style]', p).forEach(x => { x.onclick = () => { prefs.style = x.dataset.style; savePrefs(); V.chart.setStyle(prefs.style); p.hidden = true; }; });
     $$('[data-pm]', p).forEach(x => { x.onclick = () => { prefs.patMode = x.dataset.pm; savePrefs(); draw(true); p.hidden = true; }; });
     $$('[data-tool]', p).forEach(x => { x.onclick = () => { setTool(x.dataset.tool); p.hidden = true; }; });
+    $$('[data-fibset]', p).forEach(x => { x.onclick = () => { p.hidden = true; fibSheet(); }; });
     $$('[data-undo]', p).forEach(x => { x.onclick = () => { const l = drawings(); if (l.length) saveDrawings(l.slice(0, -1)); p.hidden = true; }; });
   }
 }
